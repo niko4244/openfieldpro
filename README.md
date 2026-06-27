@@ -1,5 +1,15 @@
 # Odysseus
 
+> **If you came from the Hermes / Brainz docs:** this repo supersedes the
+> runtime contracts that previously lived there. The migrated scripts are
+> at [`scripts/migrate_hermes/`](scripts/migrate_hermes/):
+>
+> - [`migrate_skills.sh`](scripts/migrate_hermes/migrate_skills.sh) — bulk-import 49 Hermes skills into `data/skills/brainz/`
+> - [`migrate_mcps.py`](scripts/migrate_hermes/migrate_mcps.py) — register MCP servers from `~/.claude/mcp.json`
+> - [`flip_mutating.py`](scripts/migrate_hermes/flip_mutating.py) — toggle `mutating:` frontmatter for sanctioned skills
+> - [`dry_run_ci.sh`](scripts/migrate_hermes/dry_run_ci.sh) — reproduce the GH Action gate locally before pushing
+> - [`README.md`](scripts/migrate_hermes/README.md) — pre-commit, paths filter, and setup docs
+
 ```
 ───────────────────────────────────────────────
  ⊹ ࣪ ˖ ૮( ˶ᵔ ᵕ ᵔ˶ )っ  Odysseus vers. 1.0

@@ -19,6 +19,7 @@ from src import agent_runs
 from src.model_context import estimate_tokens
 from src.chat_helpers import coerce_message_and_session
 from src.endpoint_resolver import normalize_base as _normalize_base, build_chat_url
+from src.fable_integration import maybe_enhance_candidates as _fable_candidates
 from src.prompt_security import untrusted_context_message
 from core.exceptions import SessionNotFoundError
 from src.auth_helpers import get_current_user
@@ -312,11 +313,26 @@ def setup_chat_routes(
             except Exception as e:
                 logger.error(f"Research failed: {e}")
 
+        # Fable Zero: enhance model selection via prompt classification
+        _fable_cands, _fable_meta = _fable_candidates(
+            message, sess, [], owner=owner,
+        )
+        if _fable_meta and _fable_meta.get("category"):
+            logger.info(
+                "[fable] '%s' → '%s' (%.2f) → %s",
+                message[:60], _fable_meta["category"],
+                _fable_meta.get("confidence", 0),
+                _fable_cands[0][1] if _fable_cands else "?",
+            )
+        _fable_ep, _fable_model, _fable_headers = _fable_cands[0] if _fable_cands else (
+            sess.endpoint_url, sess.model, sess.headers,
+        )
+
         reply = await llm_call_async(
-            sess.endpoint_url,
-            sess.model,
+            _fable_ep or sess.endpoint_url,
+            _fable_model or sess.model,
             ctx.messages,
-            headers=sess.headers,
+            headers=_fable_headers or sess.headers,
             temperature=ctx.preset.temperature,
             max_tokens=ctx.preset.max_tokens,
             prompt_type=preset_id,
@@ -833,7 +849,16 @@ def setup_chat_routes(
                 _answered_by = None  # set if the selected model failed and a fallback answered
                 # ── Chat mode: call stream_llm directly, NO tools, NO document access ──
                 try:
-                    _chat_candidates = [(sess.endpoint_url, sess.model, sess.headers)] + _fallback_candidates
+                    _chat_candidates, _fable_meta = _fable_candidates(
+                        message, sess, _fallback_candidates, owner=_user,
+                    )
+                    if _fable_meta and _fable_meta.get("category"):
+                        logger.info(
+                            "[fable] '%s' → '%s' (%.2f) → %s",
+                            message[:60], _fable_meta["category"],
+                            _fable_meta.get("confidence", 0),
+                            _chat_candidates[0][1] if _chat_candidates else "?",
+                        )
                     async for chunk in stream_llm_with_fallback(
                         _chat_candidates,
                         messages,

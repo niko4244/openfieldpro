@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Odysseus Tool Cheat Sheet</title>
+  <style>
+    :root {
+      --bg: #101114;
+      --panel: #171a1f;
+      --panel-2: #20242b;
+      --text: #eceff3;
+      --muted: #aab2bf;
+      --line: #303744;
+      --accent: #6dd6b9;
+      --accent-2: #f4bf75;
+      --danger: #ff7d7d;
+      --blue: #8ab4f8;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: #121418;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .wrap {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+    }
+    .top {
+      display: grid;
+      gap: 14px;
+      padding: 22px 0 18px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      max-width: 760px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    input[type="search"] {
+      min-width: min(460px, 100%);
+      flex: 1 1 320px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+      outline: none;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: var(--panel);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    main { padding: 22px 0 42px; }
+    nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    nav a {
+      color: var(--text);
+      text-decoration: none;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      font-size: 14px;
+    }
+    nav a:hover { border-color: var(--accent); }
+    section {
+      margin: 0 0 22px;
+      padding-top: 4px;
+    }
+    h2 {
+      font-size: 20px;
+      margin: 0 0 12px;
+      letter-spacing: 0;
+    }
+    h3 {
+      font-size: 15px;
+      margin: 0 0 8px;
+      color: var(--accent);
+      letter-spacing: 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 12px;
+    }
+    .card {
+      grid-column: span 4;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 14px;
+      min-height: 142px;
+    }
+    .wide { grid-column: span 6; }
+    .full { grid-column: 1 / -1; }
+    .card p { margin: 0 0 10px; color: var(--muted); }
+    .card p:last-child { margin-bottom: 0; }
+    .tagline {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 2px;
+    }
+    code {
+      color: #dbe8ff;
+      background: #0c0f13;
+      border: 1px solid #242a33;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    pre {
+      margin: 10px 0 0;
+      border: 1px solid #242a33;
+      border-radius: var(--radius);
+      background: #0c0f13;
+      padding: 12px;
+      overflow: auto;
+      color: #dbe8ff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+    ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+    li { margin: 4px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--accent);
+      background: var(--panel-2);
+      font-weight: 700;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .warn { color: var(--accent-2); }
+    .bad { color: var(--danger); }
+    .copy-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: start;
+      margin-top: 8px;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+    }
+    button:hover { border-color: var(--accent); }
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    .hidden { display: none !important; }
+    @media (max-width: 900px) {
+      .card, .wide { grid-column: 1 / -1; }
+      h1 { font-size: 24px; }
+      th:nth-child(3), td:nth-child(3) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap top">
+      <div>
+        <h1>Odysseus Tool Cheat Sheet</h1>
+        <p class="subtitle">A quick reference for Agent mode, local memory, Obsidian, MCP servers, Brainz skills, model serving, GitHub Scout, sports picks, research, browser automation, and the commands Odysseus should reach for first.</p>
+      </div>
+      <div class="controls">
+        <input id="search" type="search" placeholder="Filter tools, commands, skills, or workflows">
+        <span class="pill">Updated 2026-06-03</span>
+        <span class="pill">Agent mode required for tool calls</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <nav>
+      <a href="#quick">Quick Start</a>
+      <a href="#servers">MCP Servers</a>
+      <a href="#builtin">Built-in Tools</a>
+      <a href="#memory">Memory</a>
+      <a href="#understand">Understand</a>
+      <a href="#skills">Skills</a>
+      <a href="#github">GitHub</a>
+      <a href="#commands">Prompt Commands</a>
+      <a href="#troubleshooting">Troubleshooting</a>
+    </nav>
+
+    <section id="quick" data-filter>
+      <h2>Quick Start</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Use tools</h3>
+          <p>Switch Odysseus to <code>Agent</code> mode. Chat mode can answer text, but Agent mode is where shell, MCP, browser, memory, skills, research, and app actions are available.</p>
+          <div class="copy-row">
+            <pre>Set mode to Agent and use the best tool for this.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Ask for the tool map</h3>
+          <p>Odysseus can list current native tools and connected MCP tools through its own management tools.</p>
+          <div class="copy-row">
+            <pre>Show me the current tool map. Use manage_mcp list_tools and manage_settings list_tools.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Open panels</h3>
+          <p>Use <code>ui_control</code> for visual panels instead of narrating links.</p>
+          <div class="copy-row">
+            <pre>Open the skills panel, then open the memories panel.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="servers" data-filter>
+      <h2>MCP Servers</h2>
+      <table>
+        <thead>
+          <tr><th>Server</th><th>Current prefix</th><th>Use it for</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Claude gbrain</td>
+            <td><code>mcp__b0dbd2d0__*</code></td>
+            <td>Persistent agent memory, hybrid search, pages, facts, takes, links, jobs, salience, transcripts, source management.</td>
+            <td><span class="status">Enabled, 63 tools</span></td>
+          </tr>
+          <tr>
+            <td>Claude Obsidian</td>
+            <td><code>mcp__dc825c52__*</code></td>
+            <td>Search/read the human-readable Obsidian Vault at <code>C:/Users/nikma/Documents/Obsidian Vault</code>.</td>
+            <td><span class="status">Enabled</span></td>
+          </tr>
+          <tr>
+            <td>Brainz Hyperresearch</td>
+            <td><code>mcp__ef8eaf63__*</code></td>
+            <td>Deep research vault operations, source fetch/search, reports, linting, syncing.</td>
+            <td><span class="status">Enabled, 13 tools</span></td>
+          </tr>
+          <tr>
+            <td>Built-in Browser</td>
+            <td><code>mcp__builtin_browser__*</code></td>
+            <td>Navigate pages, click/type, take screenshots, inspect browser state, extract page information.</td>
+            <td><span class="status">Enabled, 29 tools</span></td>
+          </tr>
+          <tr>
+            <td>Built-ins: memory, RAG, image, email</td>
+            <td><code>mcp__memory__*</code>, <code>mcp__rag__*</code>, <code>mcp__image_gen__*</code>, <code>mcp__email__*</code></td>
+            <td>Odysseus-native memory, retrieval, image generation, and email operations.</td>
+            <td><span class="status">Enabled</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="hint">The server ids above are current as of this cheat sheet. If an id changes, ask Odysseus to run <code>manage_mcp list</code> and <code>manage_mcp list_tools</code>.</p>
+    </section>
+
+    <section id="builtin" data-filter>
+      <h2>Built-in Agent Tools</h2>
+      <div class="grid">
+        <article class="card wide">
+          <h3>Core execution</h3>
+          <p><code>bash</code>, <code>python</code>, <code>read_file</code>, <code>write_file</code>, <code>web_search</code>, <code>web_fetch</code>, <code>api_call</code>, <code>app_api</code></p>
+          <p>Use for local commands, scripts, files, quick web lookups, direct URLs, configured APIs, and Odysseus internal endpoints.</p>
+        </article>
+        <article class="card wide">
+          <h3>App and UI control</h3>
+          <p><code>ui_control</code>, <code>manage_settings</code>, <code>manage_documents</code>, <code>manage_notes</code>, <code>manage_calendar</code>, <code>manage_session</code></p>
+          <p>Open panels, switch model/mode, toggle tools, edit settings, manage docs, notes, calendar, and chats.</p>
+        </article>
+        <article class="card wide">
+          <h3>Models and cookbook</h3>
+          <p><code>list_models</code>, <code>chat_with_model</code>, <code>ask_teacher</code>, <code>download_model</code>, <code>serve_model</code>, <code>serve_preset</code>, <code>list_served_models</code>, <code>stop_served_model</code>, <code>list_cached_models</code>, <code>search_hf_models</code></p>
+          <p>Use for local model inventory, serving, downloads, presets, teacher escalation, and model comparisons.</p>
+        </article>
+        <article class="card wide">
+          <h3>Knowledge, skills, research</h3>
+          <p><code>manage_memory</code>, <code>manage_skills</code>, <code>manage_mcp</code>, <code>trigger_research</code>, <code>manage_research</code>, <code>search_chats</code></p>
+          <p>Use this layer before inventing workflows. Existing skills and MCP servers are the source of reusable procedures.</p>
+        </article>
+        <article class="card wide">
+          <h3>Email and contacts</h3>
+          <p><code>list_email_accounts</code>, <code>list_emails</code>, <code>read_email</code>, <code>send_email</code>, <code>reply_to_email</code>, <code>bulk_email</code>, <code>archive_email</code>, <code>delete_email</code>, <code>mark_email_read</code>, <code>resolve_contact</code>, <code>manage_contact</code></p>
+          <p>Use account-aware email tools. For opening a reply draft, use <code>ui_control open_email_reply</code>.</p>
+        </article>
+        <article class="card wide">
+          <h3>Images and gallery</h3>
+          <p><code>generate_image</code>, <code>edit_image</code></p>
+          <p>Generate images or edit gallery images with upscale, background removal, inpaint, and harmonize actions.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="memory" data-filter>
+      <h2>Memory Commands</h2>
+      <div class="grid">
+        <article class="card wide">
+          <h3>gbrain first</h3>
+          <p>Use gbrain when the answer should persist across Codex, Claude Code, Hermes, GilbertCodex, and Odysseus.</p>
+          <ul>
+            <li><code>query</code> or <code>search</code>: retrieve relevant memory.</li>
+            <li><code>put_page</code>: write durable project/system knowledge.</li>
+            <li><code>recall</code> and <code>extract_facts</code>: hot personal facts from conversations.</li>
+            <li><code>think</code>: multi-hop synthesis with citations and caveats.</li>
+            <li><code>get_recent_transcripts</code>: recent raw conversations.</li>
+            <li><code>get_recent_salience</code> and <code>find_anomalies</code>: recent activity and emotional/activity signals.</li>
+          </ul>
+        </article>
+        <article class="card wide">
+          <h3>Obsidian for readable notes</h3>
+          <p>Use Obsidian for notes the human should browse or edit. System facts belong under <code>System/</code>; agent outputs under <code>Agents/&lt;BotName&gt;/</code>.</p>
+          <div class="copy-row">
+            <pre>Search Obsidian for the current status first, then write a short note under Agents/Odysseus/ if this should be human-readable.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+        <article class="card full">
+          <h3>High-value gbrain tool names</h3>
+          <p><code>get_page</code>, <code>put_page</code>, <code>list_pages</code>, <code>search</code>, <code>query</code>, <code>add_tag</code>, <code>add_link</code>, <code>get_backlinks</code>, <code>traverse_graph</code>, <code>add_timeline_entry</code>, <code>get_health</code>, <code>run_doctor</code>, <code>sync_brain</code>, <code>submit_job</code>, <code>list_jobs</code>, <code>find_orphans</code>, <code>takes_list</code>, <code>takes_search</code>, <code>takes_scorecard</code>, <code>takes_calibration</code>, <code>sources_list</code>, <code>get_recent_salience</code>, <code>find_anomalies</code>, <code>get_recent_transcripts</code>, <code>extract_facts</code>, <code>recall</code>, <code>find_contradictions</code>, <code>find_experts</code></p>
+        </article>
+      </div>
+    </section>
+
+    <section id="understand" data-filter>
+      <h2>System Understanding</h2>
+      <div class="grid">
+        <article class="card wide" data-filter="understand-anything system map tools structure odysseus brainz hermes gbrain current model qwen">
+          <h3>understand-anything</h3>
+          <p>Use this when Odysseus needs to understand how the hub, tools, skills, MCP servers, memory, dashboards, and repos fit together. It bridges Odysseus to the Understand Anything Claude Code graph plugin.</p>
+          <p><strong>Start with:</strong> <code>HUB.md</code>, <code>odysseus-tools-cheatsheet</code>, MCP/native tool inventory, and Obsidian <code>System/</code> notes.</p>
+          <p><strong>Model posture:</strong> <code>qwen36-aggressive-iq3m-tools:latest</code> does best with explicit tool calls, compact summaries, and details loaded on demand.</p>
+        </article>
+        <article class="card wide" data-filter="capability matrix native tools mcp skills plugins dashboards memory">
+          <h3>Capability matrix</h3>
+          <p>Ask for a table that groups everything by role: native Odysseus tools, MCP servers, Brainz skills, GitHub/Codex/Claude plugins, local CLIs, dashboards/pages, memory stores, and approval-gated workflows.</p>
+          <p>This is the fastest way to turn "what do we have?" into "which tool should handle this request?"</p>
+        </article>
+        <article class="card" data-filter="understand graph claude code slash commands dashboard onboard explain diff">
+          <h3>Graph build</h3>
+          <p>Full graph builds are Claude Code plugin commands and write <code>.understand-anything/</code> in the analyzed root.</p>
+          <p>Use <code>/understand-onboard</code> first, <code>/understand</code> for full scan, <code>/understand-dashboard</code> to reopen, <code>/understand-explain &lt;path&gt;</code> for deep dives, and <code>/understand-diff</code> for changes.</p>
+        </article>
+        <article class="card" data-filter="understand memory gbrain obsidian durable summary handoff">
+          <h3>Memory landing</h3>
+          <p>After a map or graph run, save the durable summary to gbrain and mirror a readable note in Obsidian so Odysseus, Codex, Claude, and Hermes all inherit the same understanding.</p>
+        </article>
+        <article class="card full" data-filter="understand prompt qwen tools system structure">
+          <h3>Copy-ready understanding prompt</h3>
+          <div class="copy-row">
+            <pre>Use understand-anything on our hub tools and structure. First view understand-anything and odysseus-tools-cheatsheet, then inventory MCP/native tools, read HUB.md, search Obsidian System notes, and give me a capability matrix optimized for qwen36-aggressive-iq3m-tools.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="skills" data-filter>
+      <h2>Brainz Skills To Remember</h2>
+      <table>
+        <thead>
+          <tr><th>Skill</th><th>When to use it</th><th>Useful commands or files</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>understand-anything</code></td>
+            <td>System maps, codebase knowledge graphs, Odysseus/Brainz/Hermes/gbrain structure, and current-model capability routing.</td>
+            <td><code>HUB.md</code>, <code>/understand-onboard</code>, <code>/understand-dashboard</code>, <code>.understand-anything/knowledge-graph.json</code></td>
+          </tr>
+          <tr>
+            <td><code>github-scout</code></td>
+            <td>Repository watch queues, PR/issues triage, findings, and guided implementation after approval.</td>
+            <td><code>reports/latest.md</code>, <code>scripts/hermes-github-scout.cjs</code></td>
+          </tr>
+          <tr>
+            <td><code>sportsclaw</code></td>
+            <td>Sports bets, picks, parlays, props, confidence, Hermes picks output, settlement flows.</td>
+            <td><code>scripts/run.ts</code>, <code>scripts/sportsbook.ts</code>, <code>scripts/resolve-sports.ts</code></td>
+          </tr>
+          <tr>
+            <td><code>hyperresearch</code></td>
+            <td>Deep research, source collection, vault search/fetch/lint/sync, reports.</td>
+            <td><code>hpr.ps1 search "query" -j</code>, <code>hpr.ps1 research "topic" -j</code></td>
+          </tr>
+          <tr>
+            <td><code>obsidian</code></td>
+            <td>Human-readable vault capture, system notes, agent status, daily/reference notes.</td>
+            <td><code>C:/Users/nikma/Documents/Obsidian Vault</code></td>
+          </tr>
+          <tr>
+            <td><code>portfolio</code></td>
+            <td>Portfolio positions, prices, outcome recording, sports settlement tie-ins.</td>
+            <td><code>scripts/portfolio.ts</code>, <code>scripts/record-outcome.ts</code></td>
+          </tr>
+          <tr>
+            <td><code>coder</code>, <code>smallcode</code>, <code>pr-reviewer</code></td>
+            <td>Local coding, small implementation tasks, and review workflows.</td>
+            <td>Use with Agent mode tools and existing project tests.</td>
+          </tr>
+          <tr>
+            <td><code>sysbot</code>, <code>securitybot</code>, <code>mining-ops-bot</code>, <code>tradingdesk</code></td>
+            <td>System checks, security posture, mining operations, trading workflows.</td>
+            <td>Ask Odysseus to view the skill before acting.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="github" data-filter>
+      <h2>GitHub Tools</h2>
+      <div class="grid">
+        <article class="card wide" data-filter="github scout repo watchlist findings approval guided implementation">
+          <h3>github-scout</h3>
+          <p>Observe-only repo intelligence. It scans local projects and watchlist repos, then emits Markdown and JSON findings for upgrades, stale tools, risky drift, and useful integrations.</p>
+          <p><strong>Use when:</strong> you want a repo/tool ecosystem scan, a queue of improvement ideas, or a finding you can approve before implementation.</p>
+          <p><strong>Output rule:</strong> show the TLDR, why the finding improves our system, confidence, risk, and the exact guided implementation path. Wait for approval before changing code.</p>
+          <p><code>C:/Users/nikma/Brainz/odysseus/data/skills/brainz/github-scout</code></p>
+        </article>
+        <article class="card wide" data-filter="github plugin repo issue pull request pr triage connector">
+          <h3>GitHub plugin: github</h3>
+          <p>General GitHub triage and orientation through the connected GitHub app. Use it for repositories, issues, PRs, comments, metadata, and deciding which specialized workflow should take over.</p>
+          <p><strong>Routes to:</strong> <code>gh-address-comments</code> for PR review feedback, <code>gh-fix-ci</code> for failing checks, and <code>yeet</code> for publishing local work.</p>
+        </article>
+        <article class="card" data-filter="github pr review comments threads address gh-address-comments">
+          <h3>gh-address-comments</h3>
+          <p>Inspects unresolved PR review threads, clusters actionable feedback, and helps implement selected fixes after scope approval.</p>
+          <p><strong>Use when:</strong> a PR has review comments or requested changes.</p>
+        </article>
+        <article class="card" data-filter="github actions ci failing checks logs gh-fix-ci">
+          <h3>gh-fix-ci</h3>
+          <p>Debugs failing GitHub Actions checks using PR metadata, check runs, and logs. It should diagnose first, then wait for approval before applying a fix.</p>
+          <p><strong>Use when:</strong> CI, workflow, test, or Actions checks fail.</p>
+        </article>
+        <article class="card" data-filter="github publish branch commit push pull request pr yeet">
+          <h3>yeet</h3>
+          <p>Publishing flow for local changes: confirm scope, branch, stage intended files only, commit, push, and open a draft PR.</p>
+          <p><strong>Use when:</strong> you want current local work packaged and sent to GitHub.</p>
+        </article>
+        <article class="card" data-filter="github cli gh auth repo workflow pr issue actions">
+          <h3>GitHub CLI</h3>
+          <p><code>gh</code> is installed and authenticated as <code>niko4244</code> with repo, workflow, read:org, and gist scopes.</p>
+          <p><strong>Use for:</strong> auth checks, PR discovery, branch lookup, Actions logs, workflow runs, and issue/PR commands when the connector needs a CLI fallback.</p>
+        </article>
+        <article class="card" data-filter="git local diff branch status stage commit push github">
+          <h3>Local git</h3>
+          <p>Use <code>git status</code>, <code>git diff</code>, branches, staging, commits, and pushes for local repo work. Never stage unrelated changes.</p>
+          <p><strong>Use for:</strong> local implementation state and exact file-level diffs.</p>
+        </article>
+        <article class="card" data-filter="github memory gbrain obsidian durable findings status">
+          <h3>Memory handoff</h3>
+          <p>GitHub findings and approved implementation status should be written to gbrain for shared agent memory and mirrored to Obsidian when the human should browse it.</p>
+          <p><strong>Use for:</strong> keeping Odysseus, Codex, Claude, and Hermes aligned.</p>
+        </article>
+        <article class="card full" data-filter="github prompt scout approval guided implementation">
+          <h3>Copy-ready GitHub prompts</h3>
+          <div class="copy-row">
+            <pre>Use GitHub Scout. Give me the TLDR, why each finding improves our system, confidence, risk, and wait for approval before guided implementation.</pre>
+            <button data-copy>Copy</button>
+          </div>
+          <div class="copy-row">
+            <pre>Use the GitHub tool map. For repo, issue, or PR triage use github; for review comments use gh-address-comments; for failing Actions use gh-fix-ci; for publishing use yeet.</pre>
+            <button data-copy>Copy</button>
+          </div>
+          <div class="copy-row">
+            <pre>After I approve a GitHub Scout finding, start a guided implementation task: confirm scope, create or select a branch, edit, test, summarize, and write status to memory.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="commands" data-filter>
+      <h2>Prompt Commands</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Check tool health</h3>
+          <div class="copy-row">
+            <pre>Use manage_mcp list, then manage_mcp list_tools. Tell me which servers are connected and what each is for.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Find the right skill</h3>
+          <div class="copy-row">
+            <pre>Search published skills for this task, view the best matching skill, then follow it.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Understand the hub</h3>
+          <div class="copy-row">
+            <pre>Use understand-anything on our hub tools and structure. View the skill, view odysseus-tools-cheatsheet, inventory MCP/native tools, read HUB.md, search Obsidian System notes, then give me a compact capability matrix.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Use system memory</h3>
+          <div class="copy-row">
+            <pre>Query gbrain and Obsidian for prior context before answering. If you learn a durable fact, write it back to gbrain and a short Obsidian note.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Sports picks</h3>
+          <div class="copy-row">
+            <pre>Use the sportsclaw and portfolio skills. Show picks, parlays, confidence, source, and settlement status from Hermes picks if available.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+        <article class="card">
+          <h3>GitHub Scout</h3>
+          <div class="copy-row">
+            <pre>Use github-scout. Give me the TLDR, why each finding improves the system, and wait for approval before guided implementation.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Browser work</h3>
+          <div class="copy-row">
+            <pre>Use the Browser MCP to navigate, inspect, click, type, and screenshot. Verify the page changed instead of guessing.</pre>
+            <button data-copy>Copy</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="troubleshooting" data-filter>
+      <h2>Troubleshooting</h2>
+      <div class="grid">
+        <article class="card wide">
+          <h3>Model writes text but does not call tools</h3>
+          <p>Switch to <code>Agent</code> mode, use a model endpoint marked as tool-capable, and include a direct tool instruction such as "use manage_mcp list_tools". Local models may need native tool support or Odysseus parsing fallback.</p>
+        </article>
+        <article class="card wide">
+          <h3>gbrain direct CLI hangs or locks</h3>
+          <p>When Odysseus is running, its gbrain MCP process can own the PGLite lock. Use the connected MCP server from Odysseus instead of direct CLI calls.</p>
+        </article>
+        <article class="card wide">
+          <h3>MCP server id changed</h3>
+          <p>Run <code>manage_mcp list</code> and use the current server names. The friendly server name is more stable than the generated id.</p>
+        </article>
+        <article class="card wide">
+          <h3>Reference locations</h3>
+          <p>Hub map: <code>C:/Users/nikma/hub/HUB.md</code>. Odysseus note: <code>C:/Users/nikma/Documents/Obsidian Vault/System/Odysseus.md</code>. Cheat sheet note: <code>System/Odysseus-Tool-Cheatsheet.md</code>.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const search = document.getElementById("search");
+    const blocks = Array.from(document.querySelectorAll("[data-filter], tbody tr, .card"));
+    search.addEventListener("input", () => {
+      const q = search.value.trim().toLowerCase();
+      blocks.forEach((el) => {
+        if (!q) {
+          el.classList.remove("hidden");
+          return;
+        }
+        el.classList.toggle("hidden", !el.textContent.toLowerCase().includes(q));
+      });
+    });
+    document.querySelectorAll("button[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const text = button.parentElement.querySelector("pre").innerText;
+        await navigator.clipboard.writeText(text);
+        const old = button.textContent;
+        button.textContent = "Copied";
+        setTimeout(() => button.textContent = old, 900);
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="sail1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e06c75"/>
+      <stop offset="100%" stop-color="#d4505a"/>
+    </linearGradient>
+    <linearGradient id="sail2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e06c75" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#d4505a" stop-opacity="0.4"/>
+    </linearGradient>
+    <linearGradient id="hull" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e06c75"/>
+      <stop offset="100%" stop-color="#b84a54"/>
+    </linearGradient>
+  </defs>
+  <!-- Left sail -->
+  <path d="M32 8L32 44L12 44Z" fill="url(#sail1)"/>
+  <!-- Right sail -->
+  <path d="M32 16L32 44L48 44Z" fill="url(#sail2)"/>
+  <!-- Hull / wake -->
+  <path d="M8 48Q20 40 32 48Q44 56 56 48" stroke="#e06c75" stroke-width="4" fill="none" stroke-linecap="round"/>
+</svg>

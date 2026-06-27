@@ -200,6 +200,7 @@ import createResearchSynapse from './researchSynapse.js';
         submitBtn.addEventListener('animationend', () => submitBtn.classList.remove('anim-land'), { once: true });
       }, 300);
       submitBtn.title = 'Stop generation';
+      submitBtn.setAttribute('aria-label', 'Stop generation');
       submitBtn.dataset.mode = 'streaming';
       submitBtn.dataset.phase = 'processing';
       isStreaming = true;
@@ -217,6 +218,7 @@ import createResearchSynapse from './researchSynapse.js';
         var icons = window._odysseusBtnIcons;
         submitBtn.innerHTML = icons ? icons.send : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
         submitBtn.title = 'Send message';
+        submitBtn.setAttribute('aria-label', 'Send message');
         submitBtn.classList.remove('mic-mode', 'newchat-mode');
       }
     }
@@ -4540,3 +4542,4 @@ import createResearchSynapse from './researchSynapse.js';
 
   export default chatModule;
   window.chatModule = chatModule;
+

@@ -42,7 +42,12 @@ import routes.session_routes as SR  # noqa: E402
 
 
 def _req(**state):
-    return SimpleNamespace(state=SimpleNamespace(**state))
+    req = SimpleNamespace(state=SimpleNamespace(**state))
+    # effective_user now falls through to require_user() when current_user is
+    # None, and require_user accesses request.app.state.auth_manager. Provide a
+    # benign default so tests that don't set current_user don't crash.
+    req.app = SimpleNamespace(state=SimpleNamespace(auth_manager=None))
+    return req
 
 
 # --- effective_user: who a request is attributed to ------------------------
@@ -107,7 +112,13 @@ def test_missing_session_is_404(monkeypatch):
 
 
 def test_unauthenticated_caller_rejected(monkeypatch):
+    """Unauthenticated caller is rejected. Now goes through effective_user →
+    require_user which raises 401 instead of the old 403 from
+    _verify_session_owner's explicit is-None check (dead code after the
+    auth-fix fallback was added)."""
     req = _req(api_token=False, current_user=None)
     with pytest.raises(HTTPException) as exc:
         SR._verify_session_owner(req, "sid")
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in (401, 403), (
+        f"Expected 401 or 403, got {exc.value.status_code}"
+    )

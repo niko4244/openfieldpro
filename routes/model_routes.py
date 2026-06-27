@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from core.database import SessionLocal, ModelEndpoint, Session as DbSession
 from core.middleware import require_admin
-from src.llm_core import _detect_provider, _host_match, ANTHROPIC_MODELS
+from src.llm_core import _detect_provider, _host_match, _resolve_keep_alive, ANTHROPIC_MODELS
 from src.settings import load_settings as _load_settings, save_settings as _save_settings
 from src.endpoint_resolver import (
     normalize_base as _normalize_base,
@@ -366,7 +366,7 @@ def _is_chat_model(model_id: str) -> bool:
     return True
 
 
-def _probe_single_model(base: str, api_key: str, model_id: str, timeout: int = 10, with_tools: bool = False) -> dict:
+def _probe_single_model(base: str, api_key: str, model_id: str, timeout: int = 10, with_tools: bool = False, keep_alive: Optional[str] = None) -> dict:
     """Send a realistic completion request to a single model. Returns {status, latency_ms, error?}."""
     provider = _detect_provider(base)
     messages = [
@@ -389,7 +389,7 @@ def _probe_single_model(base: str, api_key: str, model_id: str, timeout: int = 1
         target_url = build_chat_url(base)
         h = build_headers(api_key, base)
         h["Content-Type"] = "application/json"
-        payload = _build_ollama_payload(model_id, messages, 0.0, 5, stream=False, tools=_test_tools)
+        payload = _build_ollama_payload(model_id, messages, 0.0, 5, stream=False, tools=_test_tools, keep_alive=keep_alive)
     else:
         target_url = build_chat_url(base)
         h = build_headers(api_key, base)
@@ -1002,7 +1002,9 @@ def setup_model_routes(model_discovery):
 
                 base = _normalize_base(ep_data["base_url"])
                 _with_tools = item.get("with_tools", False)
-                result = _probe_single_model(base, ep_data.get("api_key"), model_id, timeout=8, with_tools=_with_tools)
+                _probe_timeout = 60 if _classify_endpoint(base) == "local" else 8
+                _probe_keep_alive = _resolve_keep_alive(base)
+                result = _probe_single_model(base, ep_data.get("api_key"), model_id, timeout=_probe_timeout, with_tools=_with_tools, keep_alive=_probe_keep_alive)
                 result["model"] = model_id
                 result["endpoint_id"] = ep_id
                 results.append(result)
@@ -1062,9 +1064,10 @@ def setup_model_routes(model_discovery):
                 skipped = len(all_models) - len(models)
                 yield f"data: {json.dumps({'type': 'probe_start', 'endpoint': ep['name'], 'model_count': len(models), 'skipped': skipped})}\n\n"
 
+                _probe_timeout = 60 if _classify_endpoint(base) == "local" else 8
                 for model_id in models:
                     total += 1
-                    result = _probe_single_model(base, ep.get("api_key"), model_id, timeout=8)
+                    result = _probe_single_model(base, ep.get("api_key"), model_id, timeout=_probe_timeout, keep_alive=_resolve_keep_alive(base))
                     result["type"] = "probe_result"
                     result["endpoint"] = ep["name"]
                     result["model"] = model_id
@@ -1143,6 +1146,7 @@ def setup_model_routes(model_discovery):
                     "ping_error": (ping or {}).get("error") if ping else None,
                     "model_type": getattr(r, "model_type", None) or "llm",
                     "supports_tools": getattr(r, "supports_tools", None),
+                    "keep_alive": getattr(r, "keep_alive", None) or "",
                 })
             return results
         finally:
@@ -1163,6 +1167,7 @@ def setup_model_routes(model_discovery):
         # app's historical behaviour). Admins can pass `shared=false` to
         # scope a new endpoint to their own account only.
         shared: str = Form("true"),
+        keep_alive: str = Form(""),
     ):
         require_admin(request)
         base_url = _normalize_base(base_url)
@@ -1242,6 +1247,7 @@ def setup_model_routes(model_discovery):
                 cached_models=json.dumps(model_ids) if model_ids else None,
                 supports_tools=_st,
                 owner=_owner_val,
+                keep_alive=keep_alive.strip() or None,
             )
             db.add(ep)
             db.commit()
@@ -1318,8 +1324,9 @@ def setup_model_routes(model_discovery):
             yield f"data: {json.dumps({'type': 'probe_start', 'endpoint': ep_data['name'], 'model_count': len(chat_models), 'skipped': skipped})}\n\n"
             failed = []
             ok_count = 0
+            _probe_timeout = 60 if _classify_endpoint(base) == "local" else 8
             for mid in chat_models:
-                result = _probe_single_model(base, ep_data["api_key"], mid, timeout=8)
+                result = _probe_single_model(base, ep_data["api_key"], mid, timeout=_probe_timeout, keep_alive=_resolve_keep_alive(base))
                 result["model"] = mid
                 result["type"] = "probe_result"
                 result["endpoint"] = ep_data["name"]
@@ -1532,6 +1539,10 @@ def setup_model_routes(model_discovery):
                     ep.name = body["name"].strip() or ep.name
                 if "model_type" in body and isinstance(body["model_type"], str):
                     ep.model_type = body["model_type"].strip() or ep.model_type
+                if "keep_alive" in body:
+                    # Empty string → clear (use default "30m" on next resolve)
+                    v = body["keep_alive"]
+                    ep.keep_alive = (str(v).strip() or None) if v is not None else None
                 # Rotating an API key used to require DELETE+POST, which wiped
                 # endpoint_url/model from every session referencing the old base
                 # URL. Allow in-place updates so the admin can change the key

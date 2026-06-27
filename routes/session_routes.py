@@ -34,10 +34,18 @@ def _verify_session_owner(request: Request, session_id: str, session_manager=Non
 
     ``session_manager`` is optional and defaults to ``None`` so existing callers
     that only care about persisted sessions keep their exact prior behavior.
+
+    When ``AUTH_ENABLED=false`` or ``LOCALHOST_BYPASS`` is active
+    (``effective_user`` returns ``""``), ownership checks are skipped entirely
+    — all sessions are accessible in single-user mode.
     """
     user = effective_user(request)
-    if not user:
+    if user is None:
         raise HTTPException(403, "Authentication required")
+    if not user:
+        # auth-disabled / LOCALHOST_BYPASS mode — skip ownership checks.
+        # All sessions are accessible in single-user mode.
+        return
     db = SessionLocal()
     try:
         row = db.query(DbSession.owner).filter(DbSession.id == session_id).first()
@@ -611,9 +619,10 @@ def setup_session_routes(session_manager: SessionManager, config: dict, webhook_
         db = SessionLocal()
         try:
             q = db.query(DbSession).filter(DbSession.archived == True)
-            if not user:
+            if user is None:
                 raise HTTPException(403, "Authentication required")
-            q = q.filter(DbSession.owner == user)
+            if user:
+                q = q.filter(DbSession.owner == user)
             if search:
                 safe_search = search.replace('%', r'\%').replace('_', r'\_')
                 q = q.filter(DbSession.name.ilike(f"%{safe_search}%", escape='\\'))
@@ -745,7 +754,7 @@ def setup_session_routes(session_manager: SessionManager, config: dict, webhook_
     @router.post("/sessions/save")
     def sessions_save_now(request: Request):
         user = effective_user(request)
-        if not user:
+        if user is None:
             raise HTTPException(401, "Not authenticated")
         session_manager.save_sessions()
         return {"ok": True, "path": SESSIONS_FILE}
@@ -901,7 +910,11 @@ def setup_session_routes(session_manager: SessionManager, config: dict, webhook_
         """
         from src.llm_core import llm_call
         user = effective_user(request)
-        user_sessions = session_manager.get_sessions_for_user(user)
+        # auth-disabled mode (user == ""): sessions have owner=None, so map
+        # to None for owner comparisons.  None means "all sessions" in
+        # get_sessions_for_user and "IS NULL" in SQLAlchemy filters.
+        _owner_for_db = user or None
+        user_sessions = session_manager.get_sessions_for_user(_owner_for_db)
 
         # Delete empty and throwaway sessions before sorting
         from core.database import ChatMessage as DbMsg
@@ -919,7 +932,7 @@ def setup_session_routes(session_manager: SessionManager, config: dict, webhook_
         }
         _THROWAWAY_MAX_MESSAGES = 4  # only delete if <= this many messages
         try:
-            rows = db.query(DbSession).filter(DbSession.archived == False, DbSession.owner == user).all()
+            rows = db.query(DbSession).filter(DbSession.archived == False, DbSession.owner == _owner_for_db).all()
             folder_map = {r.id: r.folder for r in rows}
             # Precompute per-session message counts in TWO aggregate queries
             # instead of 1–3 queries PER session — with many chats the per-row
@@ -980,7 +993,7 @@ def setup_session_routes(session_manager: SessionManager, config: dict, webhook_
 
         # Re-fetch after cleanup
         if deleted_empty or deleted_throwaway:
-            user_sessions = session_manager.get_sessions_for_user(user)
+            user_sessions = session_manager.get_sessions_for_user(_owner_for_db)
 
         # Short-circuit when the caller only wanted the cleanup phase
         # (the "Tidy (no AI)" path). Shape mirrors the post-Phase-1
@@ -1037,9 +1050,9 @@ def setup_session_routes(session_manager: SessionManager, config: dict, webhook_
 
         # Pick an endpoint — prefer admin-configured task endpoint
         from src.task_endpoint import resolve_task_endpoint
-        url, model, headers = resolve_task_endpoint(owner=user)
+        url, model, headers = resolve_task_endpoint(owner=_owner_for_db)
         if not url:
-            url, model, headers = _pick_endpoint_for_sort(owner=user)
+            url, model, headers = _pick_endpoint_for_sort(owner=_owner_for_db)
         if not url:
             raise HTTPException(503, "No available model endpoint for auto-sort")
 
@@ -1136,7 +1149,7 @@ def setup_session_routes(session_manager: SessionManager, config: dict, webhook_
         db = SessionLocal()
         try:
             for sid, folder_name in assignments.items():
-                db_session = db.query(DbSession).filter(DbSession.id == sid, DbSession.owner == user).first()
+                db_session = db.query(DbSession).filter(DbSession.id == sid, DbSession.owner == _owner_for_db).first()
                 if db_session:
                     db_session.folder = folder_name
                     db_session.updated_at = datetime.utcnow()

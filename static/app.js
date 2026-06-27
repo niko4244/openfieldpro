@@ -25,6 +25,9 @@ import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
 import adminModule from './js/admin.js';
 import settingsModule from './js/settings.js';
+import cockpitModule from './js/cockpit.js';
+import openfieldproModule from './js/openfieldpro.js';
+import sportsbookModule from './js/sportsbook.js';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
 import './js/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
@@ -123,7 +126,7 @@ async function _createDirectChatFromPreferredModel() {
 // ============================================
 function initializeEventListeners() {
   // Chat form submission
-//  document.getElementById('chat-form').addEventListener('submit', chatModule.handleChatSubmit);
+  document.getElementById('chat-form').addEventListener('submit', chatModule.handleChatSubmit);
 
   // File attachments (inside overflow menu)
   const _overflowAttach = el('overflow-attach-btn');
@@ -540,6 +543,8 @@ function initializeEventListeners() {
         'rename-ai-modal': null,
         'custom-preset-modal': null,
         'memory-modal': null,
+        'tools-cheatsheet-modal': null,
+        'cockpit-modal': null,
       };
 
       // Dynamic modals (removed from DOM on close)
@@ -881,6 +886,19 @@ function initializeEventListeners() {
     });
   }
 
+  // Sportsbook tool button
+  const toolSportsbookBtn = el('tool-sportsbook-btn');
+  if (toolSportsbookBtn) {
+    toolSportsbookBtn.addEventListener('click', async () => {
+      if (!sportsbookModule) return;
+      const Modals = await import('./js/modalManager.js');
+      if (!Modals.toggle('sportsbook-modal')) {
+        if (sportsbookModule.isSportsbookOpen()) sportsbookModule.closeSportsbook();
+        else sportsbookModule.openSportsbook();
+      }
+    });
+  }
+
   // Calendar tool button
   const toolCalendarBtn = el('tool-calendar-btn');
   if (toolCalendarBtn) {
@@ -904,6 +922,66 @@ function initializeEventListeners() {
         notesModule.togglePanel();
       }
     });
+  }
+
+  cockpitModule.init();
+  openfieldproModule.init();
+
+  async function openToolsCheatsheet() {
+    const modal = el('tools-cheatsheet-modal');
+    if (!modal) return;
+    const Modals = await import('./js/modalManager.js');
+    if (Modals.isRegistered('tools-cheatsheet-modal')) {
+      if (Modals.isMinimized('tools-cheatsheet-modal')) {
+        Modals.restore('tools-cheatsheet-modal');
+        return;
+      }
+      if (!modal.classList.contains('hidden')) {
+        Modals.minimize('tools-cheatsheet-modal');
+        return;
+      }
+    }
+
+    const frame = el('tools-cheatsheet-frame');
+    if (frame && !frame.getAttribute('src')) {
+      frame.setAttribute('src', frame.dataset.src || '/static/tools-cheatsheet.html');
+    }
+
+    if (!Modals.isRegistered('tools-cheatsheet-modal')) {
+      Modals.register('tools-cheatsheet-modal', {
+        railBtnId: 'rail-tools-cheatsheet',
+        sidebarBtnId: 'tool-tools-cheatsheet-btn',
+        label: 'Tools',
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/><path d="M4 21h16"/></svg>',
+        restoreFn: () => {
+          modal.classList.remove('hidden', 'modal-minimized');
+          const content = modal.querySelector('.modal-content');
+          if (content) content.style.display = '';
+        },
+        closeFn: () => {
+          modal.classList.add('hidden');
+          modal.classList.remove('modal-minimized');
+        },
+      });
+      Modals.injectMinimizeButton(modal, 'tools-cheatsheet-modal');
+    }
+
+    const closeBtn = el('close-tools-cheatsheet-modal');
+    if (closeBtn && !closeBtn.dataset.boundToolsCheatsheet) {
+      closeBtn.dataset.boundToolsCheatsheet = '1';
+      closeBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const M = await import('./js/modalManager.js');
+        M.close('tools-cheatsheet-modal');
+      });
+    }
+
+    modal.classList.remove('hidden', 'modal-minimized');
+  }
+
+  const toolToolsCheatsheetBtn = el('tool-tools-cheatsheet-btn');
+  if (toolToolsCheatsheetBtn) {
+    toolToolsCheatsheetBtn.addEventListener('click', openToolsCheatsheet);
   }
   // Refresh notes due-reminder badge on load and every 5 minutes
   if (notesModule && notesModule.refreshDueBadge) {
@@ -1033,6 +1111,8 @@ function initializeEventListeners() {
     '/memory':   () => document.getElementById('tool-memory-btn')?.click(),
     '/gallery':  () => document.getElementById('tool-gallery-btn')?.click(),
     '/tasks':    () => document.getElementById('tool-tasks-btn')?.click(),
+    '/tools':    () => document.getElementById('tool-tools-cheatsheet-btn')?.click(),
+    '/system':   () => document.getElementById('tool-cockpit-btn')?.click(),
     '/library':  () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
   };
   const _opener = _routeOpen[urlPath];
@@ -2385,7 +2465,9 @@ function initializeEventListeners() {
     'tool-library':        '#tool-library-btn',
     'tool-memory':         '#tool-memory-btn',
     'tool-notes':          '#tool-notes-btn',
+    'tool-cockpit':        '#tool-cockpit-btn, #rail-cockpit',
     'tool-tasks':          '#tool-tasks-btn',
+    'tool-tools-cheatsheet':'#tool-tools-cheatsheet-btn, #rail-tools-cheatsheet',
     'tool-theme':          '#tool-theme-btn',
     'user-bar':            '#user-bar-profile',
     'sidebar-settings-btn':'#user-bar-settings',
@@ -3444,6 +3526,8 @@ function startOdysseusApp() {
     'rail-archive':   'tool-library-btn',
     'rail-gallery':   'tool-gallery-btn',
     'rail-tasks':     'tool-tasks-btn',
+    'rail-cockpit':   'tool-cockpit-btn',
+    'rail-tools-cheatsheet': 'tool-tools-cheatsheet-btn',
     'rail-calendar':  'tool-calendar-btn',
     'rail-notes':     'tool-notes-btn',
     'rail-memory':    'tool-memory-btn',
@@ -3604,6 +3688,7 @@ function startOdysseusApp() {
       clearTimeout(sendBtn._collapseTimer);
       sendBtn.innerHTML = _micIcon;
       sendBtn.title = 'Record voice';
+      sendBtn.setAttribute('aria-label', 'Record voice');
       newMode = 'mic';
       sendBtn.classList.add('mic-mode');
       sendBtn.classList.remove('newchat-mode', 'newchat-expanded');
@@ -3613,6 +3698,7 @@ function startOdysseusApp() {
       if (groupModule && groupModule.isActive()) {
         sendBtn.innerHTML = _sendIcon;
         sendBtn.title = 'Send to group';
+        sendBtn.setAttribute('aria-label', 'Send to group');
         newMode = 'idle';
         sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded');
       } else {
@@ -3622,6 +3708,7 @@ function startOdysseusApp() {
         // Already on new chat — show arrow in muted style (ready to type)
         sendBtn.innerHTML = _sendIcon;
         sendBtn.title = 'Send message';
+        sendBtn.setAttribute('aria-label', 'Send message');
         newMode = 'idle';
         sendBtn.classList.add('newchat-mode'); // muted gray style
         sendBtn.classList.remove('mic-mode', 'newchat-expanded');
@@ -3629,6 +3716,7 @@ function startOdysseusApp() {
       } else {
         sendBtn.innerHTML = _newChatIcon + '<span class="send-btn-label">+ New</span>';
         sendBtn.title = 'New chat';
+        sendBtn.setAttribute('aria-label', 'New chat');
         newMode = 'newchat';
         sendBtn.classList.add('newchat-mode');
         sendBtn.classList.remove('mic-mode');
@@ -3652,6 +3740,7 @@ function startOdysseusApp() {
           if (sendBtn.dataset.mode !== 'send') return;
           sendBtn.innerHTML = _sendIcon;
           sendBtn.title = 'Send message';
+          sendBtn.setAttribute('aria-label', 'Send message');
           sendBtn.classList.remove('mic-mode', 'newchat-mode', 'anim-spin-swap');
           sendBtn.classList.add('anim-spin');
           sendBtn.addEventListener('animationend', () => sendBtn.classList.remove('anim-spin'), { once: true });
@@ -3659,6 +3748,7 @@ function startOdysseusApp() {
       } else {
         sendBtn.innerHTML = _sendIcon;
         sendBtn.title = 'Send message';
+        sendBtn.setAttribute('aria-label', 'Send message');
         sendBtn.classList.remove('mic-mode', 'newchat-mode', 'newchat-expanded', 'anim-spin', 'anim-launch', 'anim-land');
       }
     }

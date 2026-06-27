@@ -1,3 +1,4 @@
+
 // static/js/document.js
 /**
  * Document editor module — multi-document tabbed panel alongside chat.
@@ -16,6 +17,8 @@ import spinnerModule from './spinner.js';
 import { openLibrary, closeLibrary, isLibraryOpen, initLibrary } from './documentLibrary.js';
 import signatureModule from './signature.js';
 import * as Modals from './modalManager.js';
+import { enterDiffMode, exitDiffMode, setDiffDeps } from './document-diff.js';
+import { docState, isDiffModeActive } from './document-state.js';
 
   let API_BASE = '';
   let isOpen = false;
@@ -30,83 +33,6 @@ import * as Modals from './modalManager.js';
   let _emailAccountsCache = null;
   let _emailAccountsCacheAt = 0;
   let _emailHeaderManualExpandUntil = 0;
-
-  // Diff mode state
-  let _diffModeActive = false;
-  let _diffOldContent = null;
-  let _diffNewContent = null;
-  let _diffChunks = [];          // [{id, oldLines, newLines, startLine, resolved, accepted}]
-  let _diffUnresolvedCount = 0;
-
-  // Language auto-detection config
-  const AUTO_DETECT_DELAY = 500;
-  const AUTO_DETECT_MIN_CHARS = 30;
-  const AUTO_DETECT_MIN_RELEVANCE = 8;
-  const AUTO_DETECT_SAMPLE_SIZE = 2000;
-  const HLJS_TO_DROPDOWN = {
-    python: 'python', javascript: 'javascript', typescript: 'typescript',
-    xml: 'html', html: 'html', css: 'css', markdown: 'markdown',
-    json: 'json', yaml: 'yaml', bash: 'bash', shell: 'bash',
-    sql: 'sql', rust: 'rust', go: 'go', java: 'java', c: 'c', cpp: 'cpp',
-    csv: 'csv',
-  };
-
-  // Languages rendered in the sandboxed preview iframe. SVG and XML markup
-  // render as inline content in an HTML document, so they share the HTML
-  // "Run / Preview" path. (hljs maps detected `xml` → `html` already; this also
-  // covers the doc being explicitly typed svg/xml.)
-  const _isRenderLang = (l) => ['html', 'svg', 'xml'].includes((l || '').toLowerCase());
-  // Languages that get the segmented Code / Run-or-View toggle in the toolbar
-  // (the same UX as markdown's Edit / Preview switch). CSV's "run" view is the
-  // table; Python/JS/etc.'s is the code-run output; HTML/SVG/XML render via
-  // the iframe preview.
-  const _hasViewToggle = (l) => {
-    const lang = (l || '').toLowerCase();
-    return [
-      'csv', 'python', 'javascript', 'typescript', 'bash', 'sh', 'shell',
-      'php', 'ruby', 'sql', 'java', 'go', 'rust',
-      'c', 'cpp', 'c++', 'csharp', 'c#',
-      'yaml', 'json', 'css',
-      'ini', 'toml',
-    ].includes(lang) || _isRenderLang(lang);
-  };
-
-  async function _getEmailAccountsCached() {
-    const now = Date.now();
-    if (_emailAccountsCache && (now - _emailAccountsCacheAt) < 30000) return _emailAccountsCache;
-    try {
-      const res = await fetch(`${API_BASE}/api/email/accounts`, { credentials: 'same-origin' });
-      if (!res.ok) throw new Error('accounts failed');
-      const data = await res.json();
-      _emailAccountsCache = Array.isArray(data.accounts) ? data.accounts : [];
-    } catch (_) {
-      _emailAccountsCache = [];
-    }
-    _emailAccountsCacheAt = now;
-    return _emailAccountsCache;
-  }
-
-  function _accountCanSend(account) {
-    return !!(account && account.smtp_host && account.smtp_user && account.has_smtp_password);
-  }
-
-  async function _resolveComposeSendAccountId() {
-    const activeAccountId = window.__odysseusActiveEmailAccount || null;
-    if (!activeAccountId) return null;
-    const accounts = await _getEmailAccountsCached();
-    const activeAccount = accounts.find(a => String(a.id) === String(activeAccountId));
-    if (!activeAccount || _accountCanSend(activeAccount)) return activeAccountId;
-    if (uiModule) uiModule.showToast('Selected email account is receive-only; using your SMTP account.');
-    return null;
-  }
-
-  // Inject tab menu styles immediately (must exist before any hover)
-  {
-    const s = document.createElement('style');
-    s.id = 'doc-tab-menu-styles';
-    s.textContent = `.doc-tab-menu-btn{background:none!important;border:none!important;outline:none!important;box-shadow:none!important;color:var(--fg);opacity:0.25;cursor:pointer;padding:2px 4px!important;height:auto!important;line-height:1;transition:opacity .15s;flex-shrink:0;-webkit-appearance:none;appearance:none}.doc-tab-menu-btn:focus,.doc-tab-menu-btn:active{outline:none!important;box-shadow:none!important;background:none!important}.doc-tab:hover .doc-tab-menu-btn{opacity:.5}.doc-tab-menu-btn:hover{opacity:1!important}.doc-tab-dropdown .dropdown-item-compact{padding:6px 8px;border-radius:6px;cursor:pointer;white-space:nowrap;border-bottom:none;display:flex;align-items:center;gap:10px;font-size:11px}.doc-tab-dropdown .dropdown-item-compact:hover{background:color-mix(in srgb,var(--fg) 8%,transparent)}.doc-tab-dropdown .dropdown-item-compact .dropdown-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:0.5}.doc-tab-dropdown .dropdown-divider{height:1px;margin:3px 0;background:color-mix(in srgb,var(--border) 40%,transparent)}.doc-tab-action-delete{color:var(--red,#e06c75)!important}.doc-tab-action-delete .dropdown-icon{opacity:0.7!important}`;
-    document.head.appendChild(s);
-  }
 
   // Multi-document state
   let activeDocId = null;           // currently visible doc
@@ -3444,7 +3370,7 @@ import * as Modals from './modalManager.js';
   function switchToDoc(docId) {
     if (!docs.has(docId)) return;
     _hideLoadingOverlay();
-    if (_diffModeActive) exitDiffMode(true);
+    if (isDiffModeActive()) exitDiffMode(true);
 
     // Save current doc state before switching
     saveCurrentToMap();
@@ -4604,7 +4530,7 @@ import * as Modals from './modalManager.js';
     // Diff toggle button — compare current content against previous version
     const diffToggleBtn = document.getElementById('doc-diff-toggle-btn');
     if (diffToggleBtn) diffToggleBtn.addEventListener('click', async () => {
-      if (_diffModeActive) {
+      if (isDiffModeActive()) {
         exitDiffMode(true);
         return;
       }
@@ -4707,7 +4633,7 @@ import * as Modals from './modalManager.js';
       // Tab key inserts a real tab; Escape clears selection
       ta.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-          if (_diffModeActive) { exitDiffMode(true); return; }
+          if (isDiffModeActive()) { exitDiffMode(true); return; }
           // First Esc clears any pinned selection without closing the
           // panel. Second Esc (no selection left) minimises the panel
           // to a dock chip. The previous all-in-one path made one Esc
@@ -6824,7 +6750,7 @@ import * as Modals from './modalManager.js';
    *  follow-up batch) can keep adding edits while the user reviews; the count
    *  and "n of m" header update on the fly. */
   export function handleDocSuggestions(data) {
-    if (_diffModeActive) exitDiffMode(true);
+    if (isDiffModeActive()) exitDiffMode(true);
     if (!data.suggestions || !data.suggestions.length) return;
 
     if (!isOpen) openPanel();
@@ -7075,409 +7001,31 @@ import * as Modals from './modalManager.js';
 
   // ---- Diff mode (line-level review) ----
 
-  const DIFF_MODE_THRESHOLD = 3; // min changed lines to trigger diff mode
 
   /** Line-level LCS diff algorithm */
-  function _computeLineDiff(oldText, newText) {
-    const oldLines = oldText.split('\n');
-    const newLines = newText.split('\n');
-    const m = oldLines.length, n = newLines.length;
-
-    // Build LCS table
-    const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        dp[i][j] = oldLines[i - 1] === newLines[j - 1]
-          ? dp[i - 1][j - 1] + 1
-          : Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
-
-    // Backtrack to produce diff entries
-    const entries = [];
-    let i = m, j = n;
-    while (i > 0 || j > 0) {
-      if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
-        entries.push({ type: 'equal', line: oldLines[i - 1] });
-        i--; j--;
-      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-        entries.push({ type: 'insert', line: newLines[j - 1] });
-        j--;
-      } else {
-        entries.push({ type: 'delete', line: oldLines[i - 1] });
-        i--;
-      }
-    }
-    entries.reverse();
-    return entries;
-  }
 
   /** Group diff entries into chunks (contiguous change blocks) */
-  function _buildDiffChunks(entries) {
-    const chunks = [];
-    let chunkId = 0;
-    let lineIdx = 0;
-    let i = 0;
-    while (i < entries.length) {
-      const e = entries[i];
-      if (e.type === 'equal') {
-        lineIdx++;
-        i++;
-      } else {
-        // Gather contiguous non-equal entries into a chunk
-        const startLine = lineIdx;
-        const oldLines = [], newLines = [];
-        while (i < entries.length && entries[i].type !== 'equal') {
-          if (entries[i].type === 'delete') oldLines.push(entries[i].line);
-          else newLines.push(entries[i].line);
-          i++;
-        }
-        chunks.push({
-          id: chunkId++,
-          oldLines,
-          newLines,
-          startLine,
-          resolved: false,
-          accepted: false,
-        });
-        lineIdx += oldLines.length + newLines.length;
-      }
-    }
-    return chunks;
-  }
 
   /** Enter diff mode — show line-level diff for review */
-  function enterDiffMode(oldContent, newContent) {
-    if (_diffModeActive) exitDiffMode(true);
-
-    _diffModeActive = true;
-    _diffOldContent = oldContent;
-    _diffNewContent = newContent;
-
-    const entries = _computeLineDiff(oldContent, newContent);
-    _diffChunks = _buildDiffChunks(entries);
-    _diffUnresolvedCount = _diffChunks.length;
-
-    if (_diffChunks.length === 0) {
-      _diffModeActive = false;
-      if (uiModule) uiModule.showToast('No changes');
-      return;
-    }
-
-    const textarea = document.getElementById('doc-editor-textarea');
-    if (textarea) textarea.readOnly = true;
-    const wrap = document.getElementById('doc-editor-wrap');
-    if (wrap) wrap.classList.add('diff-mode');
-
-    _renderDiffOverlay(entries);
-    _renderDiffToolbar();
-    _renderDiffGutter();
-
-    // Update header button
-    const diffBtn = document.getElementById('doc-diff-toggle-btn');
-    if (diffBtn) diffBtn.classList.add('active');
-  }
 
   /** Render the line-level diff into the code highlight element */
-  function _renderDiffOverlay(entries) {
-    const codeEl = document.getElementById('doc-editor-code');
-    const gutter = document.getElementById('doc-line-numbers');
-    if (!codeEl) return;
-
-    codeEl.innerHTML = '';
-    let gutterHtml = '';
-    let oldNum = 0, newNum = 0;
-
-    // Pre-assign chunk IDs to entries by walking chunks and entries together
-    let chunkIdx = 0;
-    let entryIdx = 0;
-    const entryChunkMap = new Array(entries.length).fill(-1);
-    while (entryIdx < entries.length) {
-      if (entries[entryIdx].type === 'equal') {
-        entryIdx++;
-      } else {
-        // This is the start of a change block — assign all contiguous non-equal entries to the current chunk
-        const cid = chunkIdx < _diffChunks.length ? _diffChunks[chunkIdx].id : -1;
-        while (entryIdx < entries.length && entries[entryIdx].type !== 'equal') {
-          entryChunkMap[entryIdx] = cid;
-          entryIdx++;
-        }
-        chunkIdx++;
-      }
-    }
-
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i];
-      if (e.type === 'equal') {
-        oldNum++; newNum++;
-        const el = document.createElement('span');
-        el.className = 'diff-line-equal';
-        el.textContent = e.line + '\n';
-        codeEl.appendChild(el);
-        gutterHtml += newNum + '\n';
-      } else if (e.type === 'delete') {
-        oldNum++;
-        const el = document.createElement('span');
-        el.className = 'diff-line-del';
-        if (entryChunkMap[i] >= 0) el.dataset.chunkId = entryChunkMap[i];
-        el.textContent = e.line + '\n';
-        codeEl.appendChild(el);
-        gutterHtml += '−\n';
-      } else {
-        newNum++;
-        const el = document.createElement('span');
-        el.className = 'diff-line-add';
-        if (entryChunkMap[i] >= 0) el.dataset.chunkId = entryChunkMap[i];
-        el.textContent = e.line + '\n';
-        codeEl.appendChild(el);
-        gutterHtml += '+\n';
-      }
-    }
-
-    if (gutter) gutter.textContent = gutterHtml;
-    codeEl.dataset.hasDiff = '1';
-
-    // Sync textarea to show the combined view (old + new interleaved) for scroll sizing
-    const textarea = document.getElementById('doc-editor-textarea');
-    if (textarea) {
-      const allLines = entries.map(e => e.line);
-      textarea.value = allLines.join('\n') + '\n';
-    }
-  }
 
   /** Render the diff toolbar above the editor */
-  function _renderDiffToolbar() {
-    let toolbar = document.getElementById('doc-diff-toolbar');
-    if (toolbar) toolbar.remove();
-
-    toolbar = document.createElement('div');
-    toolbar.id = 'doc-diff-toolbar';
-    toolbar.className = 'diff-toolbar';
-
-    const status = document.createElement('span');
-    status.className = 'diff-toolbar-status';
-    status.id = 'diff-toolbar-status';
-    _updateDiffStatus(status);
-
-    const acceptAll = document.createElement('button');
-    acceptAll.className = 'diff-toolbar-btn diff-toolbar-btn-accept';
-    acceptAll.textContent = 'Accept All';
-    acceptAll.addEventListener('click', () => _resolveAllChunks(true));
-
-    const rejectAll = document.createElement('button');
-    rejectAll.className = 'diff-toolbar-btn diff-toolbar-btn-reject';
-    rejectAll.textContent = 'Reject All';
-    rejectAll.addEventListener('click', () => _resolveAllChunks(false));
-
-    toolbar.appendChild(status);
-    toolbar.appendChild(acceptAll);
-    toolbar.appendChild(rejectAll);
-
-    const wrap = document.getElementById('doc-editor-wrap');
-    if (wrap) wrap.parentNode.insertBefore(toolbar, wrap);
-  }
 
   /** Render per-chunk accept/reject buttons in a gutter overlay */
-  function _renderDiffGutter() {
-    let gutterEl = document.getElementById('doc-diff-gutter');
-    if (gutterEl) gutterEl.remove();
-
-    gutterEl = document.createElement('div');
-    gutterEl.id = 'doc-diff-gutter';
-    gutterEl.className = 'diff-gutter';
-
-    const codeEl = document.getElementById('doc-editor-code');
-    if (!codeEl) return;
-
-    // Insert chunk action buttons directly next to the first changed line of each chunk
-    // This way they scroll naturally with the content
-    requestAnimationFrame(() => {
-      for (const chunk of _diffChunks) {
-        if (chunk.resolved) continue;
-        const firstEl = codeEl.querySelector(`[data-chunk-id="${chunk.id}"]`);
-        if (!firstEl) continue;
-
-        const actions = document.createElement('span');
-        actions.className = 'diff-chunk-actions';
-        actions.dataset.chunkId = chunk.id;
-
-        const acceptBtn = document.createElement('button');
-        acceptBtn.className = 'diff-chunk-btn diff-chunk-btn-accept';
-        acceptBtn.title = 'Accept change';
-        acceptBtn.innerHTML = '✓';
-        acceptBtn.addEventListener('click', (e) => { e.stopPropagation(); _resolveChunk(chunk.id, true); });
-
-        const rejectBtn = document.createElement('button');
-        rejectBtn.className = 'diff-chunk-btn diff-chunk-btn-reject';
-        rejectBtn.title = 'Reject change';
-        rejectBtn.innerHTML = '✗';
-        rejectBtn.addEventListener('click', (e) => { e.stopPropagation(); _resolveChunk(chunk.id, false); });
-
-        actions.appendChild(acceptBtn);
-        actions.appendChild(rejectBtn);
-
-        // Insert at the start of the first line span
-        firstEl.style.position = 'relative';
-        firstEl.appendChild(actions);
-      }
-    });
-  }
 
   /** Update the toolbar status text */
-  function _updateDiffStatus(statusEl) {
-    const el = statusEl || document.getElementById('diff-toolbar-status');
-    if (!el) return;
-    const resolved = _diffChunks.length - _diffUnresolvedCount;
-    el.textContent = `${resolved} / ${_diffChunks.length} changes resolved`;
-  }
 
   /** Resolve a single chunk */
-  function _resolveChunk(chunkId, accept) {
-    const chunk = _diffChunks.find(c => c.id === chunkId);
-    if (!chunk || chunk.resolved) return;
-
-    chunk.resolved = true;
-    chunk.accepted = accept;
-    _diffUnresolvedCount--;
-
-    // Fade resolved lines in the overlay
-    const codeEl = document.getElementById('doc-editor-code');
-    if (codeEl) {
-      codeEl.querySelectorAll(`[data-chunk-id="${chunkId}"]`).forEach(el => {
-        el.classList.add('diff-chunk-resolved');
-      });
-    }
-
-    // Remove the gutter buttons for this chunk
-    const gutterActions = document.querySelector(`.diff-chunk-actions[data-chunk-id="${chunkId}"]`);
-    if (gutterActions) gutterActions.remove();
-
-    _updateDiffStatus();
-
-    // Persist partial progress so refresh doesn't lose individually-resolved chunks
-    _applyResolvedChunksToTextarea();
-    saveDocument({ silent: true });
-
-    if (_diffUnresolvedCount === 0) {
-      setTimeout(() => exitDiffMode(false), 300);
-    }
-  }
 
   /** Compute current content from old + resolved chunk decisions; unresolved chunks
    *  default to the original (rejected) until the user decides. Updates textarea. */
-  function _applyResolvedChunksToTextarea() {
-    const textarea = document.getElementById('doc-editor-textarea');
-    if (!textarea) return;
-    const entries = _computeLineDiff(_diffOldContent || '', _diffNewContent || '');
-    const result = [];
-    let chunkIdx = 0;
-    let i = 0;
-    while (i < entries.length) {
-      if (entries[i].type === 'equal') {
-        result.push(entries[i].line);
-        i++;
-      } else {
-        const chunk = _diffChunks[chunkIdx++];
-        const chunkOld = [], chunkNew = [];
-        while (i < entries.length && entries[i].type !== 'equal') {
-          if (entries[i].type === 'delete') chunkOld.push(entries[i].line);
-          else chunkNew.push(entries[i].line);
-          i++;
-        }
-        // Resolved+accepted → use new; resolved+rejected OR unresolved → keep old
-        if (chunk && chunk.resolved && chunk.accepted) {
-          result.push(...chunkNew);
-        } else {
-          result.push(...chunkOld);
-        }
-      }
-    }
-    textarea.value = result.join('\n');
-  }
 
   /** Resolve all chunks at once */
-  function _resolveAllChunks(accept) {
-    for (const chunk of _diffChunks) {
-      if (!chunk.resolved) {
-        chunk.resolved = true;
-        chunk.accepted = accept;
-      }
-    }
-    _diffUnresolvedCount = 0;
-    exitDiffMode(false);
-  }
 
   /** Exit diff mode and apply resolved changes */
-  function exitDiffMode(discard) {
-    if (!_diffModeActive) return;
-    _diffModeActive = false;
-
-    const textarea = document.getElementById('doc-editor-textarea');
-    const codeEl = document.getElementById('doc-editor-code');
-    const wrap = document.getElementById('doc-editor-wrap');
-    if (wrap) wrap.classList.remove('diff-mode');
-
-    if (discard) {
-      // Reject all — restore original content
-      if (textarea) textarea.value = _diffOldContent || '';
-    } else {
-      // Build final content from resolved chunks
-      const oldLines = (_diffOldContent || '').split('\n');
-      const newLines = (_diffNewContent || '').split('\n');
-      const entries = _computeLineDiff(_diffOldContent || '', _diffNewContent || '');
-
-      const result = [];
-      let chunkIdx = 0;
-      let i = 0;
-      while (i < entries.length) {
-        if (entries[i].type === 'equal') {
-          result.push(entries[i].line);
-          i++;
-        } else {
-          // Find the matching chunk
-          const chunk = _diffChunks[chunkIdx++];
-          // Skip all entries belonging to this chunk
-          const chunkOld = [], chunkNew = [];
-          while (i < entries.length && entries[i].type !== 'equal') {
-            if (entries[i].type === 'delete') chunkOld.push(entries[i].line);
-            else chunkNew.push(entries[i].line);
-            i++;
-          }
-          if (chunk && chunk.accepted) {
-            result.push(...chunkNew);
-          } else {
-            result.push(...chunkOld);
-          }
-        }
-      }
-      if (textarea) textarea.value = result.join('\n');
-    }
-
-    // Restore editor state
-    if (textarea) textarea.readOnly = false;
-    if (codeEl) delete codeEl.dataset.hasDiff;
-
-    // Clean up toolbar and any remaining chunk action buttons
-    const toolbar = document.getElementById('doc-diff-toolbar');
-    if (toolbar) toolbar.remove();
-    document.querySelectorAll('.diff-chunk-actions').forEach(el => el.remove());
-
-    // Reset state
-    _diffOldContent = null;
-    _diffNewContent = null;
-    _diffChunks = [];
-    _diffUnresolvedCount = 0;
-
-    const diffBtn = document.getElementById('doc-diff-toggle-btn');
-    if (diffBtn) diffBtn.classList.remove('active');
-
-    syncHighlighting();
-    updateLineNumbers(textarea ? textarea.value : '');
-    saveDocument({ silent: true });
-  }
 
   /** Check if diff mode is active */
-  function isDiffModeActive() { return _diffModeActive; }
 
   let _suggestionTotal = 0;
   let _suggestionIndex = 0;
@@ -9155,7 +8703,7 @@ import * as Modals from './modalManager.js';
       for (let li = 0; li < maxLen; li++) {
         if (oldLines[li] !== newLines[li]) changedLines++;
       }
-      if (changedLines >= DIFF_MODE_THRESHOLD) {
+      if (changedLines >= docState.DIFF_MODE_THRESHOLD) {
         enterDiffMode(oldContent, newContent);
       } else {
         _animateDocEdit(textarea, newContent);

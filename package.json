@@ -4,9 +4,25 @@
     "url": "https://github.com/pewdiepie-archdaemon/odysseus.git"
   },
   "devDependencies": {
-    "@antithesishq/bombadil": "^0.3.2"
+    "@antithesishq/bombadil": "^0.3.2",
+    "@babel/generator": "^8.0.0",
+    "@babel/parser": "^8.0.0",
+    "@babel/traverse": "^8.0.0",
+    "@babel/types": "^8.0.0",
+    "husky": "^9.1.7",
+    "lightningcss": "^1.32.0",
+    "stylelint": "^17.13.0",
+    "stylelint-config-standard": "^40.0.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0"
+  },
+  "scripts": {
+    "build:css": "node scripts/build-css.mjs",
+    "lint:css": "stylelint \"static/css/*.css\" --ignore-pattern \"*.min.css\"",
+    "lint:css:fix": "stylelint \"static/css/*.css\" --ignore-pattern \"*.min.css\" --fix",
+    "lint:css:cross-file": "node scripts/dedup-css.mjs --dry-run",
+    "verify:css": "npm run lint:css && npm run lint:css:cross-file",
+    "prepare": "husky"
   }
 }

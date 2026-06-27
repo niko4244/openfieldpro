@@ -1,0 +1,812 @@
+@media (width <= 768px) {
+      /* Sidebar overlays chat on mobile */
+      .sidebar {
+        position: fixed !important;
+        top: 0; bottom: 0; left: 0;
+        z-index: 200;
+        width: 80% !important;
+        max-width: 340px;
+        box-shadow: 4px 0 20px rgb(0,0,0,0.5);
+        transition: transform 0.25s ease, opacity 0.25s ease !important;
+        opacity: 1 !important;
+        overflow: visible !important;
+      }
+
+      .sidebar.hidden {
+        width: 80% !important;
+        transform: translateX(-100%);
+        pointer-events: none;
+        overflow: hidden !important;
+      }
+
+      .sidebar.right-side.hidden {
+        transform: translateX(100%);
+      }
+
+      .sidebar.right-side {
+        left: auto; right: 0;
+        box-shadow: -4px 0 20px rgb(0,0,0,0.5);
+      }
+      /* Backdrop behind sidebar */
+      #sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 199;
+        background: rgb(0,0,0,0.4);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.35s ease;
+      }
+      #sidebar-backdrop.visible { opacity: 1; pointer-events: auto; }
+      /* Elastic overscroll on sidebar */
+      .sidebar-inner {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: auto;
+        overflow-y: scroll !important;
+        padding-bottom: 40px;
+      }
+
+      .sidebar:not(.hidden) {
+        overscroll-behavior: auto;
+      }
+      /* Sidebar header — room for hamburger */
+      .sidebar-header {
+        padding: 18px 12px 8px;
+        min-height: 44px;
+      }
+
+      .sidebar-brand-title {
+        font-size: 1.2rem;
+        left: 0 !important;
+      }
+      /* Sidebar inner — bigger spacing */
+      .sidebar-inner {
+        padding: 12px 10px !important;
+        gap: 4px !important;
+      }
+      /* Section headers — match list item sizing */
+      .section-header-flex {
+        padding: 12px 10px !important;
+        height: 48px !important;
+        border-radius: 8px;
+        box-sizing: border-box;
+      }
+
+      .section-header-flex h4,
+      .section-header-flex .section-title {
+        font-size: 14px !important;
+        gap: 11px !important;
+      }
+
+      .section-icon,
+      .sidebar-action-icon {
+        width: 16px !important;
+        height: 16px !important;
+        left: 0 !important;
+      }
+      /* List items — bigger touch targets, bigger text */
+      .list-item {
+        padding: 12px 10px !important;
+        min-height: 48px;
+        font-size: 14px;
+        border-radius: 8px;
+        gap: 10px !important;
+      }
+
+      .list-item .grow {
+        font-size: 14px !important;
+      }
+      /* Search, New Chat & Assistant */
+      #sidebar-search-btn,
+      #sidebar-new-chat-btn,
+      .sidebar-assistant-entry {
+        padding: 12px 10px !important;
+        min-height: 48px !important;
+      }
+
+      #sidebar-search-btn .grow,
+      #sidebar-new-chat-btn .grow,
+      .sidebar-assistant-entry .grow {
+        font-size: 14px !important;
+        left: 0 !important;
+      }
+      /* Section separator — more breathing room */
+      .section {
+        margin-top: 4px;
+        border-radius: 8px;
+      }
+      /* Wave accent — slightly bigger on mobile */
+      .section-header-flex h4::before {
+        height: 18px;
+      }
+      /* Compact top bar on mobile — align with sidebar header */
+      .chat-top-bar {
+        padding: 1px 8px;
+        min-height: 14px;
+        margin-top: -31px;
+        padding-top: 31px;
+      }
+      .chat-top-bar .chat-new-btn { display: none; }
+      .chat-meta-overlay { font-size: 0.65em; max-width: 55%; overflow: visible; left: 50%; top: 50%; transform: translate(-50%, -50%); position: absolute; }
+      .chat-meta-overlay .export-dl-btn { display: inline-flex; }
+      /* Incognito — smaller on mobile */
+      .incognito-btn {
+        padding: 4px 10px;
+        font-size: 10px;
+      }
+      /* Incognito indicator — right side next to hamburger on mobile */
+      .incognito-indicator {
+        position: fixed;
+        top: 12px;
+        left: auto !important;
+        right: 48px !important;
+        transform: none;
+        width: 32px;
+        height: 32px;
+        z-index: 210;
+        opacity: 0.8;
+      }
+      /* Icon rail on mobile — hidden by default, shown in mini-sidebar state */
+      .icon-rail { display: none !important; }
+
+      .icon-rail.mobile-mini {
+        display: flex !important;
+        position: fixed;
+        top: 0; bottom: 0; left: 0;
+        z-index: 200;
+        width: 48px;
+        box-shadow: 2px 0 12px rgb(0,0,0,0.4);
+      }
+
+      .icon-rail.mobile-mini.right-side {
+        left: auto; right: 0;
+        box-shadow: -2px 0 12px rgb(0,0,0,0.4);
+      }
+      /* Chat bubbles — AI stretches full width, user stays compact */
+      .msg { font-size: 0.85em; }
+      .msg .body { font-size: 0.9em; }
+      .msg-user { max-width: 90% !important; margin-left: auto; margin-right: 4px; }
+      .msg-ai, .agent-thread { width: 100% !important; max-width: 100% !important; margin: 8px 0; }
+      /* Prevent inner scrollable elements from trapping vertical scroll */
+      .msg pre,
+      .agent-tool-output pre,
+      .agent-thread-cmd,
+      .msg details {
+        overflow-y: hidden !important;
+        max-height: none !important;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y pan-x;
+      }
+      /* Models row — match list items */
+      .models-row {
+        padding: 12px 10px;
+        min-height: 48px;
+      }
+      /* Input icon buttons — bigger touch targets */
+      .input-icon-btn {
+        padding: 10px;
+        min-width: 44px;
+        min-height: 44px;
+      }
+      /* Tool indicators — icon only on mobile (hide text, keep x) */
+      .tool-indicator > span {
+        display: none !important;
+      }
+
+      .tool-indicator .tool-indicator-x {
+        display: inline-block !important;
+        opacity: 0.6;
+      }
+      /* Hamburger — always right on mobile */
+      .hamburger-btn {
+        width: 44px;
+        height: 44px;
+        top: 6px;
+        left: auto !important;
+        right: 4px !important;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .hamburger-btn:hover,
+      .hamburger-btn:active {
+        background: none !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+      /* New chat — always left on mobile */
+      .mobile-new-chat-btn {
+        display: flex;
+        position: fixed;
+        top: 12px;
+        left: 8px;
+        z-index: 210;
+        width: 32px;
+        height: 32px;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: var(--fg);
+        cursor: pointer;
+        opacity: 0.5;
+        padding: 0;
+      }
+      /* Modal close button — bigger on mobile */
+      .close-btn,
+      .modal-close {
+        min-width: 44px;
+        min-height: 44px;
+        width: 44px;
+        height: 44px;
+        font-size: 14px;
+      }
+      /* Code block buttons — slightly bigger touch targets */
+      pre .copy-code,
+      pre .edit-code,
+      pre .run-code {
+        width: 44px;
+        height: 44px;
+      }
+      /* Touch-friendly targets for small buttons */
+      .export-dl-btn {
+        min-width: 44px;
+        min-height: 44px;
+      }
+
+      .section-header-btn {
+        min-width: 44px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      /* 44×44 touch buttons starting from right:6 ends at 50. ~8px gap is
+         enough to be distinguishable without spreading them too far apart. */
+      pre .edit-code {
+        right: 58px;
+      }
+
+      pre .run-code {
+        right: 110px;
+      }
+      /* Dropdowns — bigger touch targets on mobile */
+      .dropdown-item-compact {
+        padding: 12px !important;
+        font-size: 14px !important;
+        min-height: 44px;
+        gap: 10px !important;
+      }
+
+      .dropdown-item-compact .dropdown-icon {
+        width: 18px !important;
+        height: 18px !important;
+      }
+
+      .dropdown-item-compact .dropdown-icon svg {
+        width: 16px !important;
+        height: 16px !important;
+      }
+
+      .dropdown,
+      .session-dropdown {
+        padding: 6px !important;
+        border-radius: 12px !important;
+      }
+      /* Safe area padding for notched devices */
+      .chat-input-bar {
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+      }
+      /* Mode toggle — larger touch targets */
+      .mode-toggle {
+        height: 34px;
+        border-radius: 12px;
+      }
+
+      .mode-toggle::before {
+        border-radius: 11px;
+      }
+
+      .mode-toggle-btn {
+        padding: 0 14px;
+        font-size: 12px;
+        min-height: 34px;
+      }
+      #mode-agent-btn { border-radius: 12px 0 0 12px; }
+      #mode-chat-btn { border-radius: 0 12px 12px 0; }
+      /* Diff mode — stack toolbar, bigger buttons */
+      .diff-toolbar {
+        padding: 8px 12px;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .diff-toolbar-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+        min-height: 36px;
+      }
+
+      .diff-chunk-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+      }
+      /* Document/email/gallery/research library — full-height bottom-sheet
+         on mobile. Keep the rounded top corners + border-top so they match
+         the cookbook/calendar/compare look instead of looking like raw
+         full-bleed panels. */
+      .doclib-modal-content,
+      .gallery-modal-content {
+        width: 100vw !important;
+        max-width: 100vw !important;
+        /* vh fallback, dvh override so the modal adapts to mobile
+           URL-bar show/hide. Order matters: later same-specificity rule
+           wins, so dvh must come after vh. */
+        max-height: 100vh !important;
+        max-height: 100dvh !important;
+        height: 100vh;
+        height: 100dvh;
+        border-radius: 14px 14px 0 0 !important;
+        border: none !important;
+        border-top: 1px solid var(--border) !important;
+        box-shadow: none !important;
+        padding: 6px !important;
+        padding-bottom: env(safe-area-inset-bottom, 6px) !important;
+        margin: 0 !important;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      #email-lib-modal .doclib-grid {
+        max-height: none;
+        flex: 1;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      /* Library modal layout: pin the header + tab strip, give the active
+         panel (admin-card) the remaining height, and let the grid scroll
+         internally. The load-more button sits below the grid as a sibling
+         inside admin-card so it stays visible at the bottom of the panel
+         without competing with the grid for scroll. */
+      #doclib-modal .doclib-modal-content {
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+      }
+
+      #doclib-modal .modal-header,
+      #doclib-modal .lib-tabs {
+        flex: 0 0 auto !important;
+      }
+
+      #doclib-modal .modal-body {
+        flex: 1 1 0 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+      }
+
+      #doclib-modal .admin-card {
+        flex: 1 1 0 !important;
+        min-height: 0 !important;
+      }
+      /* :not(:has(.doclib-card-expanded)) scopes these to the normal list
+         state — when a document card is expanded, the existing expand-state
+         rules take over (grid claims flex:1 with overflow:hidden so the
+         expanded card can scroll itself). */
+      #doclib-modal .doclib-grid:not(:has(.doclib-card-expanded)) {
+        flex: 1 1 0 !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      #doclib-modal .doclib-load-more {
+        margin: 8px auto 12px !important;
+      }
+      /* Squeeze a little more height for the preview content by tightening
+         the spacing inside an expanded doc card on mobile. */
+      #doclib-modal .doclib-card.doclib-card-expanded,
+      #email-lib-modal .doclib-card.doclib-card-expanded,
+      #memory-modal .doclib-card.doclib-card-expanded {
+        gap: 2px !important;
+        padding: 4px 6px !important;
+        height: 100% !important;
+      }
+      /* Skills preview kept stopping at partial height because the flex
+         chain (modal → tabs → panel → admin-card → grid → card) wouldn't
+         reliably hand the card a full-height parent. But the skills LIST
+         already scrolls correctly inside #skills-list, so that grid box
+         already has the right bounded height (the area below the tabs).
+         Anchor the expanded card to THAT box with position:absolute so it
+         fills the list area exactly — header + tabs stay visible.
+
+         NOTE: position:relative here is UNCONDITIONAL (not gated behind
+         :has(.doclib-card-expanded)). Firefox mobile builds without :has()
+         support never applied the gated rule, so the absolute card lost its
+         anchor and only filled ~50% — while Chromium/desktop-narrow worked.
+         Relative-when-collapsed is harmless (no abs children then). */
+      #memory-modal #skills-list.doclib-grid {
+        position: relative !important;
+      }
+
+      #memory-modal .doclib-card.skill-card.doclib-card-expanded {
+        position: absolute !important;
+        inset: 0 !important;
+        /* Height is set in JS (skills.js _fillSkillCardHeight) as an explicit
+           px value — Firefox does NOT treat inset:0 stretch OR height:100%
+           (against the flex-sized grid) as a definite height, so grid/flex
+           children never filled. An explicit px height is unambiguous. */
+        margin: 0 !important;
+        padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+        background: var(--bg) !important;
+        /* Flex column. JS (_fillSkillCardHeight) sets EXPLICIT px heights on
+           the preview + <pre>; in a flex column an explicit-height item
+           (flex:0 0 auto + height) is honoured. (Grid was worse here — the
+           collapsed 1fr track overrode the preview's explicit height.) */
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-sizing: border-box !important;
+      }
+      /* Preview is the 1fr grid track — give it a definite-height flex column
+         so the <pre> (flex:1) fills and the footer pins at the bottom. */
+      #memory-modal .doclib-card.skill-card.doclib-card-expanded > .doclib-card-preview {
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+      }
+      /* The card now fills the screen, but a base rule (.skill-card...
+         .doclib-card-preview { flex: 0 1 auto }) sizes the preview to its
+         CONTENT — so a medium SKILL.md left the preview at ~half the card
+         (the "only 50%" the debug confirmed: card was full, content wasn't).
+         Force the preview AND the <pre> to FILL the card. Extra .skill-card
+         in the selector out-specifies both the base and the generic mobile
+         rule so this wins without ambiguity. */
+      #memory-modal .doclib-card.skill-card.doclib-card-expanded > .doclib-card-preview {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+      }
+
+      #memory-modal .doclib-card.skill-card.doclib-card-expanded .skill-md-pre {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+      }
+      /* Flatten the expanded doc/email card on mobile — drop the inner
+         border + background so it doesn't read as a "subwindow" inside the
+         modal (the chat preview doesn't have that nested-card look). The
+         body prefix beats the desktop email rule later in the file that
+         paints a 2px accent border + box-shadow with !important. */
+      body #doclib-modal .doclib-card.doclib-card-expanded,
+      body #email-lib-modal .doclib-card.doclib-card-expanded,
+      body #memory-modal .doclib-card.doclib-card-expanded {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+      }
+      /* Same layout pattern the chat preview uses: preview itself clips,
+         the <pre> (or PDF iframe) inside owns the scroll, and the action
+         bar pins to the bottom with extra bottom padding so it floats
+         above the iOS safe-area / home-indicator strip. */
+      #doclib-modal .doclib-card.doclib-card-expanded .doclib-card-preview,
+      #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview,
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview {
+        padding: 4px 6px 20px !important;
+        flex: 1 1 auto !important;
+        min-height: 82dvh !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+        border-top: none !important;
+      }
+      /* The "Load more" button is flex-shrink:0 and sits in the panel AFTER the
+         grid, so even when a card is expanded it reserves ~40px at the panel
+         bottom — shrinking the visible grid and clipping the action bar by that
+         much (the "black bar"). The global collapse rule's max-height:0 can't
+         remove a flex-shrink:0 item, so hide it outright on expand. */
+      #doclib-modal [data-doclib-panel="documents"]:has(.doclib-card-expanded) .doclib-load-more,
+      #doclib-modal [data-doclib-panel="documents"]:has(.doclib-card-expanded) .doclib-inline-load-more {
+        display: none !important;
+      }
+      /* Small bottom padding now that the load-more no longer steals space —
+         the action bar sits low, just clearing the home-indicator safe area. */
+      #doclib-modal [data-doclib-panel="documents"] .doclib-card.doclib-card-expanded .doclib-card-preview {
+        padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+      }
+
+      #doclib-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre,
+      #doclib-modal .doclib-card.doclib-card-expanded .doclib-card-preview .doclib-card-pdf-frame,
+      #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre,
+      #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview .email-reader-body,
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre,
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview .skill-md-editor {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+        /* Strip the code-box visual treatment so the <pre> / reader body
+           doesn't read as a "sub-window" inside the modal. */
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+      }
+      /* The skill editor textarea keeps a light frame on mobile (it's an
+         input, not read-only text) — override the strip-down above. */
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview .skill-md-editor {
+        background: var(--bg) !important;
+        border: 1px solid var(--border) !important;
+        padding: 8px !important;
+      }
+
+      #doclib-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre code,
+      #doclib-modal .doclib-card.doclib-card-expanded .doclib-card-preview code.hljs,
+      #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre code,
+      #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview code.hljs,
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-preview pre code {
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+      }
+
+      #doclib-modal .doclib-card.doclib-card-expanded .doclib-card-expanded-actions,
+      #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-expanded-actions,
+      #memory-modal .doclib-card.doclib-card-expanded .doclib-card-expanded-actions {
+        padding: 6px 4px 0 !important;
+        margin-top: 4px !important;
+        flex-shrink: 0 !important;
+      }
+      /* Email reader on mobile inherits the library modal's horizontal
+         padding (the .doclib-modal-content default — 6px). No extra
+         overrides for the modal-content / modal-body / admin-card / grid
+         chain; we just clean up the inner email reader header/body
+         padding so the From / To lines align with the email subject. */
+      #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview .email-reader-header,
+      #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview .email-reader-atts,
+      #email-lib-modal .doclib-card.doclib-card-expanded .doclib-card-preview .email-reader-body {
+        padding-left: 6px !important;
+        padding-right: 6px !important;
+      }
+      /* Mobile email-reader header: meta on the left, actions on the right
+         (two stacked rows). The two .email-reader-actions-row siblings
+         render as their own flex-row strips so primary (reply/reply-all/
+         forward) sits above secondary (AI/summary/more), instead of
+         flattening into one line that collided with the recipient chips. */
+      #email-lib-modal .email-reader-header,
+      .email-reader-tab-modal .email-reader-header,
+      .email-window-modal .email-reader-header {
+        padding: 8px !important;
+        gap: 6px !important;
+        flex-direction: row !important;
+        align-items: flex-start !important;
+      }
+
+      #email-lib-modal .email-reader-actions,
+      .email-reader-tab-modal .email-reader-actions,
+      .email-window-modal .email-reader-actions {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-end !important;
+        gap: 4px !important;
+        margin-left: auto !important;
+        flex-shrink: 0 !important;
+        position: relative !important;
+        top: -3px !important; /* lift the reply/forward/etc. action buttons up on mobile */
+      }
+
+      #email-lib-modal .email-reader-actions-row,
+      .email-reader-tab-modal .email-reader-actions-row,
+      .email-window-modal .email-reader-actions-row {
+        display: flex !important;
+        flex-flow: row nowrap !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 4px !important;
+      }
+
+      #email-lib-modal .email-reader-actions .memory-toolbar-btn.reader-icon-btn,
+      .email-reader-tab-modal .email-reader-actions .memory-toolbar-btn.reader-icon-btn,
+      .email-window-modal .email-reader-actions .memory-toolbar-btn.reader-icon-btn {
+        width: 44px !important;
+        height: 44px !important;
+        flex: 0 0 auto !important;
+        display: inline-flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 3px !important;
+        padding: 4px 2px !important;
+      }
+
+      #email-lib-modal .email-reader-actions .memory-toolbar-btn.reader-icon-btn svg,
+      .email-reader-tab-modal .email-reader-actions .memory-toolbar-btn.reader-icon-btn svg,
+      .email-window-modal .email-reader-actions .memory-toolbar-btn.reader-icon-btn svg {
+        width: 16px !important;
+        height: 16px !important;
+      }
+      /* Gallery-style label under each button — only on mobile. The
+         global rule below the @media block hides them on desktop. */
+      #email-lib-modal .reader-btn-label,
+      .email-reader-tab-modal .reader-btn-label,
+      .email-window-modal .reader-btn-label {
+        display: inline-block !important;
+        font-size: 8.5px !important;
+        font-weight: 500 !important;
+        line-height: 1 !important;
+        letter-spacing: 0.02em !important;
+        opacity: 0.75 !important;
+        white-space: nowrap !important;
+      }
+      /* List-view cards keep the framed look from their own .doclib-card /
+         .memory-item base styles — no extra grid padding here, so the
+         spacing matches the documents/library tab exactly. */
+      /* Tighten the top of the email sheet — modal header + description +
+         account row + toolbar were stacking with full desktop spacing and
+         pushed the email subjects way down. */
+      #email-lib-modal .modal-header {
+        padding: 4px 8px !important;
+        min-height: 0 !important;
+      }
+
+      #email-lib-modal .modal-header h4 {
+        /* Match the other tool headers (base .modal-header h4 = 1rem); was
+           13px, which read noticeably smaller than Calendar/Tasks/etc. */
+        font-size: 1rem !important;
+        line-height: 1.2 !important;
+      }
+
+      #email-lib-modal .modal-body {
+        gap: 4px !important;
+      }
+
+      #email-lib-modal .admin-card {
+        gap: 4px !important;
+      }
+
+      #email-lib-modal .admin-card > .doclib-desc {
+        display: none !important;
+      }
+      /* When an email is expanded the list-mode toolbar siblings are
+         already hidden by the existing :has rule. Hide the modal-header
+         entirely AND zero out the modal-content top padding so the email
+         reader claims the full sheet height. The swipe-down gesture (and
+         the dock chip) still dismiss the modal. */
+      #email-lib-modal:has(.doclib-card-expanded) .modal-header,
+      #email-lib-modal.email-reading .modal-header {
+        display: none !important;
+      }
+
+      #email-lib-modal:has(.doclib-card-expanded) .doclib-modal-content,
+      #email-lib-modal.email-reading .doclib-modal-content {
+        padding-top: 0 !important;
+      }
+
+      #email-lib-modal:has(.doclib-card-expanded) .modal-body,
+      #email-lib-modal.email-reading .modal-body {
+        gap: 0 !important;
+      }
+      /* Flatten the From / To bar so it doesn't read as a cut-off framed
+         strip with a hard background change. Remove the background, drop
+         the border-bottom to a faint divider, and let it blend with the
+         sheet. */
+      #email-lib-modal .email-reader-header {
+        background: transparent !important;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent) !important;
+      }
+
+      #email-lib-modal .email-card-nav-btn {
+        padding: 6px 10px !important;
+        min-width: 40px !important;
+        height: 38px !important;
+      }
+
+      #email-lib-modal .email-card-nav-btn svg {
+        width: 18px !important;
+        height: 18px !important;
+      }
+      /* Nudge the prev/next arrow cluster ~4px to the right so it sits
+         comfortably out at the edge instead of crowding the subject text. */
+      #email-lib-modal .email-card-nav-arrows {
+        transform: translateX(4px);
+      }
+      /* Done check — extend the actual TAP area via padding + negative
+         margin (a transparent ::before doesn't change the parent's hit
+         box). Layout stays the same height as library cards because the
+         margin cancels the padding visually, but the clickable region is
+         ~37px square. */
+      #email-lib-modal .email-card-done {
+        position: relative !important;
+        z-index: 5 !important;
+        pointer-events: auto !important;
+        touch-action: manipulation !important;
+        padding: 12px !important;
+        margin: -12px !important;
+      }
+
+      #email-lib-modal .email-card-done svg {
+        width: 13px !important;
+        height: 13px !important;
+      }
+      /* Make sure no overlay or pseudo intercepts the tap. */
+      #email-lib-modal .email-card-done * { pointer-events: none; }
+      /* Tighten the From / To meta bar and the email body — they had
+         desktop padding (10–14px) that wasted real estate on phones. */
+      #email-lib-modal .email-reader-header {
+        padding: 6px 4px !important;
+        gap: 4px !important;
+      }
+
+      #email-lib-modal .email-reader-meta {
+        font-size: 11px !important;
+      }
+
+      #email-lib-modal .email-reader-meta-row strong {
+        min-width: 28px !important;
+      }
+
+      #email-lib-modal .email-reader-atts {
+        padding: 6px 4px !important;
+      }
+
+      #email-lib-modal .email-reader-body {
+        padding: 8px 4px !important;
+      }
+      /* Make sure the grid claims the full admin-card height when a doc
+         is expanded — the existing rule sets flex:1, but on mobile we also
+         need a hard height fallback because the parent uses dvh which
+         desktop-tuned selectors don't always trickle through. */
+      #doclib-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid,
+      #memory-modal .admin-card:has(.doclib-card-expanded) > .doclib-grid {
+        height: 100% !important;
+      }
+      /* Skills modal: keep the header + tab strip visible; the expanded
+         card fills the skills-list area below them via position:absolute
+         (see the #skills-list rule above). Just make sure the tab-panel +
+         its card give the list its full height. */
+      #memory-modal .memory-tab-panel[data-memory-panel="skills"] > .admin-card:has(.doclib-card-expanded) {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+      }
+
+      .doclib-card-header {
+        padding: 10px 8px;
+        gap: 4px;
+      }
+
+      .doclib-card-session,
+      .doclib-card-time {
+        display: none;
+      }
+
+      .doclib-card-expanded-actions {
+        flex-wrap: wrap;
+      }
+      /* Keep the footer buttons identical to the chat/research footers on
+         mobile too — those have no mobile enlargement, so neither should
+         these (otherwise the doc footer reads in a larger/different font). */
+      .doclib-card-action-btn {
+        font-size: 10px;
+        padding: 3px 8px;
+      }
+      /* Chat top bar — adjusted for reduced height */
+      /* Suggestion nav — bigger touch targets */
+      .doc-suggestion-nav-btn {
+        padding: 6px 8px;
+        font-size: 18px;
+      }
+
+      .doc-suggestion-close {
+        padding: 10px 12px;
+        margin: -10px -12px;
+      }
+    }
+    #mobile-backdrop, #mobile-menu-btn { display:none !important; }
+    #sidebar-backdrop { display:none !important; }

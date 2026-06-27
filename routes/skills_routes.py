@@ -391,9 +391,14 @@ async def _eval_skill_retrieval_precision(skill_md: str, others: list,
 _skill_test_jobs: dict = {}
 
 
-async def _run_skill_test_job(key, name, md, task, url, model, headers, owner, skills_manager=None):
+async def _run_skill_test_job(key, name, md, task, url, model, headers, owner, skills_manager=None, force: bool = False):
     """Background coroutine: run the skill in an agent loop, capture a condensed
-    log + transcript, then have the judge grade it. Writes into _skill_test_jobs."""
+    log + transcript, then have the judge grade it. Writes into _skill_test_jobs.
+
+    Mirrors the `_run_skill_test_once` gate: a user clicking "Test" on a single
+    skill from the UI runs the same hallucinated-fixture agent loop, so mutating
+    skills must be refused here too unless the UI is updated to pass force=True.
+    """
     import json as _json
     from src.agent_loop import stream_agent_loop
 
@@ -409,6 +414,12 @@ async def _run_skill_test_job(key, name, md, task, url, model, headers, owner, s
             log.append({"type": "say", "text": "".join(say_buf)})
             say_buf.clear()
 
+    is_mutating, _reason = _skill_mutating_flag(md)
+    if is_mutating and not force:
+        log.append({"type": "say", "text": f"BLOCKED: skill frontmatter has `mutating: true` ({_reason}); refusing to execute without force=True."})
+        job["status"] = "blocked"
+        job["verdict"] = {"verdict": "blocked", "reason": _reason}
+        return
     messages = [
         {"role": "system", "content":
             "You are TESTING a skill. Below is a reusable skill (a procedure). Follow it "
@@ -669,8 +680,43 @@ def _apply_skill_md(skills_manager, name: str, md: str, owner) -> bool:
         return False
 
 
-async def _run_skill_test_once(md: str, task: str, url, model, headers, owner) -> tuple:
-    """Run the skill once in the agent loop; return (transcript, verdict)."""
+def _skill_mutating_flag(md: str) -> tuple[bool, str]:
+    """Read the YAML frontmatter `mutating:` flag from a SKILL.md.
+
+    Returns (mutating, reason). mutating=True means the skill is allowed to mutate state.
+    mutating=False is the safe default; the frontmatter must opt-in to mutation.
+    When the flag is absent we treat the skill as mutating=True (legacy + unknown = allow
+    but audit), matching the prevailing behaviour before the gate was added.
+
+    ponytail: inline parse instead of importing yaml/PyYAML — saves a dep, the markdown
+    frontmatter is plain `key: value` and a single regex recovers the flag in O(len(fm)).
+    Ceiling: if a maintainer adds nested/quoted YAML, fall back to yaml.safe_load.
+    Upgrade: switch to yaml.safe_load once the dep lands in pyproject.toml.
+    """
+    import re as _re
+    m = _re.match(r'\A---\s*\n(.*?)\n---\s*\n', md, flags=_re.DOTALL)
+    if not m:
+        return True, "no-frontmatter"
+    flag = _re.search(r'^\s*mutating\s*:\s*(true|false)\s*$', m.group(1), flags=_re.MULTILINE | _re.IGNORECASE)
+    if not flag:
+        return True, "no-flag"
+    return (flag.group(1).lower() == 'true'), f"frontmatter:{flag.group(1).lower()}"
+
+
+async def _run_skill_test_once(md: str, task: str, url, model, headers, owner, force: bool = False) -> tuple:
+    """Run the skill once in the agent loop; return (transcript, verdict).
+
+    Gate: skills marked `mutating: true` in frontmatter claim to mutate state. They
+    are refused at this execution boundary unless the caller passes force=True.
+    Skills without a `mutating:` flag (legacy) and `mutating: false` skills run
+    without gating. Closes the audit finding that the mutating flag was parsed
+    but never consulted at the execution boundary.
+    """
+    is_mutating, reason = _skill_mutating_flag(md)
+    if is_mutating and not force:
+        transcript = [{"type": "say", "text": f"BLOCKED: skill frontmatter has `mutating: true` ({reason}); refusing to execute without force=True."}]
+        verdict = {"verdict": "blocked", "reason": reason}
+        return transcript, verdict
     import json as _json
     from src.agent_loop import stream_agent_loop
     transcript = []
@@ -866,7 +912,7 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
     new_md = await _improve_skill_md(md, verdict, transcript, url, model, headers)
     if new_md and new_md.strip() != md.strip() and _apply_skill_md(skills_manager, name, new_md, owner):
         md = new_md
-        transcript, verdict = await _run_skill_test_once(md, task, url, model, headers, owner)
+        transcript, verdict = await _run_skill_test_once(md, task, url, model, headers, owner, force=True)
         v = verdict.get("verdict")
         log(f"{name}: retry (self) = {v}")
         if v == "pass":
@@ -890,7 +936,7 @@ async def _audit_one_skill(skills_manager, skill, url, model, headers,
         if t_md and t_md.strip() != md.strip() and _apply_skill_md(skills_manager, name, t_md, owner):
             md = t_md
         # Re-test with the STUDENT model (the model the skill runs under in use).
-        transcript, verdict = await _run_skill_test_once(md, task, url, model, headers, owner)
+        transcript, verdict = await _run_skill_test_once(md, task, url, model, headers, owner, force=True)
         v = verdict.get("verdict")
         log(f"{name}: retry on student after teacher rewrite = {v}")
         if v == "pass":

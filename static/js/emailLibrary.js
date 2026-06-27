@@ -1,3 +1,4 @@
+
 /**
  * emailLibrary.js — Email library popup modal.
  * Similar pattern to documentLibrary.js. Shows emails in a grid with search/filter.
@@ -3785,6 +3786,9 @@ function _ensureEmailTabObserver() {
 // Hybrid model:
 //   - email-lib-modal (the inbox library) is unique. Its chip just
 //     restores it.
+// Hybrid model:
+//   - email-lib-modal (the inbox library) is unique. Its chip just
+//     restores it.
 //   - Each "Open in new tab" creates a separate per-email reader modal
 //     (id "email-reader-{uid}-{seq}") with the SAME structure & classes
 //     as the library's inline reader, so they look identical. Each
@@ -3968,6 +3972,9 @@ async function _openEmailAsTab(em, folder) {
           <div class="email-reader-actions-row email-reader-actions-row-secondary">
             <button class="memory-toolbar-btn reader-icon-btn" data-act="ai-reply" title="${data.cached_ai_reply ? 'AI Reply (cached draft ready)' : 'AI Reply'}">${_aiReplyIcon(data)}<span class="reader-btn-label">AI reply</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="summarize" title="Summarize">${_summaryIcon(data)}<span class="reader-btn-label">Summary</span></button>
+            <button class="memory-toolbar-btn reader-icon-btn" data-act="from-sender" title="Search text in this thread"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span class="reader-btn-label">Search</span></button>
+            <div class="email-reader-more-wrap" style="position:relative">
+              <button class="memory-toolbar-btn reader-icon-btn" data-act="more" title="More actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg><span class="reader-btn-label">More</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="from-sender" title="Search text in this thread"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span class="reader-btn-label">Search</span></button>
             <div class="email-reader-more-wrap" style="position:relative">
               <button class="memory-toolbar-btn reader-icon-btn" data-act="more" title="More actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg><span class="reader-btn-label">More</span></button>

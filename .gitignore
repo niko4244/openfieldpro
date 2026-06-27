@@ -89,3 +89,23 @@ docs/windows-port/
 compound.config.json
 *.error.log
 _scratch/
+
+# iPhone tunnel — live public URL written by start-iphone-tunnel.ps1. ngrok
+# logs already match *.log above.
+.ofp-tunnel-url
+
+# OFP route persistence — routes/ofp_local_api_routes.py writes every
+# POST/PUT/DELETE to this file at the repo root. User-created jobs/customers
+# etc. would leak into a commit if not ignored.
+.ofp-store.json
+
+# CI workflow templates + dev hooks — held back per "minimum: code + tests +
+# docs only" scope. Without these, the project accidentally drags GitHub
+# issue/PR templates (.github/ISSUE_TEMPLATE/*.yml,
+# .github/pull_request_template.md) into the next push. Pattern ignores the
+# whole directory tree including any subpaths.
+.github/
+.husky/
+
+# Husky internal scripts
+.husky/_/

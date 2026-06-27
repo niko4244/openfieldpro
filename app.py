@@ -168,7 +168,8 @@ if AUTH_ENABLED:
         "/api/version",
         "/login",
     }
-    AUTH_EXEMPT_PREFIXES = ["/static"]
+    AUTH_EXEMPT_PREFIXES = ["/static", "/state"]
+    # Dynamic paths whose own handler proves identity via a path-embedded
     # Dynamic paths whose own handler proves identity via a path-embedded
     # secret instead of the session/bearer auth. The route handler at
     # routes/task_routes.py validates the per-task `webhook_token` itself
@@ -380,6 +381,19 @@ class _RevalidatingStatic(StaticFiles):
 
 app.mount("/static", _RevalidatingStatic(directory="static"), name="static")
 
+# ========= HERMES STATE (read-only dashboard data) =========
+# Serve `~/.hermes/state/*.json` at `/state/<file>` so the system-map.html
+# dashboard's `fetch('/state/evolution-status.json').then(r => r.json()).catch(() => null)`
+# resolves to a real file (closes §13 row 2's deferred consumer-side flip per
+# the sunset-writing migration doc). Reuses `_RevalidatingStatic` so Starlette's
+# default ETag/Last-Modified behaviour handles the JSON suffix — unchanged
+# state gets a cheap 304, fresh state goes through with the new ETag. Listed in
+# `AUTH_EXEMPT_PREFIXES` above so the public SPA can poll without a token.
+from pathlib import Path as _PathState
+_HERMES_STATE_DIR = _PathState.home() / ".hermes" / "state"
+_HERMES_STATE_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/state", _RevalidatingStatic(directory=str(_HERMES_STATE_DIR)), name="hermes-state")
+
 # ========= GENERATED IMAGES =========
 @app.get("/api/generated-image/{filename}")
 async def serve_generated_image(filename: str, request: Request):
@@ -567,6 +581,16 @@ app.include_router(setup_preset_routes(preset_manager))
 from routes.diagnostics_routes import setup_diagnostics_routes
 app.include_router(setup_diagnostics_routes(rag_manager, rag_available, research_handler))
 
+from routes.cockpit_routes import setup_cockpit_routes
+app.include_router(setup_cockpit_routes())
+
+from routes.openfieldpro_routes import setup_openfieldpro_routes
+app.include_router(setup_openfieldpro_routes())
+
+# OpenFieldPro local API (same-origin physical body for modal — survives localhost:4000 outages)
+from routes.ofp_local_api_routes import setup_ofp_local_api_routes
+app.include_router(setup_ofp_local_api_routes())
+
 # Cleanup
 from routes.cleanup_routes import setup_cleanup_routes
 app.include_router(setup_cleanup_routes(session_manager))
@@ -641,6 +665,10 @@ app.include_router(setup_hwfit_routes())
 from routes.compare_routes import setup_compare_routes
 app.include_router(setup_compare_routes(session_manager))
 
+# Sportsbook (SportsClaw picks + ROI)
+from routes.sportsbook_routes import setup_sportsbook_routes
+app.include_router(setup_sportsbook_routes())
+
 # User Preferences
 from routes.prefs_routes import setup_prefs_routes
 app.include_router(setup_prefs_routes())
@@ -698,6 +726,10 @@ app.include_router(setup_contacts_routes())
 from companion import setup_companion_routes
 app.include_router(setup_companion_routes())
 
+from src.fable_integration import setup_fable_routes
+from fastapi import APIRouter
+app.include_router(setup_fable_routes(APIRouter(prefix="/api/fable")))
+
 # ========= ROUTES (kept in app.py) =========
 
 def _serve_html_with_nonce(request: Request, file_path: str) -> HTMLResponse:
@@ -750,6 +782,26 @@ async def serve_gallery(request: Request):
 async def serve_tasks(request: Request):
     return await serve_index(request)
 
+@app.get("/tools")
+async def serve_tools(request: Request):
+    return await serve_index(request)
+
+@app.get("/api/tools/cheatsheet/render")
+async def serve_tools_cheatsheet_render(request: Request):
+    """Serve the Odysseus tools cheat sheet inside the in-app Tools modal."""
+    response = _serve_html_with_nonce(request, abs_join(BASE_DIR, "static/tools-cheatsheet.html"))
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self'; "
+        "img-src 'self' data: blob:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'self'"
+    )
+    return response
+
 @app.get("/library")
 async def serve_library(request: Request):
     return await serve_index(request)
@@ -771,6 +823,37 @@ async def get_version():
 @app.get("/api/health")
 async def health_check() -> Dict[str, str]:
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+@app.get("/api/gbrain-sync/status")
+async def gbrain_sync_status():
+    """Return the last gbrain→Odysseus sync status from the status file.
+    Returns null fields if the file doesn't exist (no sync has run yet).
+    """
+    import json
+    from pathlib import Path
+    status_path = Path.home() / ".hermes" / "state" / "gbrain-odysseus-sync.json"
+    if not status_path.exists():
+        return {
+            "available": False,
+            "timestamp": None,
+            "mode": None,
+            "total_gbrain": None,
+            "existing": None,
+            "added": None,
+            "updated": None,
+            "skipped": None,
+            "error_count": None,
+        }
+    try:
+        data = json.loads(status_path.read_text(encoding="utf-8"))
+        data["available"] = True
+        return data
+    except (json.JSONDecodeError, OSError) as e:
+        return {
+            "available": False,
+            "error": str(e),
+            "timestamp": None,
+        }
 
 @app.get("/api/ready")
 async def readiness_check() -> JSONResponse:
