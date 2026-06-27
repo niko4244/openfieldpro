@@ -326,6 +326,11 @@ Help is welcome. The best entry points are fresh-install testing, provider setup
 bugs, mobile/editor polish, docs, and small focused refactors. See
 [ROADMAP.md](ROADMAP.md) for the current help-wanted list.
 
+Stepping into GitHub ops for the first time (or recovering from a too-broad
+initial push)? See [`docs/push-recipe.md`](docs/push-recipe.md) for the
+staged-commit hygiene checklist -- leak cleanup with `git rm --cached`,
+cwd-leak sanity checks, and `--diff-filter=A` leak detection.
+
 ## Configuration
 Most setup is done inside the app with `/setup` or **Settings**. Use `.env`
 for deployment-level defaults and secrets you want present before first boot.

@@ -2,6 +2,30 @@
 
 All notable changes to Odysseus are documented in this file.
 
+## [Unreleased] - 2026-06-27
+
+### Added
+
+- **[`docs/push-recipe.md`](docs/push-recipe.md)** — three git-ops lessons
+  from the 2026-06-26/27 force-push chain that landed the OFP project at
+  `niko4244/openfieldpro` (the path that works without the `delete_repo`
+  OAuth scope): rescuing an over-broad initial push with
+  `git rm --cached -r <dir>` and `git push --force-with-lease`; detecting
+  cwd-leak failures before destructive git ops via an early
+  `git remote get-url origin` sanity check after `cd` (or, belt-and-
+  suspenders, using absolute `git -C /path` everywhere); and leak
+  detection in the staged set with `git diff --cached --name-only
+  --diff-filter=A` instead of `--name-only` alone, so intentional
+  `git rm --cached` deletions do not trip the leak-check on themselves.
+  Includes the OFP 10-item holdback regex (`.env`, `.ofp-store.json`,
+  `coverage.json`, `TODO.md`, `Agents/`, `dev-docs/`, `docs/windows-port`,
+  `.github/`, `.husky/`, `.pre-commit-config.yaml`) for re-use on future
+  cleanups.
+
+### Reference
+
+- Reach the doc: [`docs/push-recipe.md`](docs/push-recipe.md)
+
 ## [odysseus-hermes-port-complete] - 2026-06-18
 
 Consolidation milestone: every Hermes-side / Brainz-side runtime contract now
