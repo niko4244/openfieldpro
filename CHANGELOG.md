@@ -31,18 +31,20 @@ All notable changes to Odysseus are documented in this file.
 Consolidation milestone: every Hermes-side / Brainz-side runtime contract now
 lands here, with a local pre-commit gate mirroring the CI workflow.
 
-> **Tag note** — the working tree contains milestone artifacts (the files
-> listed in *Pending commit* below) that are not yet committed. The lightweight
-> tag `odysseus-hermes-port-complete` is therefore anchored at the current
-> `HEAD` commit, which pre-dates this milestone's work. To make the tag
-> meaningful:
->
-> 1. Stage the milestone files: `git add .pre-commit-config.yaml scripts/migrate_hermes/ tests/test_mcp_url_liveness.py README.md docs/HERMES-SIDE-REFERENCES-AUDIT.md CHANGELOG.md .github/workflows/migrate-hermes-tests.yml`
-> 2. Commit: `git commit -m "odysseus: hermes-port complete — milestone wrap-up"`
-> 3. Re-tag as annotated: `git tag -fa odysseus-hermes-port-complete -m "Wrap-up release"`
->
-> After that, `git checkout odysseus-hermes-port-complete` retrieves the
-> milestone features.
+> **Holdback note** — `.pre-commit-config.yaml` and
+> `.github/workflows/migrate-hermes-tests.yml` were authored for this milestone
+> but are deliberately **kept out of version control** under the OFP push
+> recipe's `minimum: code + tests + docs only` rule. The four rules
+> (`.pre-commit-config.yaml`, `.github/`, `.husky/`, plus the new
+> `coverage.json` / `TODO.md` / `Agents/` block at the bottom of `.gitignore`)
+> are the source of truth for what gets caught at push time; the rationale
+> and recovery procedure live in [`docs/push-recipe.md`](docs/push-recipe.md). The lightweight tag
+> `odysseus-hermes-port-complete` is therefore **symbolic** — it anchors at
+> the milestone's `HEAD` even though the held-back files are intentionally
+> absent from new clones. The migration scripts that *do* ship (and that
+> capture the milestone's runtime work) live under
+> [`scripts/migrate_hermes/`](scripts/migrate_hermes/), see the index table
+> in `scripts/migrate_hermes/README.md`.
 
 ### Added
 
@@ -117,22 +119,28 @@ lands here, with a local pre-commit gate mirroring the CI workflow.
   paths, 0 pre-commit configs, 0 evolution-scheduler refs in `~/.hermes/`.
   Full lineage listed in `docs/HERMES-SIDE-REFERENCES-AUDIT.md`.
 
-### Pending commit
+### Local-only holdbacks (deliberate — see [`docs/push-recipe.md`](docs/push-recipe.md))
 
-Files in the working tree that ARE part of this milestone and should land
-together. Until they're committed, `git checkout odysseus-hermes-port-complete`
-doesn't retrieve the milestone features:
+Authored-for-this-milestone artifacts that are kept out of version control by
+design. Stated here so a future operator doesn't read the recipe's `HOLD`
+regex and treat their absence as a bug:
 
-- `.pre-commit-config.yaml` *(new — pre-commit gate)*
-- `.github/workflows/migrate-hermes-tests.yml` *(paths-filter added)*
-- `scripts/migrate_hermes/dry_run_ci.sh` *(new — local CI mirror)*
-- `scripts/migrate_hermes/migrate_skills.sh` *(ensure_dir_writable extracted
-  + dst-guard `[ -d ] || rm -rf` predicate scaled to stub/broken-symlink/missing)*
-- `scripts/migrate_hermes/README.md` *(Local pre-commit gate section added)*
-- `tests/test_mcp_url_liveness.py` *(TCP+HTTP probe, CEILING note tightened)*
-- `README.md` *(supersedes banner at top)*
-- `docs/HERMES-SIDE-REFERENCES-AUDIT.md` *(new — one-page lineage diff)*
-- `CHANGELOG.md` *(this file)*
+- `.pre-commit-config.yaml` *(mirrors the GH Action `validate` job — kept
+  local; the recipe's `--no-verify` is the supported escape hatch when a
+  commit genuinely must bypass it.)*
+- `.github/workflows/migrate-hermes-tests.yml` *(the paths-filtered CI gate
+  is reproduced locally by `scripts/migrate_hermes/dry_run_ci.sh`, which IS
+  committed and is the supported way to re-verify before pushing.)*
+
+The remaining items listed in earlier drafts of this section have since
+landed in commits `c21a8d4`, `b97d7bb`, and `049a8f8` (see `git log
+--oneline`); they are part of the codebase now and not "pending".
+
+The 10-item `HOLD` regex in [`docs/push-recipe.md`](docs/push-recipe.md) is
+the source of truth for what gets caught at push time; `.gitignore` mirrors
+it so accidental `git add -A` is also filtered. If you add a new
+authored-here policy (e.g. `.wiki/`, `Agents/<name>/`), update both files
+together.
 
 ### Reference
 

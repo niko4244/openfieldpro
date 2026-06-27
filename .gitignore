@@ -107,3 +107,14 @@ _scratch/
 
 # Pre-commit config — local tooling, not for github push.
 .pre-commit-config.yaml
+
+# OFP push-recipe holdbacks (mirror of the 10-item HOLD regex in
+# docs/push-recipe.md). These paths are intentionally local — a committed
+# copy would either leak a per-run test artifact (coverage.json), a scratch
+# note (TODO.md), or a runtime cache (Agents/). If you need to commit any of
+# these intentionally, do it explicitly (no `git add -A`), and document in
+# the matching push-recipe bullet why it was promoted out of the holdback
+# list.
+coverage.json
+TODO.md
+Agents/
