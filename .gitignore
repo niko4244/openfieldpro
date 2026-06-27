@@ -99,13 +99,11 @@ _scratch/
 # etc. would leak into a commit if not ignored.
 .ofp-store.json
 
-# CI workflow templates + dev hooks — held back per "minimum: code + tests +
-# docs only" scope. Without these, the project accidentally drags GitHub
-# issue/PR templates (.github/ISSUE_TEMPLATE/*.yml,
-# .github/pull_request_template.md) into the next push. Pattern ignores the
-# whole directory tree including any subpaths.
+# CI workflow templates + dev hooks — held back per "minimum: code + tests
+# + docs only" scope. Future recursive staging has dragged GitHub issue/PR
+# templates and pre-commit hook implementations into the push otherwise.
 .github/
 .husky/
 
-# Husky internal scripts
-.husky/_/
+# Pre-commit config — local tooling, not for github push.
+.pre-commit-config.yaml
