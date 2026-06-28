@@ -26,6 +26,7 @@ export interface EstimateDTO {
   jobId: string;
   total: number;
   accepted: boolean;
+  publicToken?: string | null;
   createdAt: string;
 }
 
