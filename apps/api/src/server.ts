@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
@@ -62,8 +63,10 @@ export function buildServer() {
   return app;
 }
 
-// Only listen when run directly (not when imported by tests).
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+// Only listen when run directly (not when imported by tests). Compare via
+// pathToFileURL so the check works on Windows too, where process.argv[1] is a
+// backslash path that never string-matches the forward-slash import.meta.url.
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const port = Number(process.env.API_PORT ?? 3001);
   buildServer()

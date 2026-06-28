@@ -8,6 +8,13 @@
       "when": 1782570100072,
       "tag": "0000_brainy_dracula",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782661008395,
+      "tag": "0001_hard_psynapse",
+      "breakpoints": true
     }
   ]
 }
