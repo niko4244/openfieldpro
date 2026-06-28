@@ -277,6 +277,18 @@ textarea { min-height: 92px; resize: vertical; }
   background: var(--surface);
 }
 .list-row.with-rail { border-left: 5px solid var(--accent); }
+.draggable-card { cursor: grab; }
+.draggable-card:active { cursor: grabbing; }
+.drop-zone {
+  border-radius: calc(var(--radius) + 4px);
+  transition: background 120ms ease, box-shadow 120ms ease, outline-color 120ms ease;
+}
+.drop-zone.active {
+  background: rgba(36, 99, 235, 0.08);
+  outline: 2px dashed var(--accent);
+  outline-offset: 6px;
+  box-shadow: 0 0 0 8px rgba(36, 99, 235, 0.06);
+}
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
