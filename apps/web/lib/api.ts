@@ -42,6 +42,7 @@ export interface PaymentDTO {
 
 export interface InvoiceDTO {
   id: string;
+  jobId: string;
   number: string;
   poNumber?: string | null;
   publicToken?: string | null;
