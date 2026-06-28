@@ -14,7 +14,7 @@ import {
   customers,
   properties,
 } from "@ofp/db";
-import { applyPayment } from "../invoicing.js";
+import { applyPayment, isDuplicatePayment, paymentIdentity } from "../invoicing.js";
 import { buildInvoicePdf } from "../invoice-pdf.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
@@ -24,6 +24,9 @@ const payBody = z.object({
   amount: z.number().int().positive(),
   method: z.enum(["manual", "cash", "check", "card"]).default("manual"),
   reference: z.string().optional(),
+  provider: z.string().optional(),
+  providerPaymentId: z.string().optional(),
+  idempotencyKey: z.string().optional(),
 });
 const progressBody = z.object({
   label: z.string().min(1),
@@ -325,6 +328,15 @@ export async function invoiceRoutes(app: FastifyInstance) {
 
     const prior = await db.select().from(payments).where(and(eq(payments.orgId, orgId), eq(payments.invoiceId, id)));
     const priorPaid = prior.reduce((a, p) => a + p.amount, 0);
+    const identity = paymentIdentity(parsed.data);
+    if (isDuplicatePayment(parsed.data, prior)) {
+      return {
+        status: inv.status,
+        remaining: Math.max(inv.total - priorPaid, 0),
+        overpaid: Math.max(priorPaid - inv.total, 0),
+        duplicate: true,
+      };
+    }
 
     let result;
     try {
@@ -339,6 +351,9 @@ export async function invoiceRoutes(app: FastifyInstance) {
       amount: parsed.data.amount,
       method: parsed.data.method,
       reference: parsed.data.reference,
+      provider: identity.provider,
+      providerPaymentId: identity.providerPaymentId,
+      idempotencyKey: identity.idempotencyKey,
     });
     await db.update(invoices).set({ status: result.status }).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
     safeEmitActivity(
@@ -347,7 +362,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       `Received ${parsed.data.method} payment of $${(parsed.data.amount / 100).toFixed(2)} on ${inv.number}`,
       { jobId: inv.jobId },
     );
-    return { status: result.status, remaining: result.remaining, overpaid: result.overpaid };
+    return { status: result.status, remaining: result.remaining, overpaid: result.overpaid, duplicate: false };
   });
 
   app.post("/:id/checkout", async (req, reply) => {
