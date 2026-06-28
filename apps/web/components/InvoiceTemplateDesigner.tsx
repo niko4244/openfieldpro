@@ -4,7 +4,45 @@ import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { updateInvoiceTemplate } from "../lib/client-api";
 import { formatMoney } from "@ofp/shared";
-import type { InvoicePreviewDTO, InvoiceTemplateDTO } from "../lib/api";
+
+interface InvoiceTemplateView {
+  companyName: string;
+  companyAddress?: string | null;
+  companyPhone?: string | null;
+  companyEmail?: string | null;
+  companyWebsite?: string | null;
+  licenseNumber?: string | null;
+  logoUrl?: string | null;
+  accentColor: string;
+  templateStyle: "modern" | "classic" | "compact";
+  invoicePrefix: string;
+  defaultTaxRateBps: number;
+  defaultDiscountCents: number;
+  paymentTerms: string;
+  acceptedPaymentMethods: string;
+  lateFeePolicy: string;
+  memo: string;
+  footer: string;
+  termsAndConditions: string;
+  showLineItemPrices: boolean;
+  showPaymentHistory: boolean;
+  showCompanyContact: boolean;
+  showCustomerDetails: boolean;
+  showServiceAddress: boolean;
+  showTechnician: boolean;
+  showTaxAndDiscount: boolean;
+  showTerms: boolean;
+}
+
+interface InvoicePreviewView {
+  template: InvoiceTemplateView;
+  invoice: { number: string; status: string; total: number; dueAt?: string | null; createdAt?: string | null; poNumber?: string | null; lastSentAt?: string | null };
+  customer?: { name: string; email?: string | null; phone?: string | null } | null;
+  property?: { address: string } | null;
+  technician?: { name: string; email?: string | null } | null;
+  lineItems: Array<{ description: string; quantity: number; unitPrice: number; amount: number; taxable?: boolean | null }>;
+  totals: { subtotal: number; discount: number; tax: number; taxRateBps: number; total: number; paid: number; balance: number };
+}
 
 function formValue(form: FormData, key: string) {
   return String(form.get(key) ?? "").trim();
@@ -24,7 +62,7 @@ function bpsToPercent(value: number) {
   return (value / 100).toFixed(2).replace(/\.00$/, "");
 }
 
-export function InvoicePreviewCard({ preview }: { preview: InvoicePreviewDTO }) {
+export function InvoicePreviewCard({ preview }: { preview: InvoicePreviewView }) {
   const { template, invoice, lineItems, totals, customer, property, technician } = preview;
   return (
     <article className={`section-card invoice-preview ${template.templateStyle}`} style={{ borderTop: `8px solid ${template.accentColor}` }}>
@@ -99,7 +137,7 @@ export function InvoicePreviewCard({ preview }: { preview: InvoicePreviewDTO }) 
   );
 }
 
-export function InvoiceTemplateForm({ template }: { template: InvoiceTemplateDTO }) {
+export function InvoiceTemplateForm({ template }: { template: InvoiceTemplateView }) {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
