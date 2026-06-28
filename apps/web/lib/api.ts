@@ -53,6 +53,26 @@ export interface InvoiceDetailDTO extends InvoiceDTO {
   payments: PaymentDTO[];
 }
 
+export interface InvoiceTemplateDTO {
+  companyName: string;
+  logoUrl?: string | null;
+  accentColor: string;
+  templateStyle: "modern" | "classic" | "compact";
+  invoicePrefix: string;
+  paymentTerms: string;
+  memo: string;
+  footer: string;
+  showLineItemPrices: boolean;
+  showPaymentHistory: boolean;
+}
+
+export interface InvoicePreviewDTO {
+  template: InvoiceTemplateDTO;
+  invoice: { number: string; status: string; total: number; dueAt?: string | null };
+  lineItems: Array<{ description: string; quantity: number; unitPrice: number; amount: number }>;
+  totals: { total: number; paid: number; balance: number };
+}
+
 async function authHeaders(): Promise<HeadersInit> {
   try {
     const token = (await cookies()).get("ofp_token")?.value;
@@ -93,6 +113,8 @@ export const api = {
   },
   invoices: () => get<InvoiceDTO[]>("/api/invoices"),
   invoice: (id: string) => get<InvoiceDetailDTO>(`/api/invoices/${id}`),
+  invoiceTemplate: () => get<InvoiceTemplateDTO>("/api/invoice-template"),
+  invoicePreview: (invoiceId?: string) => get<InvoicePreviewDTO>(`/api/invoice-template/preview${invoiceId ? `?invoiceId=${invoiceId}` : ""}`),
   reports: () => get<ReportSummaryDTO>("/api/reports/summary"),
   health: () => get<{ ok: boolean }>("/api/health"),
 };
