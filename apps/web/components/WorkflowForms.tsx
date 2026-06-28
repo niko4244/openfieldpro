@@ -18,7 +18,7 @@ import {
 type CustomerOption = { id: string; name: string };
 type JobOption = { id: string; title: string; total?: number; customerId?: string; status?: string };
 type InvoiceOption = { id: string; number: string; total: number; status: string };
-type EstimateOption = { id: string; jobId: string; total: number; accepted: boolean };
+type EstimateOption = { id: string; jobId: string; total: number; accepted: boolean; publicToken?: string | null };
 type LineItemOption = { id: string; description: string; quantity: number; unitPrice: number; unitCost: number };
 
 function formDataFrom(event: FormEvent<HTMLFormElement>) {
@@ -236,6 +236,7 @@ export function EstimateActionPanel({ job, estimates }: { job: JobOption; estima
     <div className="action-panel">
       <button className="button" disabled={pending} onClick={create}>Create estimate</button>
       {latest && !latest.accepted && <button className="button primary" disabled={pending} onClick={accept}>Mark accepted</button>}
+      {latest?.publicToken && <a className="button compact" href={`/public/estimates/${latest.publicToken}`}>Public link</a>}
       {latest && <span className={latest.accepted ? "status-pill status-completed" : "status-pill status-draft"}>{latest.accepted ? "accepted" : "draft"}</span>}
       <Status message={message} />
     </div>
