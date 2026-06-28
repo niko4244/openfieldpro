@@ -224,6 +224,7 @@ export const invoices = pgTable(
   (t) => ({
     orgStatus: index("invoices_org_status_idx").on(t.orgId, t.status),
     publicTokenIdx: index("invoices_public_token_idx").on(t.publicToken),
+    orgNumberUidx: uniqueIndex("invoices_org_number_uidx").on(t.orgId, t.number),
   }),
 );
 
