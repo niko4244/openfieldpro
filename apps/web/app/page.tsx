@@ -6,88 +6,88 @@ export default async function Dashboard() {
   let jobs: Awaited<ReturnType<typeof api.jobs>> = [];
   let summary: ReportSummaryDTO | null = null;
   let error: string | null = null;
-  // Two independent fetches so a failing /reports endpoint degrades the page
-  // to "no margin row" instead of blanking the whole dashboard. `jobs` is
-  // the source of truth for the existing 3 cards; its failure still surfaces.
+
   try {
-    jobs = await api.jobs();
+    [jobs, summary] = await Promise.all([api.jobs(), api.reports().catch(() => null)]);
   } catch (e) {
     error = (e as Error).message;
   }
-  try {
-    summary = await api.reports();
-  } catch {
-    // Non-fatal: existing cards still render.
+
+  let scheduled = 0;
+  let completedRevenue = 0;
+  for (const job of jobs) {
+    if (job.status === "scheduled") scheduled += 1;
+    if (job.status === "completed") completedRevenue += job.total;
   }
 
-  const scheduled = jobs.filter((j) => j.status === "scheduled").length;
-  const revenue = jobs
-    .filter((j) => j.status === "completed")
-    .reduce((a, j) => a + j.total, 0);
-
   return (
-    <div>
-      <h1>Dashboard</h1>
+    <div className="page-stack">
+      <section className="hero-panel">
+        <div>
+          <p className="eyebrow">Operations dashboard</p>
+          <h1>Run the day from one clean workspace.</h1>
+          <p className="muted">
+            Track jobs, schedule pressure, revenue, and margin without bouncing between paper, texts, and spreadsheets.
+          </p>
+          <div className="hero-actions">
+            <a className="button primary" href="/customers">Review customers</a>
+            <a className="button" href="/schedule">Open schedule</a>
+          </div>
+        </div>
+        <div className="hero-summary" aria-label="Today summary">
+          <span className="table-label">Pipeline margin</span>
+          <strong>{formatMoney(summary?.pipelineMarginCents ?? 0)}</strong>
+          <p className="muted">Live margin estimate across every non-canceled job in the current shop.</p>
+        </div>
+      </section>
+
       {error ? (
-        <p style={{ color: "#ff8080" }}>
-          API unreachable ({error}). Start it with <code>pnpm dev:api</code> and seed with{" "}
-          <code>pnpm db:seed</code>.
-        </p>
+        <section className="section-card">
+          <p className="notice error">
+            API unreachable ({error}). Start it with <code>pnpm dev:api</code> and seed with <code>pnpm db:seed</code>.
+          </p>
+        </section>
       ) : (
         <>
-          {summary && (
-            <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-              <Stat
-                label="Realized margin"
-                value={formatMoney(summary.realizedMarginCents)}
-                color={
-                  summary.realizedMarginCents < 0
-                    ? "#ff8080"
-                    : summary.realizedMarginCents > 0
-                      ? "#86e29a"
-                      : "#e6e9f0"
-                }
-              />
-              <Stat
-                label="Pipeline margin"
-                value={formatMoney(summary.pipelineMarginCents)}
-                color={summary.pipelineMarginCents < 0 ? "#ff8080" : "#e6e9f0"}
-              />
+          <section className="metric-grid" aria-label="Business metrics">
+            <Metric label="Open jobs" value={String(jobs.length)} />
+            <Metric label="Scheduled" value={String(scheduled)} />
+            <Metric label="Completed revenue" value={formatMoney(completedRevenue)} />
+            <Metric label="Realized margin" value={formatMoney(summary?.realizedMarginCents ?? 0)} />
+          </section>
+
+          <section className="section-card">
+            <div className="section-header">
+              <div>
+                <h2>Recent jobs</h2>
+                <p className="muted">Latest work orders by status and value.</p>
+              </div>
+              <a className="button compact" href="/schedule">Dispatch view</a>
             </div>
-          )}
-          <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
-            <Stat label="Open jobs" value={String(jobs.length)} />
-            <Stat label="Scheduled" value={String(scheduled)} />
-            <Stat label="Completed revenue" value={formatMoney(revenue)} />
-          </div>
-          <h2>Recent jobs</h2>
-          <ul>
-            {jobs.map((j) => (
-              <li key={j.id}>
-                {j.title} — <em>{j.status}</em> — {formatMoney(j.total)}
-              </li>
-            ))}
-            {jobs.length === 0 && <li>No jobs yet.</li>}
-          </ul>
+            <div className="card-list">
+              {jobs.map((job) => (
+                <div className="list-row" key={job.id}>
+                  <div>
+                    <strong>{job.title}</strong>
+                    <p className="muted">{formatMoney(job.total)} · customer {job.customerId.slice(0, 8)}</p>
+                  </div>
+                  <span className={`status-pill status-${job.status}`}>{job.status.replaceAll("_", " ")}</span>
+                </div>
+              ))}
+              {jobs.length === 0 && <div className="empty-state">No jobs yet.</div>}
+            </div>
+          </section>
         </>
       )}
     </div>
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      style={{
-        background: "#141b33",
-        border: "1px solid #1d2440",
-        borderRadius: 10,
-        padding: "16px 20px",
-        minWidth: 140,
-      }}
-    >
-      <div style={{ fontSize: 12, color: "#8a97c2" }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 700, color: color ?? "#e6e9f0" }}>{value}</div>
+    <div className="metric-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
