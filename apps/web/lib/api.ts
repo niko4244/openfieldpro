@@ -44,6 +44,7 @@ export interface InvoiceDTO {
   id: string;
   number: string;
   poNumber?: string | null;
+  publicToken?: string | null;
   status: "draft" | "sent" | "paid" | "void";
   total: number;
   taxRateBps?: number;
