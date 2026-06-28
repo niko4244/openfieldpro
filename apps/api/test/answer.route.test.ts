@@ -1,10 +1,20 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import Fastify from "fastify";
-import { answerRoutes } from "../src/routes/answer.js";
+
+// Mock classify module so the 502 test doesn't depend on Ollama being down.
+// Must be top-level so ESM cache uses it before any import() resolves.
+mock.module("../src/answer/prompts/classify.js", {
+  namedExports: {
+    async classify() {
+      throw new Error("Ollama unreachable (test mock)");
+    },
+  },
+});
 
 describe("POST /api/answer", () => {
   it("returns 400 for empty prompt", async () => {
+    const { answerRoutes } = await import("../src/routes/answer.js");
+    const { default: Fastify } = await import("fastify");
     const app = Fastify();
     await app.register(answerRoutes, { prefix: "/api" });
     await app.ready();
@@ -18,6 +28,8 @@ describe("POST /api/answer", () => {
   });
 
   it("returns 400 for missing body", async () => {
+    const { answerRoutes } = await import("../src/routes/answer.js");
+    const { default: Fastify } = await import("fastify");
     const app = Fastify();
     await app.register(answerRoutes, { prefix: "/api" });
     await app.ready();
@@ -29,6 +41,8 @@ describe("POST /api/answer", () => {
   });
 
   it("returns 502 when classify throws (Ollama unreachable)", async () => {
+    const { answerRoutes } = await import("../src/routes/answer.js");
+    const { default: Fastify } = await import("fastify");
     const app = Fastify();
     await app.register(answerRoutes, { prefix: "/api" });
     await app.ready();
@@ -38,7 +52,7 @@ describe("POST /api/answer", () => {
       url: "/api/answer",
       body: { prompt: "Hello" },
     });
-    // In test, no Ollama running — should 502, not crash
+    // Mock.classify throws → handler catches → 502
     assert.equal(res.statusCode, 502);
     const body = JSON.parse(res.payload);
     assert.equal(body.ok, false);
