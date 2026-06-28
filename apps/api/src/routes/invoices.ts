@@ -15,6 +15,7 @@ import {
   properties,
 } from "@ofp/db";
 import { applyPayment, isDuplicatePayment, paymentIdentity } from "../invoicing.js";
+import { formatInvoiceNumber, nextInvoiceSequence } from "../invoice-number.js";
 import { buildInvoicePdf } from "../invoice-pdf.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
@@ -92,7 +93,7 @@ async function nextInvoiceNumber(orgId: string, prefix: string) {
     .select({ count: sql<number>`count(*)::int` })
     .from(invoices)
     .where(eq(invoices.orgId, orgId));
-  return `${prefix}-${String(count + 1).padStart(4, "0")}`;
+  return formatInvoiceNumber(prefix, nextInvoiceSequence(count));
 }
 
 export async function invoiceRoutes(app: FastifyInstance) {
