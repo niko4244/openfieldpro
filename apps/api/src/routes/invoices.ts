@@ -24,10 +24,61 @@ function invoiceMath(input: { subtotal: number; discountCents: number; taxRateBp
   return { discount, tax, total: taxable + tax };
 }
 
+function csvCell(value: unknown) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function invoiceStatusLabel(status: string) {
+  return status.replaceAll("_", " ");
+}
+
 export async function invoiceRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     const orgId = await resolveOrgId(req);
     return db.select().from(invoices).where(eq(invoices.orgId, orgId)).orderBy(desc(invoices.createdAt));
+  });
+
+  app.get("/export.csv", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const rows = await db.select().from(invoices).where(eq(invoices.orgId, orgId)).orderBy(desc(invoices.createdAt));
+    const paidRows = await db.select().from(payments).where(eq(payments.orgId, orgId));
+    const paidByInvoice = new Map<string, number>();
+    for (const payment of paidRows) paidByInvoice.set(payment.invoiceId, (paidByInvoice.get(payment.invoiceId) ?? 0) + payment.amount);
+    const header = ["number", "status", "po_number", "total_cents", "paid_cents", "balance_cents", "due_at", "last_sent_at", "created_at"];
+    const body = rows.map((invoice) => {
+      const paid = paidByInvoice.get(invoice.id) ?? 0;
+      return [
+        invoice.number,
+        invoiceStatusLabel(invoice.status),
+        invoice.poNumber ?? "",
+        invoice.total,
+        paid,
+        Math.max(invoice.total - paid, 0),
+        invoice.dueAt?.toISOString() ?? "",
+        invoice.lastSentAt?.toISOString() ?? "",
+        invoice.createdAt.toISOString(),
+      ].map(csvCell).join(",");
+    });
+    reply.header("content-type", "text/csv; charset=utf-8");
+    reply.header("content-disposition", "attachment; filename=ofp-invoices.csv");
+    return [header.map(csvCell).join(","), ...body].join("\n");
+  });
+
+  app.get("/:id/reminder-plan", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+    const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
+    if (!inv) return reply.code(404).send({ error: "not found" });
+    const [template] = await db.select().from(invoiceTemplates).where(eq(invoiceTemplates.orgId, orgId)).limit(1);
+    const terms = template?.paymentTerms ?? "Due on receipt";
+    const schedule = [0, 3, 7, 14].map((daysAfterDue) => ({
+      daysAfterDue,
+      channel: "email",
+      message: daysAfterDue === 0 ? "Invoice due today" : `Invoice overdue by ${daysAfterDue} days`,
+      enabled: inv.status === "sent" && Boolean(inv.dueAt),
+    }));
+    return { invoiceId: inv.id, number: inv.number, status: inv.status, dueAt: inv.dueAt, terms, schedule };
   });
 
   app.get("/:id", async (req, reply) => {
