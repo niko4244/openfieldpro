@@ -1,6 +1,7 @@
+import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { db, orgs, customers, jobs, estimates, estimateOptions, lineItems, invoices, payments, invoiceTemplates, properties } from "@ofp/db";
 import { safeEmitActivity } from "../activities.js";
 import { buildInvoicePdf } from "../invoice-pdf.js";
@@ -17,6 +18,17 @@ function publicAppUrl() {
   return (process.env.PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 }
 
+function newPublicToken(prefix: string) {
+  return `${prefix}_${randomBytes(24).toString("base64url")}`;
+}
+
+async function ensureCustomerPortalToken(customer: { id: string; orgId: string; publicToken?: string | null }) {
+  if (customer.publicToken) return customer.publicToken;
+  const publicToken = newPublicToken("cust");
+  await db.update(customers).set({ publicToken }).where(and(eq(customers.orgId, customer.orgId), eq(customers.id, customer.id)));
+  return publicToken;
+}
+
 async function publicInvoiceByToken(token: string) {
   const [invoice] = await db.select().from(invoices).where(eq(invoices.publicToken, token));
   if (!invoice || invoice.status === "void") return null;
@@ -26,7 +38,7 @@ async function publicInvoiceByToken(token: string) {
     .where(and(eq(jobs.orgId, invoice.orgId), eq(jobs.id, invoice.jobId)));
   if (!job) return null;
   const [customer] = await db
-    .select({ id: customers.id, name: customers.name, email: customers.email, phone: customers.phone })
+    .select({ id: customers.id, orgId: customers.orgId, publicToken: customers.publicToken, name: customers.name, email: customers.email, phone: customers.phone })
     .from(customers)
     .where(and(eq(customers.orgId, invoice.orgId), eq(customers.id, job.customerId)));
   const [property] = job.propertyId
@@ -44,7 +56,53 @@ async function publicInvoiceByToken(token: string) {
     .where(and(eq(payments.orgId, invoice.orgId), eq(payments.invoiceId, invoice.id)));
   const paid = paymentRows.reduce((sum, payment) => sum + payment.amount, 0);
   const balance = Math.max(invoice.total - paid, 0);
-  return { invoice, job, customer, property, org, template, lineItems: items, payments: paymentRows, totals: { paid, balance } };
+  const portalToken = customer ? await ensureCustomerPortalToken(customer) : null;
+  const portalUrl = portalToken ? `${publicAppUrl()}/public/customer/${portalToken}` : null;
+  return { invoice, job, customer: customer ? { ...customer, publicToken: portalToken } : null, property, org, template, lineItems: items, payments: paymentRows, totals: { paid, balance }, portalToken, portalUrl };
+}
+
+async function publicCustomerByToken(token: string) {
+  const [customer] = await db
+    .select({ id: customers.id, orgId: customers.orgId, publicToken: customers.publicToken, name: customers.name, email: customers.email, phone: customers.phone })
+    .from(customers)
+    .where(eq(customers.publicToken, token));
+  if (!customer) return null;
+  const [org] = await db.select({ id: orgs.id, name: orgs.name }).from(orgs).where(eq(orgs.id, customer.orgId));
+  const jobRows = await db
+    .select({ id: jobs.id, title: jobs.title, description: jobs.description, status: jobs.status, total: jobs.total, scheduledAt: jobs.scheduledAt, createdAt: jobs.createdAt })
+    .from(jobs)
+    .where(and(eq(jobs.orgId, customer.orgId), eq(jobs.customerId, customer.id)))
+    .orderBy(desc(jobs.createdAt));
+  const jobIds = new Set(jobRows.map((job) => job.id));
+  const invoiceRows = (await db.select().from(invoices).where(eq(invoices.orgId, customer.orgId)).orderBy(desc(invoices.createdAt)))
+    .filter((invoice) => jobIds.has(invoice.jobId) && invoice.status !== "void");
+  const paymentRows = await db
+    .select({ id: payments.id, invoiceId: payments.invoiceId, amount: payments.amount, method: payments.method, paidAt: payments.paidAt })
+    .from(payments)
+    .where(eq(payments.orgId, customer.orgId));
+  const paidByInvoice = new Map<string, number>();
+  for (const payment of paymentRows) paidByInvoice.set(payment.invoiceId, (paidByInvoice.get(payment.invoiceId) ?? 0) + payment.amount);
+  const invoicesWithBalances = invoiceRows.map((invoice) => {
+    const paid = paidByInvoice.get(invoice.id) ?? 0;
+    return {
+      id: invoice.id,
+      number: invoice.number,
+      status: Math.max(invoice.total - paid, 0) <= 0 ? "paid" : invoice.status,
+      total: invoice.total,
+      paid,
+      balance: Math.max(invoice.total - paid, 0),
+      dueAt: invoice.dueAt,
+      createdAt: invoice.createdAt,
+      publicToken: invoice.publicToken,
+      publicUrl: invoice.publicToken ? `${publicAppUrl()}/public/invoices/${invoice.publicToken}` : null,
+      jobId: invoice.jobId,
+    };
+  });
+  const totals = invoicesWithBalances.reduce(
+    (acc, invoice) => ({ totalBilled: acc.totalBilled + invoice.total, totalPaid: acc.totalPaid + invoice.paid, totalBalance: acc.totalBalance + invoice.balance }),
+    { totalBilled: 0, totalPaid: 0, totalBalance: 0 },
+  );
+  return { customer, org, jobs: jobRows, invoices: invoicesWithBalances, payments: paymentRows, totals };
 }
 
 export async function publicRoutes(app: FastifyInstance) {
@@ -171,6 +229,13 @@ export async function publicRoutes(app: FastifyInstance) {
     return { url: session.url };
   });
 
+  app.get("/customer-portal/:token", async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const data = await publicCustomerByToken(token);
+    if (!data) return reply.code(404).send({ error: "customer portal not found" });
+    return data;
+  });
+
   app.get("/:orgId", async (req, reply) => {
     const { orgId } = req.params as { orgId: string };
     const [org] = await db.select({ id: orgs.id, name: orgs.name }).from(orgs).where(eq(orgs.id, orgId));
@@ -187,11 +252,11 @@ export async function publicRoutes(app: FastifyInstance) {
     if (!org) return reply.code(404).send({ error: "business not found" });
 
     const { name, email, phone, title, description } = parsed.data;
-    const [customer] = await db.insert(customers).values({ orgId, name, email, phone }).returning();
+    const [customer] = await db.insert(customers).values({ orgId, name, email, phone, publicToken: newPublicToken("cust") }).returning();
     const [job] = await db
       .insert(jobs)
       .values({ orgId, customerId: customer.id, title, description, status: "lead" })
       .returning();
-    return reply.code(201).send({ ok: true, requestId: job.id });
+    return reply.code(201).send({ ok: true, requestId: job.id, portalUrl: customer.publicToken ? `${publicAppUrl()}/public/customer/${customer.publicToken}` : null });
   });
 }
