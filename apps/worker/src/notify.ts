@@ -1,7 +1,5 @@
 // Pluggable notification sink. Defaults to console; posts to an ntfy topic if
-// NTFY_URL is set. Email/SMS providers (Twilio/Resend) slot in here later.
-// ponytail: fire-and-forget, no retry/queue. Ceiling: for delivery guarantees
-// move to BullMQ + a provider with retries; this proves the reminder path.
+// NTFY_URL is set. Email/SMS providers can be added behind this interface.
 export async function notify(title: string, message: string): Promise<void> {
   const url = process.env.NTFY_URL;
   if (url) {
