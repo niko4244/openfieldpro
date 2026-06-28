@@ -4,7 +4,28 @@ import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createProgressMilestone, invoiceProgressMilestone, updateInvoiceReminders } from "../lib/client-api";
 import { formatMoney } from "@ofp/shared";
-import type { InvoiceReminderScheduleDTO, ProgressInvoiceMilestoneDTO } from "../lib/api";
+
+interface ProgressInvoiceMilestoneView {
+  id: string;
+  jobId: string;
+  invoiceId?: string | null;
+  label: string;
+  amountCents: number;
+  percentBps: number;
+  status: "draft" | "ready" | "invoiced" | "paid" | "void";
+  dueAt?: string | null;
+  createdAt: string;
+}
+
+interface InvoiceReminderScheduleView {
+  id: string;
+  invoiceId: string;
+  daysAfterDue: number;
+  channel: "email" | "sms" | "manual";
+  message: string;
+  enabled: boolean;
+  lastSentAt?: string | null;
+}
 
 function cents(value: FormDataEntryValue | null) {
   const parsed = Number(value ?? 0);
@@ -65,7 +86,7 @@ export function ProgressMilestoneForm({ jobId }: { jobId: string }) {
   );
 }
 
-export function ProgressMilestoneList({ milestones }: { milestones: ProgressInvoiceMilestoneDTO[] }) {
+export function ProgressMilestoneList({ milestones }: { milestones: ProgressInvoiceMilestoneView[] }) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -104,7 +125,7 @@ export function ProgressMilestoneList({ milestones }: { milestones: ProgressInvo
   );
 }
 
-export function ReminderScheduleForm({ invoiceId, schedules }: { invoiceId: string; schedules: InvoiceReminderScheduleDTO[] }) {
+export function ReminderScheduleForm({ invoiceId, schedules }: { invoiceId: string; schedules: InvoiceReminderScheduleView[] }) {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
