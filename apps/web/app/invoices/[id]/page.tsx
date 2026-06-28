@@ -5,6 +5,8 @@ import { SendInvoiceButton } from "../../../components/InvoiceActions";
 import { InvoicePreviewCard } from "../../../components/InvoiceTemplateDesigner";
 import { ReminderScheduleForm } from "../../../components/BillingEnhancements";
 
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
+
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   let invoice: Awaited<ReturnType<typeof api.invoice>> | null = null;
@@ -42,6 +44,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <p className="muted">{job?.title ?? invoice.jobId.slice(0, 8)} · due {invoice.dueAt ? new Date(invoice.dueAt).toLocaleDateString() : "not set"}</p>
               <div className="hero-actions">
                 {job && <a className="button" href={`/jobs/${job.id}`}>Open job</a>}
+                <a className="button" href={`${API_BASE}/api/invoices/${invoice.id}.pdf`}>Download PDF</a>
                 <a className="button" href="/settings/invoice">Customize template</a>
                 <a className="button" href="/invoices">Back to invoices</a>
               </div>
