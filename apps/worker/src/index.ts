@@ -1,8 +1,5 @@
-// OpenFieldPro background worker: materializes due recurring jobs and sends
-// appointment reminders. Polling-based for the starter stack; Redis is already
-// available when the workload is ready to move to BullMQ-backed jobs.
 import { and, eq, lte, gte } from "drizzle-orm";
-import { db, recurringJobs, jobs, appointments } from "@ofp/db";
+import { db, recurringJobs, jobs, appointments, invoiceReminderSchedules, invoices } from "@ofp/db";
 import { catchUp } from "../../api/src/recurrence.ts";
 import { notify } from "./notify.ts";
 
@@ -28,9 +25,7 @@ async function materializeRecurring(now: Date) {
   }
 }
 
-async function sendReminders(now: Date) {
-  // Appointments starting in the next 24h. A reminded_at column should be added
-  // before production reminder delivery to dedupe outbound notifications.
+async function sendAppointmentReminders(now: Date) {
   const soon = new Date(now.getTime() + 24 * 3_600_000);
   const upcoming = await db
     .select()
@@ -41,11 +36,36 @@ async function sendReminders(now: Date) {
   }
 }
 
+async function sendInvoiceReminders(now: Date) {
+  const schedules = await db
+    .select()
+    .from(invoiceReminderSchedules)
+    .where(eq(invoiceReminderSchedules.enabled, true));
+
+  for (const schedule of schedules) {
+    if (schedule.lastSentAt) continue;
+    const [invoice] = await db
+      .select()
+      .from(invoices)
+      .where(and(eq(invoices.orgId, schedule.orgId), eq(invoices.id, schedule.invoiceId)));
+    if (!invoice || invoice.status !== "sent" || !invoice.dueAt) continue;
+    const fireAt = new Date(invoice.dueAt.getTime() + schedule.daysAfterDue * 24 * 3_600_000);
+    if (fireAt > now) continue;
+
+    await notify(`Invoice ${invoice.number}`, schedule.message);
+    await db
+      .update(invoiceReminderSchedules)
+      .set({ lastSentAt: now })
+      .where(and(eq(invoiceReminderSchedules.orgId, schedule.orgId), eq(invoiceReminderSchedules.id, schedule.id)));
+  }
+}
+
 async function tick() {
   const now = new Date();
   try {
     await materializeRecurring(now);
-    await sendReminders(now);
+    await sendAppointmentReminders(now);
+    await sendInvoiceReminders(now);
   } catch (e) {
     console.error(`[worker] tick error: ${(e as Error).message}`);
   }
