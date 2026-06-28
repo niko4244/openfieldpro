@@ -39,7 +39,7 @@ export default async function EstimatesPage() {
       </section>
 
       <section className="section-card">
-        <div className="section-header"><div><h2>Estimate queue</h2><p className="muted">Review, accept, and continue the job workflow.</p></div></div>
+        <div className="section-header"><div><h2>Estimate queue</h2><p className="muted">Review, accept, share, and continue the job workflow.</p></div></div>
         {error ? <p className="notice error">API unreachable ({error}).</p> : (
           <div className="card-list">
             {estimates.map((estimate) => {
@@ -52,6 +52,7 @@ export default async function EstimatesPage() {
                   </div>
                   <div className="action-panel">
                     <span className={estimate.accepted ? "status-pill status-completed" : "status-pill status-draft"}>{estimate.accepted ? "accepted" : "draft"}</span>
+                    {estimate.publicToken && <a className="button compact" href={`/public/estimates/${estimate.publicToken}`}>Public link</a>}
                     {job && <EstimateActionPanel job={job} estimates={[estimate]} />}
                     {job && <a className="button compact" href={`/jobs/${job.id}`}>Open job</a>}
                   </div>
