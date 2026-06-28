@@ -28,7 +28,7 @@ export default async function InvoicesPage() {
         <div>
           <p className="eyebrow">Billing</p>
           <h1>Collect faster without losing invoice context.</h1>
-          <p className="muted">Create invoices from job workspaces, track follow-up, export receivables, and record payments from one billing queue.</p>
+          <p className="muted">Create invoices from job workspaces, track follow-up, export receivables, download PDFs, and record payments from one billing queue.</p>
           <div className="hero-actions">
             <a className="button" href="/settings/invoice">Customize template</a>
             <a className="button" href={`${API_BASE}/api/invoices/export.csv`}>Export CSV</a>
@@ -50,14 +50,14 @@ export default async function InvoicesPage() {
 
       <section className="split-grid">
         <div className="section-card">
-          <div className="section-header"><div><h2>Invoices</h2><p className="muted">Open an invoice to inspect line items, template preview, payment history, and reminder plan.</p></div></div>
+          <div className="section-header"><div><h2>Invoices</h2><p className="muted">Open an invoice to inspect line items, template preview, payment history, PDF export, and reminder plan.</p></div></div>
           {error ? (
             <p className="notice error">API unreachable ({error}).</p>
           ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
-                  <tr><th>Number</th><th>Status</th><th>Total</th><th>Follow-up</th><th>Detail</th></tr>
+                  <tr><th>Number</th><th>Status</th><th>Total</th><th>Follow-up</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
                   {invoices.map((invoice) => (
@@ -66,7 +66,7 @@ export default async function InvoicesPage() {
                       <td><span className={`status-pill status-${invoice.status}`}>{invoice.status}</span></td>
                       <td>{formatMoney(invoice.total)}</td>
                       <td>{invoice.status === "sent" ? <a className="button compact" href={`${API_BASE}/api/invoices/${invoice.id}/reminder-plan`}>Reminder plan</a> : <span className="muted">—</span>}</td>
-                      <td><a className="button compact" href={`/invoices/${invoice.id}`}>Open</a></td>
+                      <td><div className="action-panel"><a className="button compact" href={`/invoices/${invoice.id}`}>Open</a><a className="button compact" href={`${API_BASE}/api/invoices/${invoice.id}.pdf`}>PDF</a></div></td>
                     </tr>
                   ))}
                   {invoices.length === 0 && (
