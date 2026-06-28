@@ -71,6 +71,21 @@ export function sendInvoice(id: string) {
   return request<{ id: string; number: string; status: string }>(`/api/invoices/${id}/send`, { method: "POST" });
 }
 
+export function updateInvoiceTemplate(input: {
+  companyName: string;
+  logoUrl?: string;
+  accentColor: string;
+  templateStyle: "modern" | "classic" | "compact";
+  invoicePrefix: string;
+  paymentTerms: string;
+  memo: string;
+  footer: string;
+  showLineItemPrices: boolean;
+  showPaymentHistory: boolean;
+}) {
+  return request<typeof input>("/api/invoice-template", { method: "PUT", body: JSON.stringify(input) });
+}
+
 export function recordPayment(id: string, input: { amount: number; method: "manual" | "cash" | "check" | "card"; reference?: string }) {
   return request<{ status: string; remaining: number; overpaid: number }>(`/api/invoices/${id}/pay`, {
     method: "POST",
