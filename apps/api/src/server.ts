@@ -9,6 +9,7 @@ import { jobRoutes } from "./routes/jobs.js";
 import { appointmentRoutes } from "./routes/appointments.js";
 import { lineItemRoutes } from "./routes/lineitems.js";
 import { invoiceRoutes } from "./routes/invoices.js";
+import { invoiceTemplateRoutes } from "./routes/invoice-templates.js";
 import { stripeWebhookRoute } from "./routes/stripe-webhook.js";
 import { estimateRoutes } from "./routes/estimates.js";
 import { reviewRoutes } from "./routes/reviews.js";
@@ -48,6 +49,7 @@ export function buildServer() {
   app.register(appointmentRoutes, { prefix: "/api/appointments" });
   app.register(lineItemRoutes, { prefix: "/api" });
   app.register(invoiceRoutes, { prefix: "/api/invoices" });
+  app.register(invoiceTemplateRoutes, { prefix: "/api/invoice-template" });
   app.register(stripeWebhookRoute, { prefix: "/api" });
   app.register(estimateRoutes, { prefix: "/api/estimates" });
   app.register(reviewRoutes, { prefix: "/api/reviews" });
