@@ -52,15 +52,31 @@ export const invoiceTemplates = pgTable(
     id: id(),
     orgId: orgId(),
     companyName: text("company_name").notNull(),
+    companyAddress: text("company_address"),
+    companyPhone: text("company_phone"),
+    companyEmail: text("company_email"),
+    companyWebsite: text("company_website"),
+    licenseNumber: text("license_number"),
     logoUrl: text("logo_url"),
     accentColor: text("accent_color").default("#2463eb").notNull(),
     templateStyle: text("template_style").default("modern").notNull(),
     invoicePrefix: text("invoice_prefix").default("INV").notNull(),
+    defaultTaxRateBps: integer("default_tax_rate_bps").default(0).notNull(),
+    defaultDiscountCents: integer("default_discount_cents").default(0).notNull(),
     paymentTerms: text("payment_terms").default("Due on receipt").notNull(),
+    acceptedPaymentMethods: text("accepted_payment_methods").default("Credit card, ACH, cash, check").notNull(),
+    lateFeePolicy: text("late_fee_policy").default("Late fees may apply to overdue balances.").notNull(),
     memo: text("memo").default("Thank you for your business.").notNull(),
     footer: text("footer").default("Questions? Contact us before paying.").notNull(),
+    termsAndConditions: text("terms_and_conditions").default("All work is subject to the terms agreed before service.").notNull(),
     showLineItemPrices: boolean("show_line_item_prices").default(true).notNull(),
     showPaymentHistory: boolean("show_payment_history").default(true).notNull(),
+    showCompanyContact: boolean("show_company_contact").default(true).notNull(),
+    showCustomerDetails: boolean("show_customer_details").default(true).notNull(),
+    showServiceAddress: boolean("show_service_address").default(true).notNull(),
+    showTechnician: boolean("show_technician").default(true).notNull(),
+    showTaxAndDiscount: boolean("show_tax_and_discount").default(true).notNull(),
+    showTerms: boolean("show_terms").default(true).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
     createdAt: ts(),
   },
@@ -128,8 +144,8 @@ export const jobs = pgTable(
     description: text("description"),
     status: jobStatus("status").default("lead").notNull(),
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
-    total: integer("total").default(0).notNull(), // cents, denormalized from line items
-    laborCostCents: integer("labor_cost_cents").default(0).notNull(), // tech labor cost for margin
+    total: integer("total").default(0).notNull(),
+    laborCostCents: integer("labor_cost_cents").default(0).notNull(),
     createdAt: ts(),
   },
   (t) => ({
@@ -138,9 +154,6 @@ export const jobs = pgTable(
   }),
 );
 
-// Line items belong to a job; estimates and invoices reference the job.
-// `unitCost` is what the item costs the business (materials/labor) — the basis
-// for per-job margin, the thing most low-end CRMs never surface.
 export const lineItems = pgTable("line_items", {
   id: id(),
   orgId: orgId(),
@@ -149,8 +162,9 @@ export const lineItems = pgTable("line_items", {
     .references(() => jobs.id, { onDelete: "cascade" }),
   description: text("description").notNull(),
   quantity: integer("quantity").default(1).notNull(),
-  unitPrice: integer("unit_price").default(0).notNull(), // cents charged
-  unitCost: integer("unit_cost").default(0).notNull(), // cents it costs us
+  unitPrice: integer("unit_price").default(0).notNull(),
+  unitCost: integer("unit_cost").default(0).notNull(),
+  taxable: boolean("taxable").default(true).notNull(),
   createdAt: ts(),
 });
 
@@ -179,9 +193,13 @@ export const invoices = pgTable(
       .notNull()
       .references(() => jobs.id, { onDelete: "cascade" }),
     number: text("number").notNull(),
+    poNumber: text("po_number"),
     status: invoiceStatus("status").default("draft").notNull(),
     total: integer("total").default(0).notNull(),
+    taxRateBps: integer("tax_rate_bps").default(0).notNull(),
+    discountCents: integer("discount_cents").default(0).notNull(),
     dueAt: timestamp("due_at", { withTimezone: true }),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
     createdAt: ts(),
   },
   (t) => ({ orgStatus: index("invoices_org_status_idx").on(t.orgId, t.status) }),
@@ -193,14 +211,12 @@ export const payments = pgTable("payments", {
   invoiceId: uuid("invoice_id")
     .notNull()
     .references(() => invoices.id, { onDelete: "cascade" }),
-  amount: integer("amount").notNull(), // cents
-  method: text("method").default("manual").notNull(), // manual | card | cash | check
+  amount: integer("amount").notNull(),
+  method: text("method").default("manual").notNull(),
   reference: text("reference"),
   paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-// Recurring job templates (e.g. quarterly maintenance). A worker materializes
-// the next concrete job from `nextRunAt`. interval is ISO-ish: days between runs.
 export const recurringJobs = pgTable("recurring_jobs", {
   id: id(),
   orgId: orgId(),
@@ -214,7 +230,6 @@ export const recurringJobs = pgTable("recurring_jobs", {
   createdAt: ts(),
 });
 
-// Customer reviews, requested after a job completes. rating 1–5.
 export const reviews = pgTable("reviews", {
   id: id(),
   orgId: orgId(),
@@ -226,9 +241,6 @@ export const reviews = pgTable("reviews", {
   createdAt: ts(),
 });
 
-// Unified activity timeline — every meaningful touch on a customer/job in one
-// place. The thing CRMs scatter across tabs; here it's one queryable log so an
-// owner can see a customer's whole history at a glance.
 export const activities = pgTable(
   "activities",
   {
@@ -236,7 +248,7 @@ export const activities = pgTable(
     orgId: orgId(),
     customerId: uuid("customer_id").references(() => customers.id, { onDelete: "cascade" }),
     jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
-    kind: text("kind").notNull(), // job.created | job.scheduled | invoice.sent | payment.received | review.left | comms.sent ...
+    kind: text("kind").notNull(),
     summary: text("summary").notNull(),
     createdAt: ts(),
   },
@@ -246,7 +258,6 @@ export const activities = pgTable(
   }),
 );
 
-// Calendar/dispatch slots. A job can have one appointment in Phase 1.
 export const appointments = pgTable(
   "appointments",
   {
@@ -265,5 +276,4 @@ export const appointments = pgTable(
   (t) => ({ window: index("appts_window_idx").on(t.orgId, t.startsAt) }),
 );
 
-// Convenience: raw SQL to enable PostGIS (run once; harmless if repeated).
 export const enablePostgis = sql`CREATE EXTENSION IF NOT EXISTS postgis`;
