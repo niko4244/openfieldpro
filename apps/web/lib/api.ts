@@ -18,6 +18,7 @@ export interface LineItemDTO {
   quantity: number;
   unitPrice: number;
   unitCost: number;
+  taxable?: boolean;
   createdAt: string;
 }
 
@@ -42,10 +43,13 @@ export interface PaymentDTO {
 export interface InvoiceDTO {
   id: string;
   number: string;
+  poNumber?: string | null;
   status: "draft" | "sent" | "paid" | "void";
   total: number;
-  jobId: string;
+  taxRateBps?: number;
+  discountCents?: number;
   dueAt: string | null;
+  lastSentAt?: string | null;
 }
 
 export interface InvoiceDetailDTO extends InvoiceDTO {
@@ -55,22 +59,41 @@ export interface InvoiceDetailDTO extends InvoiceDTO {
 
 export interface InvoiceTemplateDTO {
   companyName: string;
+  companyAddress?: string | null;
+  companyPhone?: string | null;
+  companyEmail?: string | null;
+  companyWebsite?: string | null;
+  licenseNumber?: string | null;
   logoUrl?: string | null;
   accentColor: string;
   templateStyle: "modern" | "classic" | "compact";
   invoicePrefix: string;
+  defaultTaxRateBps: number;
+  defaultDiscountCents: number;
   paymentTerms: string;
+  acceptedPaymentMethods: string;
+  lateFeePolicy: string;
   memo: string;
   footer: string;
+  termsAndConditions: string;
   showLineItemPrices: boolean;
   showPaymentHistory: boolean;
+  showCompanyContact: boolean;
+  showCustomerDetails: boolean;
+  showServiceAddress: boolean;
+  showTechnician: boolean;
+  showTaxAndDiscount: boolean;
+  showTerms: boolean;
 }
 
 export interface InvoicePreviewDTO {
   template: InvoiceTemplateDTO;
-  invoice: { number: string; status: string; total: number; dueAt?: string | null };
-  lineItems: Array<{ description: string; quantity: number; unitPrice: number; amount: number }>;
-  totals: { total: number; paid: number; balance: number };
+  invoice: { number: string; status: string; total: number; dueAt?: string | null; createdAt?: string | null; poNumber?: string | null; lastSentAt?: string | null };
+  customer?: { name: string; email?: string | null; phone?: string | null } | null;
+  property?: { address: string } | null;
+  technician?: { name: string; email?: string | null } | null;
+  lineItems: Array<{ description: string; quantity: number; unitPrice: number; amount: number; taxable?: boolean | null }>;
+  totals: { subtotal: number; discount: number; tax: number; taxRateBps: number; total: number; paid: number; balance: number };
 }
 
 async function authHeaders(): Promise<HeadersInit> {
