@@ -8,6 +8,7 @@ const navItems = [
   { href: "/customers", label: "Customers", icon: "◌" },
   { href: "/jobs", label: "Jobs", icon: "□" },
   { href: "/schedule", label: "Schedule", icon: "◫" },
+  { href: "/dispatch", label: "Dispatch", icon: "⇄" },
   { href: "/estimates", label: "Quotes", icon: "◇" },
   { href: "/invoices", label: "Invoices", icon: "$" },
   { href: "/billing/progress", label: "Progress", icon: "%" },
@@ -35,7 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="brand-mark">O</span>
             <span>
               <strong>OpenFieldPro</strong>
-              <small>Estimate approval</small>
+              <small>Customer portal</small>
             </span>
           </div>
         </header>
