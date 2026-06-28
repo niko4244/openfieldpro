@@ -30,6 +30,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const paid = invoice?.payments.reduce((sum, payment) => sum + payment.amount, 0) ?? 0;
   const remaining = Math.max((invoice?.total ?? 0) - paid, 0);
   const isOpen = invoice?.status === "sent" || invoice?.status === "draft";
+  const publicUrl = invoice?.publicToken ? `/public/invoices/${invoice.publicToken}` : null;
 
   return (
     <div className="page-stack">
@@ -44,6 +45,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <p className="muted">{job?.title ?? invoice.jobId.slice(0, 8)} · due {invoice.dueAt ? new Date(invoice.dueAt).toLocaleDateString() : "not set"}</p>
               <div className="hero-actions">
                 {job && <a className="button" href={`/jobs/${job.id}`}>Open job</a>}
+                {publicUrl && <a className="button" href={publicUrl}>Customer page</a>}
                 <a className="button" href={`${API_BASE}/api/invoices/${invoice.id}.pdf`}>Download PDF</a>
                 <a className="button" href="/settings/invoice">Customize template</a>
                 <a className="button" href="/invoices">Back to invoices</a>
