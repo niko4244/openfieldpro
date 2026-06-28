@@ -1,12 +1,17 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createCustomer, createInvoice, createJob, recordPayment, scheduleAppointment, updateJob } from "../lib/client-api";
 
 type CustomerOption = { id: string; name: string };
 type JobOption = { id: string; title: string; total?: number; customerId?: string; status?: string };
 type InvoiceOption = { id: string; number: string; total: number; status: string };
+
+function formDataFrom(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+  return new FormData(event.currentTarget);
+}
 
 function cents(value: FormDataEntryValue | null) {
   const parsed = Number(value ?? 0);
@@ -36,7 +41,8 @@ export function CustomerCreateForm() {
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function submit(formData: FormData) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    const formData = formDataFrom(event);
     setMessage(null);
     startTransition(async () => {
       try {
@@ -56,7 +62,7 @@ export function CustomerCreateForm() {
   }
 
   return (
-    <form action={submit} className="workflow-form">
+    <form onSubmit={submit} className="workflow-form">
       <div className="form-grid">
         <label><span>Name</span><input name="name" required placeholder="Customer or company" /></label>
         <label><span>Email</span><input name="email" type="email" placeholder="customer@example.com" /></label>
@@ -74,7 +80,8 @@ export function JobCreateForm({ customers }: { customers: CustomerOption[] }) {
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function submit(formData: FormData) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    const formData = formDataFrom(event);
     setMessage(null);
     startTransition(async () => {
       try {
@@ -96,7 +103,7 @@ export function JobCreateForm({ customers }: { customers: CustomerOption[] }) {
   }
 
   return (
-    <form action={submit} className="workflow-form">
+    <form onSubmit={submit} className="workflow-form">
       <div className="form-grid">
         <label>
           <span>Customer</span>
@@ -121,7 +128,8 @@ export function AppointmentCreateForm({ jobs }: { jobs: JobOption[] }) {
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function submit(formData: FormData) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    const formData = formDataFrom(event);
     setMessage(null);
     startTransition(async () => {
       try {
@@ -138,7 +146,7 @@ export function AppointmentCreateForm({ jobs }: { jobs: JobOption[] }) {
   }
 
   return (
-    <form action={submit} className="workflow-form compact-form">
+    <form onSubmit={submit} className="workflow-form compact-form">
       <div className="form-grid">
         <label className="span-2">
           <span>Job</span>
@@ -205,7 +213,8 @@ export function PaymentForm({ invoices }: { invoices: InvoiceOption[] }) {
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function submit(formData: FormData) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    const formData = formDataFrom(event);
     setMessage(null);
     startTransition(async () => {
       try {
@@ -224,7 +233,7 @@ export function PaymentForm({ invoices }: { invoices: InvoiceOption[] }) {
   }
 
   return (
-    <form action={submit} className="workflow-form compact-form">
+    <form onSubmit={submit} className="workflow-form compact-form">
       <div className="form-grid">
         <label>
           <span>Invoice</span>
