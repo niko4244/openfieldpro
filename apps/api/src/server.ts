@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
@@ -15,6 +16,7 @@ import { reportRoutes } from "./routes/reports.js";
 import { recurringRoutes } from "./routes/recurring.js";
 import { publicRoutes } from "./routes/public.js";
 import { activityRoutes } from "./routes/activities.js";
+import { syncRoutes } from "./routes/sync.js";
 
 export function buildServer() {
   const app = Fastify({ logger: true });
@@ -34,11 +36,12 @@ export function buildServer() {
   app.register(recurringRoutes, { prefix: "/api/recurring" });
   app.register(publicRoutes, { prefix: "/api/public" });
   app.register(activityRoutes, { prefix: "/api/activities" });
+  app.register(syncRoutes);
   return app;
 }
 
 // Only listen when run directly (not when imported by tests).
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const port = Number(process.env.API_PORT ?? 3001);
   buildServer()
