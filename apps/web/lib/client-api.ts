@@ -63,6 +63,17 @@ export function scheduleAppointment(input: { jobId: string; startsAt: string; en
   return request<{ id: string }>("/api/appointments", { method: "POST", body: JSON.stringify(input) });
 }
 
+export function assignDispatchJob(
+  jobId: string,
+  input: { technicianId?: string | null; startsAt?: string; endsAt?: string },
+) {
+  return request<{ jobId: string }>(`/api/dispatch/jobs/${jobId}/assign`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateDispatchStatus(jobId: string, status: "lead" | "scheduled" | "in_progress" | "completed" | "canceled") {
+  return request<{ id: string; status: string }>(`/api/dispatch/jobs/${jobId}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+}
+
 export function createInvoice(input: { jobId: string; dueAt?: string; poNumber?: string }) {
   return request<{ id: string; number: string }>("/api/invoices", { method: "POST", body: JSON.stringify(input) });
 }
