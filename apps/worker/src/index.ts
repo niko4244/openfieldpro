@@ -1,7 +1,6 @@
 // OpenFieldPro background worker: materializes due recurring jobs and sends
-// appointment reminders. Polling-based (no BullMQ dependency yet) — a tick runs
-// every WORKER_INTERVAL_MS. ponytail: polling is fine at this cadence; the
-// upgrade path is BullMQ + Redis (already in the infra) when volume demands it.
+// appointment reminders. Polling-based for the starter stack; Redis is already
+// available when the workload is ready to move to BullMQ-backed jobs.
 import { and, eq, lte, gte } from "drizzle-orm";
 import { db, recurringJobs, jobs, appointments } from "@ofp/db";
 import { catchUp } from "../../api/src/recurrence.ts";
@@ -30,8 +29,8 @@ async function materializeRecurring(now: Date) {
 }
 
 async function sendReminders(now: Date) {
-  // Appointments starting in the next 24h. (A reminded_at column would dedupe
-  // in production; omitted here to keep the migration small.)
+  // Appointments starting in the next 24h. A reminded_at column should be added
+  // before production reminder delivery to dedupe outbound notifications.
   const soon = new Date(now.getTime() + 24 * 3_600_000);
   const upcoming = await db
     .select()
