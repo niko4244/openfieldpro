@@ -18,8 +18,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (isPublic) {
     return (
-      <div className="public-frame">
-        <header className="public-topbar">
+      <div style={{ minHeight: "100vh", background: "#f6f8fb" }}>
+        <header
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderBottom: "1px solid #dbe3ee",
+            background: "rgba(255,255,255,0.92)",
+            padding: "16px clamp(16px, 4vw, 40px)",
+          }}
+        >
           <a className="brand" href="/" aria-label="OpenFieldPro">
             <span className="brand-mark">O</span>
             <span>
@@ -28,7 +37,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
           </a>
         </header>
-        <main className="public-content">{children}</main>
+        <main style={{ width: "min(980px, calc(100% - 32px))", margin: "0 auto", padding: "clamp(24px, 5vw, 58px) 0 60px" }}>
+          {children}
+        </main>
       </div>
     );
   }
