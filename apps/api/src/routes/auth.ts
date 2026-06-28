@@ -19,12 +19,17 @@ const loginBody = z.object({
   password: z.string().min(1),
 });
 
+function secureCookieEnabled() {
+  if (process.env.SESSION_COOKIE_SECURE) return process.env.SESSION_COOKIE_SECURE === "true";
+  return process.env.NODE_ENV === "production";
+}
+
 function setSessionCookie(reply: FastifyReply, token: string) {
   reply.setCookie(COOKIE_NAME, token, {
     path: "/",
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookieEnabled(),
     maxAge: WEEK_SECONDS,
   });
 }
