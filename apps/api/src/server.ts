@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import { healthRoutes } from "./routes/health.js";
@@ -16,10 +17,30 @@ import { recurringRoutes } from "./routes/recurring.js";
 import { publicRoutes } from "./routes/public.js";
 import { activityRoutes } from "./routes/activities.js";
 
+const DEFAULT_JWT_SECRET = "change-me-in-production";
+
+function requireJwtSecret(): string {
+  const secret = process.env.JWT_SECRET ?? DEFAULT_JWT_SECRET;
+  const isProduction = process.env.NODE_ENV === "production";
+  if (isProduction && (secret === DEFAULT_JWT_SECRET || secret.length < 32)) {
+    throw new Error("JWT_SECRET must be set to a strong secret before running in production.");
+  }
+  return secret;
+}
+
+function corsOrigins() {
+  const configured = process.env.CORS_ORIGIN;
+  return configured ? configured.split(",").map((origin) => origin.trim()).filter(Boolean) : true;
+}
+
 export function buildServer() {
   const app = Fastify({ logger: true });
-  app.register(cors, { origin: true });
-  app.register(jwt, { secret: process.env.JWT_SECRET ?? "change-me-in-production" });
+  app.register(cors, { origin: corsOrigins(), credentials: true });
+  app.register(cookie);
+  app.register(jwt, {
+    secret: requireJwtSecret(),
+    cookie: { cookieName: "ofp_token", signed: false },
+  });
   app.register(healthRoutes);
   app.register(authRoutes, { prefix: "/api/auth" });
   app.register(customerRoutes, { prefix: "/api/customers" });
@@ -27,7 +48,7 @@ export function buildServer() {
   app.register(appointmentRoutes, { prefix: "/api/appointments" });
   app.register(lineItemRoutes, { prefix: "/api" });
   app.register(invoiceRoutes, { prefix: "/api/invoices" });
-  app.register(stripeWebhookRoute, { prefix: "/api" }); // encapsulated raw-body parser
+  app.register(stripeWebhookRoute, { prefix: "/api" });
   app.register(estimateRoutes, { prefix: "/api/estimates" });
   app.register(reviewRoutes, { prefix: "/api/reviews" });
   app.register(reportRoutes, { prefix: "/api/reports" });
