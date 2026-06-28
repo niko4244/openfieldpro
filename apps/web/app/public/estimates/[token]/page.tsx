@@ -4,7 +4,7 @@ import { formatMoney } from "@ofp/shared";
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
 
 interface PublicEstimateDetail {
-  estimate: { id: string; total: number; accepted: boolean; publicToken: string; createdAt: string };
+  estimate: { id: string; total: number; accepted: boolean; publicToken?: string | null; createdAt: string };
   job: { id: string; title: string; description?: string | null };
   customer?: { id: string; name: string } | null;
   org?: { id: string; name: string } | null;
