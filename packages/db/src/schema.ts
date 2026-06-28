@@ -3,7 +3,7 @@
 //
 // Phase-1 modules covered: orgs, users/technicians, customers, properties,
 // jobs (work orders), line items, estimates, invoices, payments, appointments.
-// Each table mirrors a HouseCall Pro concept so the remaining UI is mechanical.
+// Each table mirrors a field-service workflow concept so the remaining UI is mechanical.
 
 import { sql } from "drizzle-orm";
 import {
@@ -45,6 +45,27 @@ export const orgs = pgTable("orgs", {
   timezone: text("timezone").default("America/New_York").notNull(),
   createdAt: ts(),
 });
+
+export const invoiceTemplates = pgTable(
+  "invoice_templates",
+  {
+    id: id(),
+    orgId: orgId(),
+    companyName: text("company_name").notNull(),
+    logoUrl: text("logo_url"),
+    accentColor: text("accent_color").default("#2463eb").notNull(),
+    templateStyle: text("template_style").default("modern").notNull(),
+    invoicePrefix: text("invoice_prefix").default("INV").notNull(),
+    paymentTerms: text("payment_terms").default("Due on receipt").notNull(),
+    memo: text("memo").default("Thank you for your business.").notNull(),
+    footer: text("footer").default("Questions? Contact us before paying.").notNull(),
+    showLineItemPrices: boolean("show_line_item_prices").default(true).notNull(),
+    showPaymentHistory: boolean("show_payment_history").default(true).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: ts(),
+  },
+  (t) => ({ orgIdx: index("invoice_templates_org_idx").on(t.orgId) }),
+);
 
 export const users = pgTable(
   "users",
