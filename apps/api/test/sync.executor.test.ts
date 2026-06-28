@@ -28,12 +28,19 @@ function buildFakeDb(currentVersion: Map<string, number> = new Map()) {
   // execute()-call is the version-check query:
   //   SELECT version FROM <table> WHERE id = <entityId> LIMIT 1
   const fakeExecute = async (sqlFragment: unknown) => {
-    const params = ((sqlFragment as { params?: unknown[] })?.params ?? []) as unknown[];
-    // walk params for the rightmost string (entityId)
+    const chunks = (sqlFragment as { queryChunks?: unknown[] })?.queryChunks ?? [];
+    // walk chunks for the rightmost UUID-looking string (entityId)
     let entityId: string | undefined;
-    for (let i = params.length - 1; i >= 0; i--) {
-      if (typeof params[i] === "string") {
-        entityId = params[i] as string;
+    for (let i = chunks.length - 1; i >= 0; i--) {
+      const raw = chunks[i];
+      const v =
+        typeof raw === "string"
+          ? raw
+          : typeof raw === "object" && raw !== null
+            ? (raw as { value?: unknown }).value
+            : undefined;
+      if (typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v)) {
+        entityId = v;
         break;
       }
     }
@@ -87,6 +94,7 @@ function buildFakeDb(currentVersion: Map<string, number> = new Map()) {
 function makeChainWithReturning(): any {
   const chain: any = {};
   chain.execute = async () => undefined;
+  chain.where = () => chain;
   chain.returning = async () => [{ v: 0 }]; // bumped version after trigger
   return chain;
 }
@@ -131,7 +139,8 @@ test("applyOps: create with bad payload returns ok:false with parse error", asyn
     },
   ]);
   assert.equal(results[0].ok, false);
-  assert.match(results[0].error ?? "", /payload parse/);
+  assert.equal(results[0].error?.kind, "validation");
+  assert.match(results[0].error?.message ?? "", /payload parse/);
 });
 
 test("applyOps: unknown table returns 'unknown table' per-op", async () => {
