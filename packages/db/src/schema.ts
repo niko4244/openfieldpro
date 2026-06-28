@@ -133,16 +133,21 @@ export const lineItems = pgTable("line_items", {
   createdAt: ts(),
 });
 
-export const estimates = pgTable("estimates", {
-  id: id(),
-  orgId: orgId(),
-  jobId: uuid("job_id")
-    .notNull()
-    .references(() => jobs.id, { onDelete: "cascade" }),
-  total: integer("total").default(0).notNull(),
-  accepted: boolean("accepted").default(false).notNull(),
-  createdAt: ts(),
-});
+export const estimates = pgTable(
+  "estimates",
+  {
+    id: id(),
+    orgId: orgId(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    total: integer("total").default(0).notNull(),
+    accepted: boolean("accepted").default(false).notNull(),
+    publicToken: text("public_token"),
+    createdAt: ts(),
+  },
+  (t) => ({ publicTokenIdx: index("estimates_public_token_idx").on(t.publicToken) }),
+);
 
 export const invoices = pgTable(
   "invoices",
