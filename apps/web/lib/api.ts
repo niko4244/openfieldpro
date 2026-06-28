@@ -80,6 +80,58 @@ export interface ProgressInvoiceMilestoneDTO {
   createdAt: string;
 }
 
+export interface DispatchTechnicianDTO {
+  id: string;
+  name: string;
+  email?: string | null;
+  role?: string;
+}
+
+export interface DispatchCardDTO {
+  id: string;
+  title: string;
+  status: string;
+  total: number;
+  scheduledAt?: string | null;
+  appointment?: AppointmentDTO | null;
+  technician?: DispatchTechnicianDTO | null;
+  customer?: { id: string; name: string; phone?: string | null; email?: string | null } | null;
+  property?: { id: string; address: string; lat?: string | null; lng?: string | null } | null;
+  bucket: "unscheduled" | "scheduled" | "inProgress" | "completed";
+}
+
+export interface DispatchBoardDTO {
+  generatedAt: string;
+  technicians: DispatchTechnicianDTO[];
+  columns: {
+    unscheduled: DispatchCardDTO[];
+    scheduled: DispatchCardDTO[];
+    inProgress: DispatchCardDTO[];
+    completed: DispatchCardDTO[];
+  };
+}
+
+export interface RoutePlanDTO {
+  date: string;
+  technicianId: string | null;
+  totalKnownMiles: number;
+  missingCoordinateStops: number;
+  stops: Array<{
+    sequence: number;
+    appointmentId: string;
+    jobId: string;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    technicianId: string | null;
+    address: string | null;
+    lat: number | null;
+    lng: number | null;
+    driveMilesFromPrevious: number | null;
+    mapUrl: string | null;
+  }>;
+}
+
 export interface InvoiceTemplateDTO {
   companyName: string;
   companyAddress?: string | null;
@@ -156,6 +208,20 @@ export const api = {
     if (to) q.set("to", to);
     const qs = q.toString();
     return get<AppointmentDTO[]>(`/api/appointments${qs ? `?${qs}` : ""}`);
+  },
+  dispatchBoard: (from?: string, to?: string) => {
+    const q = new URLSearchParams();
+    if (from) q.set("from", from);
+    if (to) q.set("to", to);
+    const qs = q.toString();
+    return get<DispatchBoardDTO>(`/api/dispatch/board${qs ? `?${qs}` : ""}`);
+  },
+  routePlan: (date?: string, technicianId?: string) => {
+    const q = new URLSearchParams();
+    if (date) q.set("date", date);
+    if (technicianId) q.set("technicianId", technicianId);
+    const qs = q.toString();
+    return get<RoutePlanDTO>(`/api/dispatch/route-plan${qs ? `?${qs}` : ""}`);
   },
   invoices: () => get<InvoiceDTO[]>("/api/invoices"),
   invoice: (id: string) => get<InvoiceDetailDTO>(`/api/invoices/${id}`),
