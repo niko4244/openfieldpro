@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
@@ -20,7 +21,10 @@ export async function estimateRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const [job] = await db.select().from(jobs).where(and(eq(jobs.orgId, orgId), eq(jobs.id, parsed.data.jobId)));
     if (!job) return reply.code(404).send({ error: "job not found" });
-    const [row] = await db.insert(estimates).values({ orgId, jobId: job.id, total: job.total }).returning();
+    const [row] = await db
+      .insert(estimates)
+      .values({ orgId, jobId: job.id, total: job.total, publicToken: randomUUID() })
+      .returning();
     safeEmitActivity(orgId, "estimate.created", `Created estimate for $${(row.total / 100).toFixed(2)}`, { jobId: job.id });
     return reply.code(201).send(row);
   });
