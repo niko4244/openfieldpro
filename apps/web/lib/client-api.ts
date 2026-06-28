@@ -67,6 +67,10 @@ export function createInvoice(input: { jobId: string; dueAt?: string }) {
   return request<{ id: string; number: string }>("/api/invoices", { method: "POST", body: JSON.stringify(input) });
 }
 
+export function sendInvoice(id: string) {
+  return request<{ id: string; number: string; status: string }>(`/api/invoices/${id}/send`, { method: "POST" });
+}
+
 export function recordPayment(id: string, input: { amount: number; method: "manual" | "cash" | "check" | "card"; reference?: string }) {
   return request<{ status: string; remaining: number; overpaid: number }>(`/api/invoices/${id}/pay`, {
     method: "POST",
