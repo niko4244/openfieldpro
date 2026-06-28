@@ -29,6 +29,7 @@ export const invoiceStatus = pgEnum("invoice_status", [
 export const userRole = pgEnum("user_role", ["owner", "dispatcher", "technician"]);
 export const reminderChannel = pgEnum("reminder_channel", ["email", "sms", "manual"]);
 export const milestoneStatus = pgEnum("milestone_status", ["draft", "ready", "invoiced", "paid", "void"]);
+export const proposalTier = pgEnum("proposal_tier", ["good", "better", "best", "custom"]);
 
 const id = () => uuid("id").primaryKey().defaultRandom();
 const orgId = () =>
@@ -175,9 +176,29 @@ export const estimates = pgTable(
     total: integer("total").default(0).notNull(),
     accepted: boolean("accepted").default(false).notNull(),
     publicToken: text("public_token"),
+    acceptedOptionId: uuid("accepted_option_id"),
     createdAt: ts(),
   },
   (t) => ({ publicTokenIdx: index("estimates_public_token_idx").on(t.publicToken) }),
+);
+
+export const estimateOptions = pgTable(
+  "estimate_options",
+  {
+    id: id(),
+    orgId: orgId(),
+    estimateId: uuid("estimate_id")
+      .notNull()
+      .references(() => estimates.id, { onDelete: "cascade" }),
+    tier: proposalTier("tier").default("custom").notNull(),
+    title: text("title").notNull(),
+    description: text("description").default("").notNull(),
+    total: integer("total").default(0).notNull(),
+    included: text("included").default("").notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: ts(),
+  },
+  (t) => ({ estimateIdx: index("estimate_options_estimate_idx").on(t.orgId, t.estimateId) }),
 );
 
 export const invoices = pgTable(
