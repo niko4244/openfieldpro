@@ -1,14 +1,15 @@
-import { PublicEstimateAcceptButton } from "../../../../components/PublicEstimateActions";
+import { PublicEstimateAcceptButton, PublicEstimateOptionAcceptButton } from "../../../../components/PublicEstimateActions";
 import { formatMoney } from "@ofp/shared";
 
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
 
 interface PublicEstimateDetail {
-  estimate: { id: string; total: number; accepted: boolean; publicToken?: string | null; createdAt: string };
+  estimate: { id: string; total: number; accepted: boolean; acceptedOptionId?: string | null; publicToken?: string | null; createdAt: string };
   job: { id: string; title: string; description?: string | null };
   customer?: { id: string; name: string } | null;
   org?: { id: string; name: string } | null;
   lineItems: Array<{ description: string; quantity: number; unitPrice: number }>;
+  options: Array<{ id: string; tier: "good" | "better" | "best" | "custom"; title: string; description: string; total: number; included: string; sortOrder: number }>;
 }
 
 async function loadEstimate(token: string): Promise<PublicEstimateDetail> {
@@ -38,7 +39,7 @@ export default async function PublicEstimatePage({ params }: { params: Promise<{
             <div>
               <p className="eyebrow">Estimate from {data.org?.name ?? "OpenFieldPro"}</p>
               <h1>{data.job.title}</h1>
-              <p className="muted">Prepared for {data.customer?.name ?? "customer"}. Review the scope and accept when ready.</p>
+              <p className="muted">Prepared for {data.customer?.name ?? "customer"}. Review the scope and choose the option that fits best.</p>
             </div>
             <div className="command-panel">
               <span className="table-label">Estimate total</span>
@@ -46,9 +47,32 @@ export default async function PublicEstimatePage({ params }: { params: Promise<{
               <span className={data.estimate.accepted ? "status-pill status-completed" : "status-pill status-draft"}>
                 {data.estimate.accepted ? "accepted" : "awaiting approval"}
               </span>
-              <PublicEstimateAcceptButton token={token} accepted={data.estimate.accepted} />
+              {data.options.length === 0 && <PublicEstimateAcceptButton token={token} accepted={data.estimate.accepted} />}
             </div>
           </section>
+
+          {data.options.length > 0 && (
+            <section className="section-card">
+              <div className="section-header"><div><h2>Choose your proposal option</h2><p className="muted">Good / Better / Best packages keep approval clear without back-and-forth.</p></div></div>
+              <div className="metric-grid">
+                {data.options.map((option) => {
+                  const accepted = data.estimate.accepted && data.estimate.acceptedOptionId === option.id;
+                  return (
+                    <article className="metric-card" key={option.id}>
+                      <span>{option.tier}</span>
+                      <strong>{option.title}</strong>
+                      <p className="muted">{option.description}</p>
+                      <h2>{formatMoney(option.total)}</h2>
+                      <div className="empty-state" style={{ textAlign: "left" }}>
+                        {option.included.split("\n").filter(Boolean).map((line) => <p key={line}>• {line}</p>)}
+                      </div>
+                      <PublicEstimateOptionAcceptButton token={token} optionId={option.id} accepted={accepted} />
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           <section className="split-grid">
             <div className="section-card">
@@ -66,7 +90,7 @@ export default async function PublicEstimatePage({ params }: { params: Promise<{
             </div>
 
             <aside className="section-card">
-              <div className="section-header"><div><h2>Next step</h2><p className="muted">Approving the estimate notifies the business workflow and moves the job toward scheduling.</p></div></div>
+              <div className="section-header"><div><h2>Next step</h2><p className="muted">Approving an option notifies the business workflow and moves the job toward scheduling.</p></div></div>
               <p className="muted">This page is intentionally customer-facing and does not expose internal cost, margin, or private shop data.</p>
             </aside>
           </section>
