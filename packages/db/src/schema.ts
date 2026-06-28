@@ -194,11 +194,15 @@ export const invoices = pgTable(
     total: integer("total").default(0).notNull(),
     taxRateBps: integer("tax_rate_bps").default(0).notNull(),
     discountCents: integer("discount_cents").default(0).notNull(),
+    publicToken: text("public_token"),
     dueAt: timestamp("due_at", { withTimezone: true }),
     lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
     createdAt: ts(),
   },
-  (t) => ({ orgStatus: index("invoices_org_status_idx").on(t.orgId, t.status) }),
+  (t) => ({
+    orgStatus: index("invoices_org_status_idx").on(t.orgId, t.status),
+    publicTokenIdx: index("invoices_public_token_idx").on(t.publicToken),
+  }),
 );
 
 export const invoiceReminderSchedules = pgTable(
