@@ -1,6 +1,7 @@
+import { cookies } from "next/headers";
 import type { CustomerDTO, JobDTO, ReportSummaryDTO, ActivityDTO } from "@ofp/shared";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
 
 export interface AppointmentDTO {
   id: string;
@@ -19,8 +20,20 @@ export interface InvoiceDTO {
   dueAt: string | null;
 }
 
+async function authHeaders(): Promise<HeadersInit> {
+  try {
+    const token = (await cookies()).get("ofp_token")?.value;
+    return token ? { authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
+  const res = await fetch(`${BASE}${path}`, {
+    cache: "no-store",
+    headers: await authHeaders(),
+  });
   if (!res.ok) throw new Error(`${path} -> ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -47,14 +60,3 @@ export const api = {
   reports: () => get<ReportSummaryDTO>("/api/reports/summary"),
   health: () => get<{ ok: boolean }>("/api/health"),
 };
-
-// Client-side login helper (used by the login form).
-export async function login(email: string, password: string) {
-  const res = await fetch(`${BASE}/api/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `login failed (${res.status})`);
-  return res.json() as Promise<{ token: string; orgId: string; user: { name: string; role: string } }>;
-}
