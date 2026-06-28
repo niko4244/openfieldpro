@@ -33,12 +33,27 @@ test("checkoutSessionPaymentCommand maps Stripe checkout metadata to payment com
   });
 });
 
+test("validateCheckoutSessionCommand accepts a complete command", () => {
+  const command = checkoutSessionPaymentCommand("evt_123", { id: "cs_123", payment_intent: "pi_123", amount_total: 100, metadata: { invoiceId: "inv-id", orgId: "org-id" } });
+  assert.equal(validateCheckoutSessionCommand(command), null);
+});
+
 test("validateCheckoutSessionCommand rejects missing invoice metadata", () => {
   const command = checkoutSessionPaymentCommand("evt_123", { id: "cs_123", payment_intent: "pi_123", amount_total: 100, metadata: { orgId: "org-id" } });
   assert.equal(validateCheckoutSessionCommand(command), "missing invoiceId metadata");
 });
 
+test("validateCheckoutSessionCommand rejects missing org metadata", () => {
+  const command = checkoutSessionPaymentCommand("evt_123", { id: "cs_123", payment_intent: "pi_123", amount_total: 100, metadata: { invoiceId: "inv-id" } });
+  assert.equal(validateCheckoutSessionCommand(command), "missing orgId metadata");
+});
+
 test("validateCheckoutSessionCommand rejects missing amount", () => {
   const command = checkoutSessionPaymentCommand("evt_123", { id: "cs_123", payment_intent: "pi_123", metadata: { invoiceId: "inv-id", orgId: "org-id" } });
   assert.equal(validateCheckoutSessionCommand(command), "missing amount_total");
+});
+
+test("validateCheckoutSessionCommand rejects missing Stripe payment identity", () => {
+  const command = checkoutSessionPaymentCommand("evt_123", { amount_total: 100, metadata: { invoiceId: "inv-id", orgId: "org-id" } });
+  assert.equal(validateCheckoutSessionCommand(command), "missing Stripe payment identity");
 });
