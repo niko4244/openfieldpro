@@ -11,6 +11,33 @@ export interface AppointmentDTO {
   endsAt: string;
 }
 
+export interface LineItemDTO {
+  id: string;
+  jobId: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  unitCost: number;
+  createdAt: string;
+}
+
+export interface EstimateDTO {
+  id: string;
+  jobId: string;
+  total: number;
+  accepted: boolean;
+  createdAt: string;
+}
+
+export interface PaymentDTO {
+  id: string;
+  invoiceId: string;
+  amount: number;
+  method: string;
+  reference?: string | null;
+  paidAt: string;
+}
+
 export interface InvoiceDTO {
   id: string;
   number: string;
@@ -18,6 +45,11 @@ export interface InvoiceDTO {
   total: number;
   jobId: string;
   dueAt: string | null;
+}
+
+export interface InvoiceDetailDTO extends InvoiceDTO {
+  lineItems: LineItemDTO[];
+  payments: PaymentDTO[];
 }
 
 async function authHeaders(): Promise<HeadersInit> {
@@ -49,6 +81,8 @@ export const api = {
     return get<ActivityDTO[]>(`/api/activities${qs ? `?${qs}` : ""}`);
   },
   jobs: () => get<JobDTO[]>("/api/jobs"),
+  lineItems: (jobId: string) => get<LineItemDTO[]>(`/api/jobs/${jobId}/line-items`),
+  estimates: () => get<EstimateDTO[]>("/api/estimates"),
   appointments: (from?: string, to?: string) => {
     const q = new URLSearchParams();
     if (from) q.set("from", from);
@@ -57,6 +91,7 @@ export const api = {
     return get<AppointmentDTO[]>(`/api/appointments${qs ? `?${qs}` : ""}`);
   },
   invoices: () => get<InvoiceDTO[]>("/api/invoices"),
+  invoice: (id: string) => get<InvoiceDetailDTO>(`/api/invoices/${id}`),
   reports: () => get<ReportSummaryDTO>("/api/reports/summary"),
   health: () => get<{ ok: boolean }>("/api/health"),
 };
