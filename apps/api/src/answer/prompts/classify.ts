@@ -110,7 +110,61 @@ ANTI-OVER-CLASSIFICATION (you are coder-trained; counter-bias here)
 
 OUTPUT ONLY THE JSON OBJECT. No prose, no fences, no \`\`\`.`;
 
-// ---------- 3. Builders -----------------------------------------------------
+// ---------- 3. Ollama config + classify function --------------------------
+
+const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
+const CLASSIFY_MODEL = process.env.CLASSIFY_MODEL ?? "qwen3-coder:480b-cloud";
+
+/** Feed a free-text prompt through the Ollama conductor classifier and return
+ *  the parsed ClassifyResult. Throws if the model is unreachable or the
+ *  response doesn't match the schema. */
+export async function classify(input: string): Promise<ClassifyResult> {
+  const messages = buildClassifyMessages(input).map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  const res = await fetch(`${OLLAMA_URL}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer ollama",
+    },
+    // ponytail: 10 s timeout so the 502 test finishes promptly when no Ollama
+    // is running. Ceiling: a cold model load on a busy machine can exceed 10 s.
+    // Upgrade: make the timeout configurable via env or per-request header.
+    signal: AbortSignal.timeout(10_000),
+    body: JSON.stringify({
+      model: CLASSIFY_MODEL,
+      messages,
+      response_format: { type: "json_object" },
+      temperature: 0.1,
+      max_tokens: 200,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Ollama error: HTTP ${res.status} — ${await res.text()}`);
+  }
+
+  const body = (await res.json()) as {
+    choices: Array<{ message: { content: string } }>;
+  };
+
+  const raw = body.choices?.[0]?.message?.content;
+  if (!raw) {
+    throw new Error("Ollama returned empty response");
+  }
+
+  const parsed = tryParseClassify(raw);
+  if (!parsed.ok) {
+    throw new Error(`classify parse failed: ${parsed.error}`);
+  }
+
+  return parsed.value;
+}
+
+// ---------- 4. Builders -----------------------------------------------------
 
 /** Builds the {system, user} message pair sent to /v1/chat/completions.
  *  Pure function — same input → same output, stable for snapshot testing. */
@@ -129,7 +183,7 @@ export function buildClassifyMessages(input: string): ReadonlyArray<{
   ];
 }
 
-// ---------- 4. Parser -------------------------------------------------------
+// ---------- 5. Parser -------------------------------------------------------
 
 /** Strip ```json / ``` / ```JSON fences that Ollama wraps around response_format
  *  output. Case-insensitive on the language tag. Idempotent. */
