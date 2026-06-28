@@ -121,13 +121,14 @@ export async function dispatchRoutes(app: FastifyInstance) {
     if (existing) {
       const startsAt = parsed.data.startsAt ? new Date(parsed.data.startsAt) : existing.startsAt;
       const endsAt = parsed.data.endsAt ? new Date(parsed.data.endsAt) : existing.endsAt;
+      const technicianId = parsed.data.technicianId === undefined ? existing.technicianId : parsed.data.technicianId;
       if (endsAt <= startsAt) return reply.code(400).send({ error: "endsAt must be after startsAt" });
       const [appointment] = await db
         .update(appointments)
-        .set({ technicianId: parsed.data.technicianId ?? existing.technicianId, startsAt, endsAt })
+        .set({ technicianId, startsAt, endsAt })
         .where(and(eq(appointments.orgId, orgId), eq(appointments.id, existing.id)))
         .returning();
-      await db.update(jobs).set({ assignedTo: appointment.technicianId, status: "scheduled" }).where(and(eq(jobs.orgId, orgId), eq(jobs.id, jobId)));
+      await db.update(jobs).set({ assignedTo: appointment.technicianId, status: "scheduled", scheduledAt: startsAt }).where(and(eq(jobs.orgId, orgId), eq(jobs.id, jobId)));
       safeEmitActivity(orgId, "dispatch.reassigned", `Updated dispatch assignment for ${job.title}`, { jobId });
       return { jobId, appointment };
     }
