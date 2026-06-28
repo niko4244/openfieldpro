@@ -7,6 +7,7 @@ import { authRoutes } from "./routes/auth.js";
 import { customerRoutes } from "./routes/customers.js";
 import { jobRoutes } from "./routes/jobs.js";
 import { appointmentRoutes } from "./routes/appointments.js";
+import { dispatchRoutes } from "./routes/dispatch.js";
 import { lineItemRoutes } from "./routes/lineitems.js";
 import { invoiceRoutes } from "./routes/invoices.js";
 import { invoiceTemplateRoutes } from "./routes/invoice-templates.js";
@@ -47,6 +48,7 @@ export function buildServer() {
   app.register(customerRoutes, { prefix: "/api/customers" });
   app.register(jobRoutes, { prefix: "/api/jobs" });
   app.register(appointmentRoutes, { prefix: "/api/appointments" });
+  app.register(dispatchRoutes, { prefix: "/api/dispatch" });
   app.register(lineItemRoutes, { prefix: "/api" });
   app.register(invoiceRoutes, { prefix: "/api/invoices" });
   app.register(invoiceTemplateRoutes, { prefix: "/api/invoice-template" });
