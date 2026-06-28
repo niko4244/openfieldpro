@@ -60,3 +60,83 @@ export interface ReportSummaryDTO {
   /** Margin on every job except `canceled` — the in-flight opportunity. */
   pipelineMarginCents: Money;
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 5a — offline mobile sync. PR 1 wireformat shared by server + mobile.
+// Ponytail: flat payload keeps DTO light; per-table validation happens in the
+// executor (apps/api/src/sync/executor.ts) using Zod. Adding a new table = add
+// a row to TABLES there. No TypeScript union gymnastics here.  Ceiling: if a
+// table's row shape grows past ~30 fields, swap to typed DTOs per table.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** Tables that participate in offline sync. Source-of-truth = packages/db/src/schema.ts. */
+export const SYNC_TABLES = [
+  "jobs",
+  "line_items",
+  "invoices",
+  "appointments",
+  "customers",
+  "estimates",
+  "payments",
+] as const;
+export type SyncOpTable = (typeof SYNC_TABLES)[number];
+
+export type SyncOpType = "create" | "update" | "delete";
+
+/**
+ * One mobile-originated mutation. The mobile client constructs these offline
+ * from its local SQLite mirror and POSTs them to /api/sync in batches.
+ */
+export interface SyncOpDTO {
+  /** Client-generated op id; echoed back verbatim so mobile can stitch acks. */
+  opId: string;
+  type: SyncOpType;
+  table: SyncOpTable;
+  /** Server-known entity id. For `create`, this is the client-supplied UUID
+   *  (idClient on hot-path tables). For `update`/`delete`, the server fetches
+   *  the row by this id. */
+  entityId: string;
+  /** Required for `update`/`delete`. Mobile keeps this echo from the last
+   *  delta-pulse download. If the server's current version differs, the
+   *  op returns `{ ok: false, conflict: { currentVersion } }`. */
+  baseVersion?: number;
+  /** Flat payload — keys match schema.ts column camelCase. Validated per
+   *  table in the executor. */
+  payload: Record<string, unknown>;
+}
+
+export interface SyncConflictDTO {
+  /** Server's current version — mobile merges or shows a conflict banner. */
+  currentVersion: number;
+}
+
+/**
+ * Discriminated error so mobile (PR 2/3) can decide retry policy:
+ *   - validation  → bad payload; mobile drops the op, surfaces a toast.
+ *   - retryable   → transient DB error (deadlock, connection blip); mobile retries.
+ *   - fatal       → connection lost mid-batch; mobile aborts and reconnects.
+ *   - unknown     → unclassified; mobile logs and surfaces.
+ */
+export type SyncErrorKind = "validation" | "retryable" | "fatal" | "unknown";
+
+export interface SyncErrorDTO {
+  kind: SyncErrorKind;
+  message: string;
+}
+
+export interface SyncResultDTO {
+  opId: string;
+  ok: boolean;
+  conflict?: SyncConflictDTO;
+  /** Structural error (validation / retryable / fatal / unknown). */
+  error?: SyncErrorDTO;
+}
+
+export interface SyncRequestDTO {
+  ops: SyncOpDTO[];
+}
+
+/** 200 OK with per-op results. Mobile iterates and acks each opId locally. */
+export interface SyncResponseDTO {
+  results: SyncResultDTO[];
+}
