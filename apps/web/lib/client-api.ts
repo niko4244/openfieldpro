@@ -34,7 +34,7 @@ export function updateJob(id: string, input: { status?: string; total?: number; 
 
 export function addLineItem(
   jobId: string,
-  input: { description: string; quantity: number; unitPrice: number; unitCost?: number },
+  input: { description: string; quantity: number; unitPrice: number; unitCost?: number; taxable?: boolean },
 ) {
   return request<{ lineItem: { id: string }; jobTotal: number; jobCostCents: number; jobMarginCents: number }>(
     `/api/jobs/${jobId}/line-items`,
@@ -63,27 +63,28 @@ export function scheduleAppointment(input: { jobId: string; startsAt: string; en
   return request<{ id: string }>("/api/appointments", { method: "POST", body: JSON.stringify(input) });
 }
 
-export function createInvoice(input: { jobId: string; dueAt?: string }) {
+export function createInvoice(input: { jobId: string; dueAt?: string; poNumber?: string }) {
   return request<{ id: string; number: string }>("/api/invoices", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function createProgressMilestone(jobId: string, input: { label: string; amountCents?: number; percentBps?: number; dueAt?: string }) {
+  return request<{ id: string }>(`/api/invoices/progress/${jobId}`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function invoiceProgressMilestone(id: string) {
+  return request<{ invoice: { id: string; number: string } }>(`/api/invoices/progress-milestones/${id}/invoice`, { method: "POST" });
 }
 
 export function sendInvoice(id: string) {
   return request<{ id: string; number: string; status: string }>(`/api/invoices/${id}/send`, { method: "POST" });
 }
 
-export function updateInvoiceTemplate(input: {
-  companyName: string;
-  logoUrl?: string;
-  accentColor: string;
-  templateStyle: "modern" | "classic" | "compact";
-  invoicePrefix: string;
-  paymentTerms: string;
-  memo: string;
-  footer: string;
-  showLineItemPrices: boolean;
-  showPaymentHistory: boolean;
-}) {
-  return request<typeof input>("/api/invoice-template", { method: "PUT", body: JSON.stringify(input) });
+export function updateInvoiceReminders(id: string, schedules: Array<{ daysAfterDue: number; channel: "email" | "sms" | "manual"; message: string; enabled: boolean }>) {
+  return request<{ invoiceId: string }>(`/api/invoices/${id}/reminders`, { method: "PUT", body: JSON.stringify({ schedules }) });
+}
+
+export function updateInvoiceTemplate(input: Record<string, unknown>) {
+  return request<Record<string, unknown>>("/api/invoice-template", { method: "PUT", body: JSON.stringify(input) });
 }
 
 export function recordPayment(id: string, input: { amount: number; method: "manual" | "cash" | "check" | "card"; reference?: string }) {
