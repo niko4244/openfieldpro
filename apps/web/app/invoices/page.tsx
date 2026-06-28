@@ -43,14 +43,14 @@ export default async function InvoicesPage() {
 
       <section className="split-grid">
         <div className="section-card">
-          <div className="section-header"><div><h2>Invoices</h2><p className="muted">Status, invoice number, and total at a glance.</p></div></div>
+          <div className="section-header"><div><h2>Invoices</h2><p className="muted">Open an invoice to inspect line items and payment history.</p></div></div>
           {error ? (
             <p className="notice error">API unreachable ({error}).</p>
           ) : (
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
-                  <tr><th>Number</th><th>Status</th><th>Total</th></tr>
+                  <tr><th>Number</th><th>Status</th><th>Total</th><th>Detail</th></tr>
                 </thead>
                 <tbody>
                   {invoices.map((invoice) => (
@@ -58,10 +58,11 @@ export default async function InvoicesPage() {
                       <td><strong>{invoice.number}</strong></td>
                       <td><span className={`status-pill status-${invoice.status}`}>{invoice.status}</span></td>
                       <td>{formatMoney(invoice.total)}</td>
+                      <td><a className="button compact" href={`/invoices/${invoice.id}`}>Open</a></td>
                     </tr>
                   ))}
                   {invoices.length === 0 && (
-                    <tr><td colSpan={3}>No invoices yet. Create one from a job workspace.</td></tr>
+                    <tr><td colSpan={4}>No invoices yet. Create one from a job workspace.</td></tr>
                   )}
                 </tbody>
               </table>
