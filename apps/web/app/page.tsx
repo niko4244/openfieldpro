@@ -40,12 +40,14 @@ export default async function Dashboard() {
             <a className="button primary" href="/jobs/new">Create job</a>
             <a className="button" href="/customers">Add customer</a>
             <a className="button" href="/schedule">Schedule board</a>
+            <a className="button" href="/field/today">Field mode</a>
           </div>
         </div>
         <div className="command-panel" aria-label="Next actions">
           <span className="table-label">Next actions</span>
           <a className="button full" href="/jobs/new">+ New customer/job</a>
           <a className="button full" href="/schedule">Schedule unscheduled work</a>
+          <a className="button full" href="/field/today">Open technician agenda</a>
           <a className="button primary full" href="/invoices">Collect {formatMoney(outstanding)}</a>
         </div>
       </section>
@@ -97,13 +99,13 @@ export default async function Dashboard() {
               </div>
               <div className="card-list">
                 {openInvoices.slice(0, 5).map((invoice) => (
-                  <div className="list-row" key={invoice.id}>
+                  <a className="list-row" key={invoice.id} href={`/invoices/${invoice.id}`}>
                     <div>
                       <strong>{invoice.number}</strong>
                       <p className="muted">{formatMoney(invoice.total)}</p>
                     </div>
                     <span className={`status-pill status-${invoice.status}`}>{invoice.status}</span>
-                  </div>
+                  </a>
                 ))}
                 {openInvoices.length === 0 && <div className="empty-state">No open invoices.</div>}
               </div>
