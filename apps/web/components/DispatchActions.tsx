@@ -3,7 +3,13 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { assignDispatchJob, updateDispatchStatus } from "../lib/client-api";
-import type { DispatchTechnicianDTO } from "../lib/api";
+
+interface DispatchTechnicianOption {
+  id: string;
+  name: string;
+  email?: string | null;
+  role?: string;
+}
 
 function isoFromLocal(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
@@ -15,7 +21,7 @@ function Status({ message }: { message: string | null }) {
   return <p className={message.startsWith("Error") ? "notice error" : "notice success"}>{message}</p>;
 }
 
-export function DispatchAssignForm({ jobId, technicians }: { jobId: string; technicians: DispatchTechnicianDTO[] }) {
+export function DispatchAssignForm({ jobId, technicians }: { jobId: string; technicians: DispatchTechnicianOption[] }) {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
