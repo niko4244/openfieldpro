@@ -32,7 +32,7 @@ async function sendAppointmentReminders(now: Date) {
     .from(appointments)
     .where(and(gte(appointments.startsAt, now), lte(appointments.startsAt, soon)));
   for (const a of upcoming) {
-    await notify("Upcoming appointment", `Job ${a.jobId.slice(0, 8)} at ${a.startsAt.toISOString()}`);
+    await notify("Upcoming appointment", `Job ${a.jobId.slice(0, 8)} at ${a.startsAt.toISOString()}`, "app");
   }
 }
 
@@ -52,7 +52,7 @@ async function sendInvoiceReminders(now: Date) {
     const fireAt = new Date(invoice.dueAt.getTime() + schedule.daysAfterDue * 24 * 3_600_000);
     if (fireAt > now) continue;
 
-    await notify(`Invoice ${invoice.number}`, schedule.message);
+    await notify(`Invoice ${invoice.number}`, schedule.message, schedule.channel);
     await db
       .update(invoiceReminderSchedules)
       .set({ lastSentAt: now })
