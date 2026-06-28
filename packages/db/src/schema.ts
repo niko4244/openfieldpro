@@ -287,6 +287,22 @@ export const payments = pgTable(
   }),
 );
 
+export const stripeWebhookEvents = pgTable(
+  "stripe_webhook_events",
+  {
+    id: id(),
+    eventId: text("event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    orgId: uuid("org_id").references(() => orgs.id, { onDelete: "set null" }),
+    invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+    status: text("status").default("received").notNull(),
+    error: text("error"),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    createdAt: ts(),
+  },
+  (t) => ({ eventUidx: uniqueIndex("stripe_webhook_events_event_uidx").on(t.eventId) }),
+);
+
 export const recurringJobs = pgTable("recurring_jobs", {
   id: id(),
   orgId: orgId(),
