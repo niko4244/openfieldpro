@@ -10,6 +10,7 @@ const navItems = [
   { href: "/schedule", label: "Schedule", icon: "◫" },
   { href: "/estimates", label: "Quotes", icon: "◇" },
   { href: "/invoices", label: "Invoices", icon: "$" },
+  { href: "/settings/invoice", label: "Settings", icon: "⚙" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
