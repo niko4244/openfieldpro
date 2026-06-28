@@ -107,9 +107,13 @@ export const customers = pgTable(
     email: text("email"),
     phone: text("phone"),
     notes: text("notes"),
+    publicToken: text("public_token"),
     createdAt: ts(),
   },
-  (t) => ({ orgIdx: index("customers_org_idx").on(t.orgId) }),
+  (t) => ({
+    orgIdx: index("customers_org_idx").on(t.orgId),
+    publicTokenIdx: uniqueIndex("customers_public_token_uidx").on(t.publicToken),
+  }),
 );
 
 export const properties = pgTable("properties", {
