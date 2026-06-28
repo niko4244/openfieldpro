@@ -1,6 +1,7 @@
 import { api, type DispatchCardDTO } from "../../lib/api";
 import { formatMoney } from "@ofp/shared";
 import { DispatchAssignForm, DispatchStatusButtons } from "../../components/DispatchActions";
+import { DispatchLaneDropZone, DraggableDispatchCard } from "../../components/DispatchDragDrop";
 
 function todayWindow() {
   const start = new Date();
@@ -12,32 +13,36 @@ function todayWindow() {
 
 function Card({ card, technicians }: { card: DispatchCardDTO; technicians: Awaited<ReturnType<typeof api.dispatchBoard>>["technicians"] }) {
   return (
-    <article className="list-row" style={{ alignItems: "stretch", flexDirection: "column" }}>
-      <div className="section-header">
-        <div>
-          <strong>{card.title}</strong>
-          <p className="muted">{card.customer?.name ?? "Customer"} · {formatMoney(card.total)}</p>
-          <p className="muted">{card.property?.address ?? "No service address"}</p>
-          <p className="muted">{card.appointment ? `${new Date(card.appointment.startsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}–${new Date(card.appointment.endsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "No appointment"} · {card.technician?.name ?? "Unassigned"}</p>
+    <DraggableDispatchCard jobId={card.id}>
+      <article className="list-row" style={{ alignItems: "stretch", flexDirection: "column" }}>
+        <div className="section-header">
+          <div>
+            <strong>{card.title}</strong>
+            <p className="muted">{card.customer?.name ?? "Customer"} · {formatMoney(card.total)}</p>
+            <p className="muted">{card.property?.address ?? "No service address"}</p>
+            <p className="muted">{card.appointment ? `${new Date(card.appointment.startsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}–${new Date(card.appointment.endsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "No appointment"} · {card.technician?.name ?? "Unassigned"}</p>
+          </div>
+          <span className={`status-pill status-${card.status}`}>{card.status.replaceAll("_", " ")}</span>
         </div>
-        <span className={`status-pill status-${card.status}`}>{card.status.replaceAll("_", " ")}</span>
-      </div>
-      <DispatchStatusButtons jobId={card.id} status={card.status} />
-      <DispatchAssignForm jobId={card.id} technicians={technicians} />
-      <a className="button compact" href={`/jobs/${card.id}`}>Open job</a>
-    </article>
+        <DispatchStatusButtons jobId={card.id} status={card.status} />
+        <DispatchAssignForm jobId={card.id} technicians={technicians} />
+        <a className="button compact" href={`/jobs/${card.id}`}>Open job</a>
+      </article>
+    </DraggableDispatchCard>
   );
 }
 
-function Column({ title, cards, technicians }: { title: string; cards: DispatchCardDTO[]; technicians: Awaited<ReturnType<typeof api.dispatchBoard>>["technicians"] }) {
+function Column({ title, status, cards, technicians }: { title: string; status: "lead" | "scheduled" | "in_progress" | "completed"; cards: DispatchCardDTO[]; technicians: Awaited<ReturnType<typeof api.dispatchBoard>>["technicians"] }) {
   return (
-    <section className="section-card">
-      <div className="section-header"><div><h2>{title}</h2><p className="muted">{cards.length} job{cards.length === 1 ? "" : "s"}</p></div></div>
-      <div className="card-list">
-        {cards.map((card) => <Card key={card.id} card={card} technicians={technicians} />)}
-        {cards.length === 0 && <div className="empty-state">No jobs in this lane.</div>}
-      </div>
-    </section>
+    <DispatchLaneDropZone title={title} targetStatus={status}>
+      <section className="section-card">
+        <div className="section-header"><div><h2>{title}</h2><p className="muted">{cards.length} job{cards.length === 1 ? "" : "s"} · drag jobs here to move lanes</p></div></div>
+        <div className="card-list">
+          {cards.map((card) => <Card key={card.id} card={card} technicians={technicians} />)}
+          {cards.length === 0 && <div className="empty-state">No jobs in this lane.</div>}
+        </div>
+      </section>
+    </DispatchLaneDropZone>
   );
 }
 
@@ -62,7 +67,7 @@ export default async function DispatchPage() {
         <div>
           <p className="eyebrow">Dispatch board</p>
           <h1>Assign, sequence, and move field work.</h1>
-          <p className="muted">HCP-style dispatch control: lanes for unscheduled, scheduled, in-progress, and completed work, plus route-planning visibility for today.</p>
+          <p className="muted">HCP-style dispatch control: drag jobs between lanes, assign/reschedule technicians, and inspect route mileage for today.</p>
           <div className="hero-actions"><a className="button" href="/schedule">Calendar</a><a className="button" href="/field/today">Field mode</a></div>
         </div>
         <div className="command-panel">
@@ -84,12 +89,12 @@ export default async function DispatchPage() {
           </section>
 
           <section className="split-grid">
-            <Column title="Unscheduled" cards={board.columns.unscheduled} technicians={board.technicians} />
-            <Column title="Scheduled" cards={board.columns.scheduled} technicians={board.technicians} />
+            <Column title="Unscheduled" status="lead" cards={board.columns.unscheduled} technicians={board.technicians} />
+            <Column title="Scheduled" status="scheduled" cards={board.columns.scheduled} technicians={board.technicians} />
           </section>
           <section className="split-grid">
-            <Column title="In progress" cards={board.columns.inProgress} technicians={board.technicians} />
-            <Column title="Completed" cards={board.columns.completed} technicians={board.technicians} />
+            <Column title="In progress" status="in_progress" cards={board.columns.inProgress} technicians={board.technicians} />
+            <Column title="Completed" status="completed" cards={board.columns.completed} technicians={board.technicians} />
           </section>
 
           <section className="section-card">
