@@ -30,3 +30,30 @@ export function PublicEstimateAcceptButton({ token, accepted }: { token: string;
     </div>
   );
 }
+
+export function PublicEstimateOptionAcceptButton({ token, optionId, accepted }: { token: string; optionId: string; accepted: boolean }) {
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(accepted ? "Option accepted." : null);
+
+  function accept() {
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch(`${BASE}/api/public/estimates/${token}/options/${optionId}/accept`, { method: "POST" });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `accept failed (${res.status})`);
+        setMessage("Option accepted. The business can now schedule your work.");
+      } catch (e) {
+        setMessage(`Error: ${(e as Error).message}`);
+      }
+    });
+  }
+
+  return (
+    <div className="action-panel">
+      <button className="button primary" disabled={pending || accepted || message?.startsWith("Option accepted")} onClick={accept}>
+        {pending ? "Accepting…" : accepted ? "Accepted" : "Choose this option"}
+      </button>
+      {message && <p className={message.startsWith("Error") ? "notice error" : "notice success"}>{message}</p>}
+    </div>
+  );
+}
