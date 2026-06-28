@@ -4,40 +4,49 @@ import type { ReportSummaryDTO } from "@ofp/shared";
 
 export default async function Dashboard() {
   let jobs: Awaited<ReturnType<typeof api.jobs>> = [];
+  let appointments: Awaited<ReturnType<typeof api.appointments>> = [];
+  let invoices: Awaited<ReturnType<typeof api.invoices>> = [];
   let summary: ReportSummaryDTO | null = null;
   let error: string | null = null;
 
   try {
-    [jobs, summary] = await Promise.all([api.jobs(), api.reports().catch(() => null)]);
+    [jobs, appointments, invoices, summary] = await Promise.all([
+      api.jobs(),
+      api.appointments(),
+      api.invoices(),
+      api.reports().catch(() => null),
+    ]);
   } catch (e) {
     error = (e as Error).message;
   }
 
-  let scheduled = 0;
-  let completedRevenue = 0;
-  for (const job of jobs) {
-    if (job.status === "scheduled") scheduled += 1;
-    if (job.status === "completed") completedRevenue += job.total;
-  }
+  const unassigned = jobs.filter((job) => job.status === "lead");
+  const active = jobs.filter((job) => job.status === "scheduled" || job.status === "in_progress");
+  const openInvoices = invoices.filter((invoice) => invoice.status === "sent" || invoice.status === "draft");
+  const outstanding = openInvoices.reduce((sum, invoice) => sum + invoice.total, 0);
+  const todayKey = new Date().toDateString();
+  const todayAppointments = appointments.filter((appointment) => new Date(appointment.startsAt).toDateString() === todayKey);
 
   return (
     <div className="page-stack">
       <section className="hero-panel">
         <div>
-          <p className="eyebrow">Operations dashboard</p>
-          <h1>Run the day from one clean workspace.</h1>
+          <p className="eyebrow">Today command center</p>
+          <h1>See the next job, the stuck work, and the money waiting.</h1>
           <p className="muted">
-            Track jobs, schedule pressure, revenue, and margin without bouncing between paper, texts, and spreadsheets.
+            OpenFieldPro now starts like an operator cockpit: create work, schedule it, invoice it, and record payment from the core workflow loop.
           </p>
           <div className="hero-actions">
-            <a className="button primary" href="/customers">Review customers</a>
-            <a className="button" href="/schedule">Open schedule</a>
+            <a className="button primary" href="/jobs/new">Create job</a>
+            <a className="button" href="/customers">Add customer</a>
+            <a className="button" href="/schedule">Schedule board</a>
           </div>
         </div>
-        <div className="hero-summary" aria-label="Today summary">
-          <span className="table-label">Pipeline margin</span>
-          <strong>{formatMoney(summary?.pipelineMarginCents ?? 0)}</strong>
-          <p className="muted">Live margin estimate across every non-canceled job in the current shop.</p>
+        <div className="command-panel" aria-label="Next actions">
+          <span className="table-label">Next actions</span>
+          <a className="button full" href="/jobs/new">+ New customer/job</a>
+          <a className="button full" href="/schedule">Schedule unscheduled work</a>
+          <a className="button primary full" href="/invoices">Collect {formatMoney(outstanding)}</a>
         </div>
       </section>
 
@@ -50,31 +59,54 @@ export default async function Dashboard() {
       ) : (
         <>
           <section className="metric-grid" aria-label="Business metrics">
-            <Metric label="Open jobs" value={String(jobs.length)} />
-            <Metric label="Scheduled" value={String(scheduled)} />
-            <Metric label="Completed revenue" value={formatMoney(completedRevenue)} />
-            <Metric label="Realized margin" value={formatMoney(summary?.realizedMarginCents ?? 0)} />
+            <Metric label="Today" value={String(todayAppointments.length)} />
+            <Metric label="Unscheduled" value={String(unassigned.length)} />
+            <Metric label="Active work" value={String(active.length)} />
+            <Metric label="Pipeline margin" value={formatMoney(summary?.pipelineMarginCents ?? 0)} />
           </section>
 
-          <section className="section-card">
-            <div className="section-header">
-              <div>
-                <h2>Recent jobs</h2>
-                <p className="muted">Latest work orders by status and value.</p>
-              </div>
-              <a className="button compact" href="/schedule">Dispatch view</a>
-            </div>
-            <div className="card-list">
-              {jobs.map((job) => (
-                <div className="list-row" key={job.id}>
-                  <div>
-                    <strong>{job.title}</strong>
-                    <p className="muted">{formatMoney(job.total)} · customer {job.customerId.slice(0, 8)}</p>
-                  </div>
-                  <span className={`status-pill status-${job.status}`}>{job.status.replaceAll("_", " ")}</span>
+          <section className="split-grid">
+            <div className="section-card">
+              <div className="section-header">
+                <div>
+                  <h2>Work needing attention</h2>
+                  <p className="muted">Lead and active jobs are surfaced first.</p>
                 </div>
-              ))}
-              {jobs.length === 0 && <div className="empty-state">No jobs yet.</div>}
+                <a className="button compact" href="/jobs">All jobs</a>
+              </div>
+              <div className="card-list">
+                {[...unassigned, ...active].slice(0, 8).map((job) => (
+                  <a className="list-row with-rail" key={job.id} href={`/jobs/${job.id}`}>
+                    <div>
+                      <strong>{job.title}</strong>
+                      <p className="muted">{formatMoney(job.total)} · customer {job.customerId.slice(0, 8)}</p>
+                    </div>
+                    <span className={`status-pill status-${job.status}`}>{job.status.replaceAll("_", " ")}</span>
+                  </a>
+                ))}
+                {jobs.length === 0 && <div className="empty-state">No jobs yet. Create your first job to start the workflow.</div>}
+              </div>
+            </div>
+
+            <div className="section-card">
+              <div className="section-header">
+                <div>
+                  <h2>Money queue</h2>
+                  <p className="muted">Invoices that still need sending, follow-up, or payment.</p>
+                </div>
+              </div>
+              <div className="card-list">
+                {openInvoices.slice(0, 5).map((invoice) => (
+                  <div className="list-row" key={invoice.id}>
+                    <div>
+                      <strong>{invoice.number}</strong>
+                      <p className="muted">{formatMoney(invoice.total)}</p>
+                    </div>
+                    <span className={`status-pill status-${invoice.status}`}>{invoice.status}</span>
+                  </div>
+                ))}
+                {openInvoices.length === 0 && <div className="empty-state">No open invoices.</div>}
+              </div>
             </div>
           </section>
         </>
