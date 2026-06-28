@@ -11,10 +11,9 @@ const createBody = z.object({
   quantity: z.number().int().positive().default(1),
   unitPrice: z.number().int().nonnegative(),
   unitCost: z.number().int().nonnegative().default(0),
+  taxable: z.boolean().default(true),
 });
 
-// Recompute the job's revenue, cost, and margin after line-item changes. Only
-// jobs.total is persisted; cost and margin remain derived response fields.
 async function recomputeJobTotals(orgId: string, jobId: string) {
   const [job] = await db
     .select({ laborCostCents: jobs.laborCostCents })
