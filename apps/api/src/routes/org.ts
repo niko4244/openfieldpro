@@ -1,27 +1,23 @@
-// Tenancy resolver. Phase 2: prefer the org_id from a verified JWT. Falls back
-// to the `x-org-id` header and then the first org (dev convenience) so the
-// existing customer/job routes keep working without a login during local dev.
-// ponytail: header/first-org fallback is dev-only. Ceiling: do NOT ship with the
-// fallback enabled in prod — gate it behind NODE_ENV !== "production".
+// Tenancy resolver. Prefer the org_id from a verified JWT. In local development
+// only, fall back to x-org-id and then the first seeded org so the starter app
+// can run before a browser login is wired.
 import type { FastifyRequest } from "fastify";
 import { db, orgs } from "@ofp/db";
 import type { JwtClaims } from "../auth.js";
 
 export async function resolveOrgId(req: FastifyRequest): Promise<string> {
-  // 1. Verified JWT (the real path once a client logs in).
   try {
     await req.jwtVerify();
     const claims = req.user as JwtClaims;
     if (claims?.orgId) return claims.orgId;
   } catch {
-    /* no/invalid token — fall through to dev fallbacks */
+    // No valid bearer token or session cookie; local-only fallbacks below.
   }
 
   if (process.env.NODE_ENV === "production") {
     throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
   }
 
-  // 2. Dev fallbacks.
   const header = req.headers["x-org-id"];
   if (typeof header === "string" && header) return header;
   const [first] = await db.select({ id: orgs.id }).from(orgs).limit(1);
