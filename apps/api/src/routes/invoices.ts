@@ -65,6 +65,24 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return reply.code(201).send(row);
   });
 
+  app.post("/:id/send", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+    const [inv] = await db
+      .select()
+      .from(invoices)
+      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
+    if (!inv) return reply.code(404).send({ error: "not found" });
+    if (inv.status === "void" || inv.status === "paid") return reply.code(400).send({ error: `cannot send ${inv.status} invoice` });
+    const [row] = await db
+      .update(invoices)
+      .set({ status: "sent" })
+      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)))
+      .returning();
+    safeEmitActivity(orgId, "invoice.sent", `Sent invoice ${row.number}`, { jobId: row.jobId });
+    return row;
+  });
+
   // Record a manual/offline payment (cash/check/card-on-terminal). Online card
   // payments go through /checkout + the Stripe webhook instead.
   app.post("/:id/pay", async (req, reply) => {
