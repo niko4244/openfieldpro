@@ -1,9 +1,5 @@
 // OpenFieldPro relational schema — the field-service domain.
 // Multi-tenant (org_id everywhere). Money stored as integer cents.
-//
-// Phase-1 modules covered: orgs, users/technicians, customers, properties,
-// jobs (work orders), line items, estimates, invoices, payments, appointments.
-// Each table mirrors a field-service workflow concept so the remaining UI is mechanical.
 
 import { sql } from "drizzle-orm";
 import {
@@ -31,6 +27,8 @@ export const invoiceStatus = pgEnum("invoice_status", [
   "void",
 ]);
 export const userRole = pgEnum("user_role", ["owner", "dispatcher", "technician"]);
+export const reminderChannel = pgEnum("reminder_channel", ["email", "sms", "manual"]);
+export const milestoneStatus = pgEnum("milestone_status", ["draft", "ready", "invoiced", "paid", "void"]);
 
 const id = () => uuid("id").primaryKey().defaultRandom();
 const orgId = () =>
@@ -112,8 +110,6 @@ export const customers = pgTable(
   (t) => ({ orgIdx: index("customers_org_idx").on(t.orgId) }),
 );
 
-// Service location(s) for a customer. lat/lng kept as numerics for now;
-// PostGIS geometry is available in the image for a later routing/dispatch upgrade.
 export const properties = pgTable("properties", {
   id: id(),
   orgId: orgId(),
@@ -203,6 +199,43 @@ export const invoices = pgTable(
     createdAt: ts(),
   },
   (t) => ({ orgStatus: index("invoices_org_status_idx").on(t.orgId, t.status) }),
+);
+
+export const invoiceReminderSchedules = pgTable(
+  "invoice_reminder_schedules",
+  {
+    id: id(),
+    orgId: orgId(),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    daysAfterDue: integer("days_after_due").default(0).notNull(),
+    channel: reminderChannel("channel").default("email").notNull(),
+    message: text("message").notNull(),
+    enabled: boolean("enabled").default(true).notNull(),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    createdAt: ts(),
+  },
+  (t) => ({ invoiceIdx: index("invoice_reminders_invoice_idx").on(t.orgId, t.invoiceId) }),
+);
+
+export const progressInvoiceMilestones = pgTable(
+  "progress_invoice_milestones",
+  {
+    id: id(),
+    orgId: orgId(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+    label: text("label").notNull(),
+    amountCents: integer("amount_cents").default(0).notNull(),
+    percentBps: integer("percent_bps").default(0).notNull(),
+    status: milestoneStatus("status").default("draft").notNull(),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    createdAt: ts(),
+  },
+  (t) => ({ jobIdx: index("progress_milestones_job_idx").on(t.orgId, t.jobId) }),
 );
 
 export const payments = pgTable("payments", {
