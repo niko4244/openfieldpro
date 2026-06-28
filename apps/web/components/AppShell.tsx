@@ -10,6 +10,7 @@ const navItems = [
   { href: "/schedule", label: "Schedule", icon: "◫" },
   { href: "/estimates", label: "Quotes", icon: "◇" },
   { href: "/invoices", label: "Invoices", icon: "$" },
+  { href: "/billing/progress", label: "Progress", icon: "%" },
   { href: "/settings/invoice", label: "Settings", icon: "⚙" },
 ];
 
@@ -83,7 +84,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="main-content">{children}</main>
 
       <nav className="bottom-nav" aria-label="Mobile navigation">
-        {navItems.map((item) => (
+        {navItems.slice(0, 6).map((item) => (
           <a key={item.href} href={item.href}>
             <span>{item.icon}</span>
             {item.label}
