@@ -29,13 +29,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             padding: "16px clamp(16px, 4vw, 40px)",
           }}
         >
-          <a className="brand" href="/" aria-label="OpenFieldPro">
+          <div className="brand" aria-label="OpenFieldPro">
             <span className="brand-mark">O</span>
             <span>
               <strong>OpenFieldPro</strong>
               <small>Estimate approval</small>
             </span>
-          </a>
+          </div>
         </header>
         <main style={{ width: "min(980px, calc(100% - 32px))", margin: "0 auto", padding: "clamp(24px, 5vw, 58px) 0 60px" }}>
           {children}
