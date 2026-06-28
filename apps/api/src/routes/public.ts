@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
-import { db, orgs, customers, jobs, estimates, lineItems, invoices, payments, invoiceTemplates, properties } from "@ofp/db";
+import { db, orgs, customers, jobs, estimates, estimateOptions, lineItems, invoices, payments, invoiceTemplates, properties } from "@ofp/db";
 import { safeEmitActivity } from "../activities.js";
 import { buildInvoicePdf } from "../invoice-pdf.js";
 
@@ -68,8 +68,32 @@ export async function publicRoutes(app: FastifyInstance) {
       .select({ description: lineItems.description, quantity: lineItems.quantity, unitPrice: lineItems.unitPrice })
       .from(lineItems)
       .where(and(eq(lineItems.orgId, estimate.orgId), eq(lineItems.jobId, estimate.jobId)));
+    const options = await db
+      .select()
+      .from(estimateOptions)
+      .where(and(eq(estimateOptions.orgId, estimate.orgId), eq(estimateOptions.estimateId, estimate.id)))
+      .orderBy(estimateOptions.sortOrder);
 
-    return { estimate, job, customer, org, lineItems: items };
+    return { estimate, job, customer, org, lineItems: items, options };
+  });
+
+  app.post("/estimates/:token/options/:optionId/accept", async (req, reply) => {
+    const { token, optionId } = req.params as { token: string; optionId: string };
+    const [estimate] = await db.select().from(estimates).where(eq(estimates.publicToken, token));
+    if (!estimate) return reply.code(404).send({ error: "estimate not found" });
+    const [option] = await db.select().from(estimateOptions).where(and(eq(estimateOptions.orgId, estimate.orgId), eq(estimateOptions.estimateId, estimate.id), eq(estimateOptions.id, optionId)));
+    if (!option) return reply.code(404).send({ error: "option not found" });
+    if (!estimate.accepted || estimate.acceptedOptionId !== option.id) {
+      await db.update(estimates).set({ accepted: true, acceptedOptionId: option.id, total: option.total }).where(and(eq(estimates.orgId, estimate.orgId), eq(estimates.id, estimate.id)));
+      await db.update(jobs).set({ status: "scheduled", total: option.total }).where(and(eq(jobs.orgId, estimate.orgId), eq(jobs.id, estimate.jobId)));
+      safeEmitActivity(
+        estimate.orgId,
+        "estimate.option.accepted.public",
+        `Customer accepted ${option.title} option for $${(option.total / 100).toFixed(2)}`,
+        { jobId: estimate.jobId },
+      );
+    }
+    return { ...estimate, accepted: true, acceptedOptionId: option.id, total: option.total, acceptedOption: option, jobStatus: "scheduled" };
   });
 
   app.post("/estimates/:token/accept", async (req, reply) => {
