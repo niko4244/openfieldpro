@@ -8,6 +8,21 @@ export interface PaymentApplication {
   overpaid: number; // cents paid beyond the total (for refunds/credit)
 }
 
+export interface PaymentCommand {
+  amount: number;
+  method: string;
+  reference?: string | null;
+  provider?: string | null;
+  providerPaymentId?: string | null;
+  idempotencyKey?: string | null;
+}
+
+export interface ExistingPaymentIdentity {
+  provider?: string | null;
+  providerPaymentId?: string | null;
+  idempotencyKey?: string | null;
+}
+
 /**
  * Apply a payment to an invoice. An invoice is `paid` once cumulative payments
  * cover the total; otherwise it stays `sent` (partially paid). Voids never flip.
@@ -29,6 +44,22 @@ export function applyPayment(
   const overpaid = Math.max(0, paidSoFar - total);
   const status: InvoiceStatus = remaining === 0 ? "paid" : "sent";
   return { paidSoFar, status, remaining, overpaid };
+}
+
+export function paymentIdentity(command: PaymentCommand) {
+  const provider = command.provider?.trim() || command.method || "manual";
+  const providerPaymentId = command.providerPaymentId?.trim() || command.reference?.trim() || null;
+  const idempotencyKey = command.idempotencyKey?.trim() || (providerPaymentId ? `${provider}:${providerPaymentId}` : null);
+  return { provider, providerPaymentId, idempotencyKey };
+}
+
+export function isDuplicatePayment(command: PaymentCommand, existing: ExistingPaymentIdentity[]) {
+  const identity = paymentIdentity(command);
+  return existing.some((row) => {
+    if (identity.idempotencyKey && row.idempotencyKey === identity.idempotencyKey) return true;
+    if (identity.providerPaymentId && row.provider === identity.provider && row.providerPaymentId === identity.providerPaymentId) return true;
+    return false;
+  });
 }
 
 /** Human invoice number from a per-org sequence. */

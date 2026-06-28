@@ -1,12 +1,8 @@
 import { api } from "../../lib/api";
 import { formatMoney } from "@ofp/shared";
+import { PaymentForm } from "../../components/WorkflowForms";
 
-const STATUS_COLOR: Record<string, string> = {
-  draft: "#8a97c2",
-  sent: "#e0b34f",
-  paid: "#86e29a",
-  void: "#ff8080",
-};
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
 
 export default async function InvoicesPage() {
   let invoices: Awaited<ReturnType<typeof api.invoices>> = [];
@@ -17,45 +13,76 @@ export default async function InvoicesPage() {
     error = (e as Error).message;
   }
 
-  const outstanding = invoices
-    .filter((i) => i.status === "sent" || i.status === "draft")
-    .reduce((a, i) => a + i.total, 0);
+  const openInvoices = invoices.filter((invoice) => invoice.status === "sent" || invoice.status === "draft");
+  const sentInvoices = invoices.filter((invoice) => invoice.status === "sent");
+  let outstanding = 0;
+  let paid = 0;
+  for (const invoice of invoices) {
+    if (invoice.status === "sent" || invoice.status === "draft") outstanding += invoice.total;
+    if (invoice.status === "paid") paid += invoice.total;
+  }
 
   return (
-    <div>
-      <h1>Invoices</h1>
-      {error ? (
-        <p style={{ color: "#ff8080" }}>API unreachable ({error}).</p>
-      ) : (
-        <>
-          <p style={{ color: "#8a97c2" }}>Outstanding: {formatMoney(outstanding)}</p>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "#8a97c2", fontSize: 13 }}>
-                <th style={{ padding: 8 }}>Number</th>
-                <th style={{ padding: 8 }}>Status</th>
-                <th style={{ padding: 8 }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((inv) => (
-                <tr key={inv.id} style={{ borderTop: "1px solid #1d2440" }}>
-                  <td style={{ padding: 8 }}>{inv.number}</td>
-                  <td style={{ padding: 8, color: STATUS_COLOR[inv.status] ?? "#e6e9f0" }}>{inv.status}</td>
-                  <td style={{ padding: 8 }}>{formatMoney(inv.total)}</td>
-                </tr>
-              ))}
-              {invoices.length === 0 && (
-                <tr>
-                  <td colSpan={3} style={{ padding: 8 }}>
-                    No invoices yet. Create one with <code>POST /api/invoices</code> {"{ jobId }"}.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </>
-      )}
+    <div className="page-stack">
+      <section className="hero-panel">
+        <div>
+          <p className="eyebrow">Billing</p>
+          <h1>Collect faster without losing invoice context.</h1>
+          <p className="muted">Create invoices from job workspaces, track follow-up, export receivables, download PDFs, share customer pages, and record payments from one billing queue.</p>
+          <div className="hero-actions">
+            <a className="button" href="/settings/invoice">Customize template</a>
+            <a className="button" href={`${API_BASE}/api/invoices/export.csv`}>Export CSV</a>
+          </div>
+        </div>
+        <div className="command-panel">
+          <span className="table-label">Outstanding</span>
+          <strong>{formatMoney(outstanding)}</strong>
+          <p className="muted">Draft and sent invoices still requiring follow-up.</p>
+        </div>
+      </section>
+
+      <section className="metric-grid" aria-label="Invoice metrics">
+        <div className="metric-card"><span>Total invoices</span><strong>{invoices.length}</strong></div>
+        <div className="metric-card"><span>Outstanding</span><strong>{formatMoney(outstanding)}</strong></div>
+        <div className="metric-card"><span>Paid</span><strong>{formatMoney(paid)}</strong></div>
+        <div className="metric-card"><span>Follow-up queue</span><strong>{sentInvoices.length}</strong></div>
+      </section>
+
+      <section className="split-grid">
+        <div className="section-card">
+          <div className="section-header"><div><h2>Invoices</h2><p className="muted">Open an invoice to inspect line items, customer page, template preview, payment history, PDF export, and reminder plan.</p></div></div>
+          {error ? (
+            <p className="notice error">API unreachable ({error}).</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Number</th><th>Status</th><th>Total</th><th>Follow-up</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                  {invoices.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <td><strong>{invoice.number}</strong></td>
+                      <td><span className={`status-pill status-${invoice.status}`}>{invoice.status}</span></td>
+                      <td>{formatMoney(invoice.total)}</td>
+                      <td>{invoice.status === "sent" ? <a className="button compact" href={`${API_BASE}/api/invoices/${invoice.id}/reminder-plan`}>Reminder plan</a> : <span className="muted">—</span>}</td>
+                      <td><div className="action-panel"><a className="button compact" href={`/invoices/${invoice.id}`}>Open</a>{invoice.publicToken && <a className="button compact" href={`/public/invoices/${invoice.publicToken}`}>Customer</a>}<a className="button compact" href={`${API_BASE}/api/invoices/${invoice.id}.pdf`}>PDF</a></div></td>
+                    </tr>
+                  ))}
+                  {invoices.length === 0 && (
+                    <tr><td colSpan={5}>No invoices yet. Create one from a job workspace.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <aside className="section-card">
+          <div className="section-header"><div><h2>Record payment</h2><p className="muted">For cash, check, manual, or card-terminal payments.</p></div></div>
+          {error ? <p className="notice error">API unreachable ({error}).</p> : <PaymentForm invoices={openInvoices} />}
+        </aside>
+      </section>
     </div>
   );
 }

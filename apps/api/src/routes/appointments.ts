@@ -70,17 +70,26 @@ export async function appointmentRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const parsed = patchBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { startsAt, endsAt, ...rest } = parsed.data;
+
+    const [existing] = await db
+      .select()
+      .from(appointments)
+      .where(and(eq(appointments.orgId, orgId), eq(appointments.id, id)));
+    if (!existing) return reply.code(404).send({ error: "not found" });
+
+    const startsAt = parsed.data.startsAt ? new Date(parsed.data.startsAt) : existing.startsAt;
+    const endsAt = parsed.data.endsAt ? new Date(parsed.data.endsAt) : existing.endsAt;
+    if (endsAt <= startsAt) return reply.code(400).send({ error: "endsAt must be after startsAt" });
+
     const [row] = await db
       .update(appointments)
       .set({
-        ...rest,
-        ...(startsAt ? { startsAt: new Date(startsAt) } : {}),
-        ...(endsAt ? { endsAt: new Date(endsAt) } : {}),
+        technicianId: parsed.data.technicianId,
+        ...(parsed.data.startsAt ? { startsAt } : {}),
+        ...(parsed.data.endsAt ? { endsAt } : {}),
       })
       .where(and(eq(appointments.orgId, orgId), eq(appointments.id, id)))
       .returning();
-    if (!row) return reply.code(404).send({ error: "not found" });
     return row;
   });
 }

@@ -1,14 +1,13 @@
 // Unified activity-log emitter. Callers go through this so the schema is
-// written consistently. Never throws — the originating action (billing,
-// scheduling) must not fail just because logging missed a beat.
+// written consistently. The emitter never throws; a primary billing or scheduling
+// action should not fail because the secondary activity log missed a write.
 //
-// Canonical `kind` vocabulary (mirrors packages/db/src/schema.ts comment):
+// Canonical kind vocabulary:
 //   job.created, line_item.added, line_item.removed, invoice.created,
 //   payment.received, appointment.scheduled, note.added
 //
-// Pass either customerId or jobId (or both). If only jobId is given the
-// emitter auto-resolves the customerId via a cheap select, so the customer
-// timeline page stays complete without callers having to re-look it up.
+// Pass either customerId or jobId (or both). If only jobId is given, the emitter
+// resolves the customerId so customer timeline pages stay complete.
 import { eq } from "drizzle-orm";
 import { db, activities, jobs } from "@ofp/db";
 
@@ -40,9 +39,8 @@ export async function safeEmitActivity(
       summary,
     });
   } catch (err) {
-    // ponytail: activity logging is best-effort; never block the user-visible
-    // action on a side-channel write. Ceiling: if/when audit-grade guarantees
-    // are required, swap to a transactional outbox + worker consumer.
+    // Best-effort logging for the current starter stack. Upgrade to a transactional
+    // outbox if activity history becomes audit-grade data.
     console.error(`[activities] emit failed (kind=${kind}):`, err);
   }
 }

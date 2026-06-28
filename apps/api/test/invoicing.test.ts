@@ -1,7 +1,7 @@
 // Runnable check (no DB): node --experimental-strip-types --test test/invoicing.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyPayment, invoiceNumber } from "../src/invoicing.ts";
+import { applyPayment, invoiceNumber, isDuplicatePayment, paymentIdentity } from "../src/invoicing.ts";
 
 test("full payment marks the invoice paid", () => {
   const r = applyPayment(18900, 0, 18900, "sent");
@@ -34,6 +34,43 @@ test("paying a void invoice throws", () => {
 
 test("non-positive payment is rejected", () => {
   assert.throws(() => applyPayment(100, 0, 0, "sent"));
+});
+
+test("payment identity uses explicit idempotency first", () => {
+  assert.deepEqual(paymentIdentity({ amount: 100, method: "card", provider: "stripe", providerPaymentId: "pi_123", idempotencyKey: "evt_123" }), {
+    provider: "stripe",
+    providerPaymentId: "pi_123",
+    idempotencyKey: "evt_123",
+  });
+});
+
+test("payment identity falls back to provider and reference", () => {
+  assert.deepEqual(paymentIdentity({ amount: 100, method: "check", reference: "check-55" }), {
+    provider: "check",
+    providerPaymentId: "check-55",
+    idempotencyKey: "check:check-55",
+  });
+});
+
+test("duplicate payment is detected by idempotency key", () => {
+  assert.equal(isDuplicatePayment(
+    { amount: 100, method: "card", provider: "stripe", providerPaymentId: "pi_123", idempotencyKey: "evt_123" },
+    [{ provider: "stripe", providerPaymentId: "pi_other", idempotencyKey: "evt_123" }],
+  ), true);
+});
+
+test("duplicate payment is detected by provider payment id", () => {
+  assert.equal(isDuplicatePayment(
+    { amount: 100, method: "card", provider: "stripe", providerPaymentId: "pi_123" },
+    [{ provider: "stripe", providerPaymentId: "pi_123", idempotencyKey: null }],
+  ), true);
+});
+
+test("different provider payment id is not a duplicate", () => {
+  assert.equal(isDuplicatePayment(
+    { amount: 100, method: "card", provider: "stripe", providerPaymentId: "pi_123" },
+    [{ provider: "stripe", providerPaymentId: "pi_999", idempotencyKey: null }],
+  ), false);
 });
 
 test("invoice numbers are sequential and zero-padded", () => {

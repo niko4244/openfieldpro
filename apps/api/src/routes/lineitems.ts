@@ -9,13 +9,11 @@ import { safeEmitActivity } from "../activities.js";
 const createBody = z.object({
   description: z.string().min(1),
   quantity: z.number().int().positive().default(1),
-  unitPrice: z.number().int().nonnegative(), // cents charged
-  unitCost: z.number().int().nonnegative().default(0), // cents it costs us
+  unitPrice: z.number().int().nonnegative(),
+  unitCost: z.number().int().nonnegative().default(0),
+  taxable: z.boolean().default(true),
 });
 
-// Recompute the job's revenue (jobs.total) plus its cost and margin. Persists
-// only `total` — cost and margin are derived fields surfaced in API responses,
-// not denormalized. Reads jobs.laborCostCents so labor participates in margin.
 async function recomputeJobTotals(orgId: string, jobId: string) {
   const [job] = await db
     .select({ laborCostCents: jobs.laborCostCents })

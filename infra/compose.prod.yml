@@ -1,11 +1,11 @@
 # OpenFieldPro production stack. Builds api/web/worker images and runs the full
-# data plane. Bring up with:  ./deploy.sh   (or podman compose -f infra/compose.prod.yml up -d --build)
+# data plane. Bring up with: ./deploy.sh
 services:
   postgres:
     image: postgis/postgis:16-3.4
     environment:
       POSTGRES_USER: ofp
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ofp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ofp
     volumes: ["../data/pg:/var/lib/postgresql/data"]
     healthcheck:
@@ -21,15 +21,14 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-ofpminio}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-ofpminio-secret}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
     volumes: ["../data/minio:/data"]
 
-  # One-shot: create tables then seed. Exits 0; api waits on it.
   migrate:
     build: { context: .., dockerfile: apps/api/Dockerfile }
     environment:
-      DATABASE_URL: postgres://ofp:${POSTGRES_PASSWORD:-ofp}@postgres:5432/ofp
+      DATABASE_URL: postgres://ofp:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/ofp
     depends_on:
       postgres: { condition: service_healthy }
     command: ["sh", "-c", "pnpm --filter @ofp/db push && pnpm --filter @ofp/db seed"]
@@ -38,9 +37,12 @@ services:
   api:
     build: { context: .., dockerfile: apps/api/Dockerfile }
     environment:
-      DATABASE_URL: postgres://ofp:${POSTGRES_PASSWORD:-ofp}@postgres:5432/ofp
+      DATABASE_URL: postgres://ofp:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/ofp
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:8080}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       NODE_ENV: production
@@ -52,13 +54,13 @@ services:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
-      args: { NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8080/api} }
+      args: { NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8080} }
     depends_on: [api]
 
   worker:
     build: { context: .., dockerfile: apps/worker/Dockerfile }
     environment:
-      DATABASE_URL: postgres://ofp:${POSTGRES_PASSWORD:-ofp}@postgres:5432/ofp
+      DATABASE_URL: postgres://ofp:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/ofp
       NTFY_URL: ${NTFY_URL:-}
     depends_on:
       postgres: { condition: service_healthy }

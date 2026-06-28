@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-command OpenFieldPro deploy. Builds images, runs migrations+seed, brings
-# the stack up behind Caddy on :8080. Works with podman or docker compose.
+# One-command OpenFieldPro production-style deploy. Builds images, runs schema
+# setup + seed, and brings the stack up behind Caddy on :8080.
 #   ./deploy.sh           # build + up
 #   ./deploy.sh down      # tear down
 set -euo pipefail
@@ -14,7 +14,12 @@ if [ "${1:-up}" = "down" ]; then
   exit 0
 fi
 
-[ -f .env ] || { echo "→ creating .env from .env.example (edit secrets before a real deploy!)"; cp .env.example .env; }
+[ -f .env ] || { echo "→ creating .env from .env.example"; cp .env.example .env; }
+
+if grep -Eq '^(JWT_SECRET=change-me-in-production|POSTGRES_PASSWORD=ofp|S3_SECRET_KEY=ofpminio-secret)$' .env; then
+  echo "Refusing to deploy with default secrets. Update JWT_SECRET, POSTGRES_PASSWORD, and S3_SECRET_KEY in .env first."
+  exit 1
+fi
 
 echo "→ building + starting stack with: $COMPOSE"
 $COMPOSE -f infra/compose.prod.yml up -d --build

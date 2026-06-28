@@ -4,90 +4,124 @@ import type { ReportSummaryDTO } from "@ofp/shared";
 
 export default async function Dashboard() {
   let jobs: Awaited<ReturnType<typeof api.jobs>> = [];
+  let appointments: Awaited<ReturnType<typeof api.appointments>> = [];
+  let invoices: Awaited<ReturnType<typeof api.invoices>> = [];
   let summary: ReportSummaryDTO | null = null;
   let error: string | null = null;
-  // Two independent fetches so a failing /reports endpoint degrades the page
-  // to "no margin row" instead of blanking the whole dashboard. `jobs` is
-  // the source of truth for the existing 3 cards; its failure still surfaces.
+
   try {
-    jobs = await api.jobs();
+    [jobs, appointments, invoices, summary] = await Promise.all([
+      api.jobs(),
+      api.appointments(),
+      api.invoices(),
+      api.reports().catch(() => null),
+    ]);
   } catch (e) {
     error = (e as Error).message;
   }
-  try {
-    summary = await api.reports();
-  } catch {
-    // Non-fatal: existing cards still render.
-  }
 
-  const scheduled = jobs.filter((j) => j.status === "scheduled").length;
-  const revenue = jobs
-    .filter((j) => j.status === "completed")
-    .reduce((a, j) => a + j.total, 0);
+  const unassigned = jobs.filter((job) => job.status === "lead");
+  const active = jobs.filter((job) => job.status === "scheduled" || job.status === "in_progress");
+  const openInvoices = invoices.filter((invoice) => invoice.status === "sent" || invoice.status === "draft");
+  const outstanding = openInvoices.reduce((sum, invoice) => sum + invoice.total, 0);
+  const todayKey = new Date().toDateString();
+  const todayAppointments = appointments.filter((appointment) => new Date(appointment.startsAt).toDateString() === todayKey);
 
   return (
-    <div>
-      <h1>Dashboard</h1>
+    <div className="page-stack">
+      <section className="hero-panel">
+        <div>
+          <p className="eyebrow">Today command center</p>
+          <h1>See the next job, the stuck work, and the money waiting.</h1>
+          <p className="muted">
+            OpenFieldPro now starts like an operator cockpit: create work, dispatch it, invoice it, and record payment from the core workflow loop.
+          </p>
+          <div className="hero-actions">
+            <a className="button primary" href="/jobs/new">Create job</a>
+            <a className="button" href="/customers">Add customer</a>
+            <a className="button" href="/dispatch">Dispatch board</a>
+            <a className="button" href="/field/today">Field mode</a>
+          </div>
+        </div>
+        <div className="command-panel" aria-label="Next actions">
+          <span className="table-label">Next actions</span>
+          <a className="button full" href="/jobs/new">+ New customer/job</a>
+          <a className="button full" href="/dispatch">Dispatch unscheduled work</a>
+          <a className="button full" href="/field/today">Open technician agenda</a>
+          <a className="button primary full" href="/invoices">Collect {formatMoney(outstanding)}</a>
+        </div>
+      </section>
+
       {error ? (
-        <p style={{ color: "#ff8080" }}>
-          API unreachable ({error}). Start it with <code>pnpm dev:api</code> and seed with{" "}
-          <code>pnpm db:seed</code>.
-        </p>
+        <section className="section-card">
+          <p className="notice error">
+            API unreachable ({error}). Start it with <code>pnpm dev:api</code> and seed with <code>pnpm db:seed</code>.
+          </p>
+        </section>
       ) : (
         <>
-          {summary && (
-            <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-              <Stat
-                label="Realized margin"
-                value={formatMoney(summary.realizedMarginCents)}
-                color={
-                  summary.realizedMarginCents < 0
-                    ? "#ff8080"
-                    : summary.realizedMarginCents > 0
-                      ? "#86e29a"
-                      : "#e6e9f0"
-                }
-              />
-              <Stat
-                label="Pipeline margin"
-                value={formatMoney(summary.pipelineMarginCents)}
-                color={summary.pipelineMarginCents < 0 ? "#ff8080" : "#e6e9f0"}
-              />
+          <section className="metric-grid" aria-label="Business metrics">
+            <Metric label="Today" value={String(todayAppointments.length)} />
+            <Metric label="Unscheduled" value={String(unassigned.length)} />
+            <Metric label="Active work" value={String(active.length)} />
+            <Metric label="Pipeline margin" value={formatMoney(summary?.pipelineMarginCents ?? 0)} />
+          </section>
+
+          <section className="split-grid">
+            <div className="section-card">
+              <div className="section-header">
+                <div>
+                  <h2>Work needing attention</h2>
+                  <p className="muted">Lead and active jobs are surfaced first.</p>
+                </div>
+                <a className="button compact" href="/dispatch">Dispatch</a>
+              </div>
+              <div className="card-list">
+                {[...unassigned, ...active].slice(0, 8).map((job) => (
+                  <a className="list-row with-rail" key={job.id} href={`/jobs/${job.id}`}>
+                    <div>
+                      <strong>{job.title}</strong>
+                      <p className="muted">{formatMoney(job.total)} · customer {job.customerId.slice(0, 8)}</p>
+                    </div>
+                    <span className={`status-pill status-${job.status}`}>{job.status.replaceAll("_", " ")}</span>
+                  </a>
+                ))}
+                {jobs.length === 0 && <div className="empty-state">No jobs yet. Create your first job to start the workflow.</div>}
+              </div>
             </div>
-          )}
-          <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
-            <Stat label="Open jobs" value={String(jobs.length)} />
-            <Stat label="Scheduled" value={String(scheduled)} />
-            <Stat label="Completed revenue" value={formatMoney(revenue)} />
-          </div>
-          <h2>Recent jobs</h2>
-          <ul>
-            {jobs.map((j) => (
-              <li key={j.id}>
-                {j.title} — <em>{j.status}</em> — {formatMoney(j.total)}
-              </li>
-            ))}
-            {jobs.length === 0 && <li>No jobs yet.</li>}
-          </ul>
+
+            <div className="section-card">
+              <div className="section-header">
+                <div>
+                  <h2>Money queue</h2>
+                  <p className="muted">Invoices that still need sending, follow-up, or payment.</p>
+                </div>
+              </div>
+              <div className="card-list">
+                {openInvoices.slice(0, 5).map((invoice) => (
+                  <a className="list-row" key={invoice.id} href={`/invoices/${invoice.id}`}>
+                    <div>
+                      <strong>{invoice.number}</strong>
+                      <p className="muted">{formatMoney(invoice.total)}</p>
+                    </div>
+                    <span className={`status-pill status-${invoice.status}`}>{invoice.status}</span>
+                  </a>
+                ))}
+                {openInvoices.length === 0 && <div className="empty-state">No open invoices.</div>}
+              </div>
+            </div>
+          </section>
         </>
       )}
     </div>
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      style={{
-        background: "#141b33",
-        border: "1px solid #1d2440",
-        borderRadius: 10,
-        padding: "16px 20px",
-        minWidth: 140,
-      }}
-    >
-      <div style={{ fontSize: 12, color: "#8a97c2" }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 700, color: color ?? "#e6e9f0" }}>{value}</div>
+    <div className="metric-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }

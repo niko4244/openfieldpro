@@ -1,9 +1,5 @@
 // OpenFieldPro relational schema — the field-service domain.
 // Multi-tenant (org_id everywhere). Money stored as integer cents.
-//
-// Phase-1 modules covered: orgs, users/technicians, customers, properties,
-// jobs (work orders), line items, estimates, invoices, payments, appointments.
-// Each table mirrors a HouseCall Pro concept so the remaining UI is mechanical.
 
 import { sql } from "drizzle-orm";
 import {
@@ -15,6 +11,7 @@ import {
   boolean,
   pgEnum,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const jobStatus = pgEnum("job_status", [
@@ -31,6 +28,9 @@ export const invoiceStatus = pgEnum("invoice_status", [
   "void",
 ]);
 export const userRole = pgEnum("user_role", ["owner", "dispatcher", "technician"]);
+export const reminderChannel = pgEnum("reminder_channel", ["email", "sms", "manual"]);
+export const milestoneStatus = pgEnum("milestone_status", ["draft", "ready", "invoiced", "paid", "void"]);
+export const proposalTier = pgEnum("proposal_tier", ["good", "better", "best", "custom"]);
 
 const id = () => uuid("id").primaryKey().defaultRandom();
 const orgId = () =>
@@ -45,6 +45,43 @@ export const orgs = pgTable("orgs", {
   timezone: text("timezone").default("America/New_York").notNull(),
   createdAt: ts(),
 });
+
+export const invoiceTemplates = pgTable(
+  "invoice_templates",
+  {
+    id: id(),
+    orgId: orgId(),
+    companyName: text("company_name").notNull(),
+    companyAddress: text("company_address"),
+    companyPhone: text("company_phone"),
+    companyEmail: text("company_email"),
+    companyWebsite: text("company_website"),
+    licenseNumber: text("license_number"),
+    logoUrl: text("logo_url"),
+    accentColor: text("accent_color").default("#2463eb").notNull(),
+    templateStyle: text("template_style").default("modern").notNull(),
+    invoicePrefix: text("invoice_prefix").default("INV").notNull(),
+    defaultTaxRateBps: integer("default_tax_rate_bps").default(0).notNull(),
+    defaultDiscountCents: integer("default_discount_cents").default(0).notNull(),
+    paymentTerms: text("payment_terms").default("Due on receipt").notNull(),
+    acceptedPaymentMethods: text("accepted_payment_methods").default("Credit card, ACH, cash, check").notNull(),
+    lateFeePolicy: text("late_fee_policy").default("Late fees may apply to overdue balances.").notNull(),
+    memo: text("memo").default("Thank you for your business.").notNull(),
+    footer: text("footer").default("Questions? Contact us before paying.").notNull(),
+    termsAndConditions: text("terms_and_conditions").default("All work is subject to the terms agreed before service.").notNull(),
+    showLineItemPrices: boolean("show_line_item_prices").default(true).notNull(),
+    showPaymentHistory: boolean("show_payment_history").default(true).notNull(),
+    showCompanyContact: boolean("show_company_contact").default(true).notNull(),
+    showCustomerDetails: boolean("show_customer_details").default(true).notNull(),
+    showServiceAddress: boolean("show_service_address").default(true).notNull(),
+    showTechnician: boolean("show_technician").default(true).notNull(),
+    showTaxAndDiscount: boolean("show_tax_and_discount").default(true).notNull(),
+    showTerms: boolean("show_terms").default(true).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: ts(),
+  },
+  (t) => ({ orgIdx: index("invoice_templates_org_idx").on(t.orgId) }),
+);
 
 export const users = pgTable(
   "users",
@@ -70,13 +107,15 @@ export const customers = pgTable(
     email: text("email"),
     phone: text("phone"),
     notes: text("notes"),
+    publicToken: text("public_token"),
     createdAt: ts(),
   },
-  (t) => ({ orgIdx: index("customers_org_idx").on(t.orgId) }),
+  (t) => ({
+    orgIdx: index("customers_org_idx").on(t.orgId),
+    publicTokenIdx: uniqueIndex("customers_public_token_uidx").on(t.publicToken),
+  }),
 );
 
-// Service location(s) for a customer. lat/lng kept as numerics for now;
-// PostGIS geometry is available in the image for a later routing/dispatch upgrade.
 export const properties = pgTable("properties", {
   id: id(),
   orgId: orgId(),
@@ -107,8 +146,8 @@ export const jobs = pgTable(
     description: text("description"),
     status: jobStatus("status").default("lead").notNull(),
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
-    total: integer("total").default(0).notNull(), // cents, denormalized from line items
-    laborCostCents: integer("labor_cost_cents").default(0).notNull(), // tech labor cost for margin
+    total: integer("total").default(0).notNull(),
+    laborCostCents: integer("labor_cost_cents").default(0).notNull(),
     createdAt: ts(),
   },
   (t) => ({
@@ -117,9 +156,6 @@ export const jobs = pgTable(
   }),
 );
 
-// Line items belong to a job; estimates and invoices reference the job.
-// `unitCost` is what the item costs the business (materials/labor) — the basis
-// for per-job margin, the thing most low-end CRMs never surface.
 export const lineItems = pgTable("line_items", {
   id: id(),
   orgId: orgId(),
@@ -128,21 +164,47 @@ export const lineItems = pgTable("line_items", {
     .references(() => jobs.id, { onDelete: "cascade" }),
   description: text("description").notNull(),
   quantity: integer("quantity").default(1).notNull(),
-  unitPrice: integer("unit_price").default(0).notNull(), // cents charged
-  unitCost: integer("unit_cost").default(0).notNull(), // cents it costs us
+  unitPrice: integer("unit_price").default(0).notNull(),
+  unitCost: integer("unit_cost").default(0).notNull(),
+  taxable: boolean("taxable").default(true).notNull(),
   createdAt: ts(),
 });
 
-export const estimates = pgTable("estimates", {
-  id: id(),
-  orgId: orgId(),
-  jobId: uuid("job_id")
-    .notNull()
-    .references(() => jobs.id, { onDelete: "cascade" }),
-  total: integer("total").default(0).notNull(),
-  accepted: boolean("accepted").default(false).notNull(),
-  createdAt: ts(),
-});
+export const estimates = pgTable(
+  "estimates",
+  {
+    id: id(),
+    orgId: orgId(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    total: integer("total").default(0).notNull(),
+    accepted: boolean("accepted").default(false).notNull(),
+    publicToken: text("public_token"),
+    acceptedOptionId: uuid("accepted_option_id"),
+    createdAt: ts(),
+  },
+  (t) => ({ publicTokenIdx: index("estimates_public_token_idx").on(t.publicToken) }),
+);
+
+export const estimateOptions = pgTable(
+  "estimate_options",
+  {
+    id: id(),
+    orgId: orgId(),
+    estimateId: uuid("estimate_id")
+      .notNull()
+      .references(() => estimates.id, { onDelete: "cascade" }),
+    tier: proposalTier("tier").default("custom").notNull(),
+    title: text("title").notNull(),
+    description: text("description").default("").notNull(),
+    total: integer("total").default(0).notNull(),
+    included: text("included").default("").notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: ts(),
+  },
+  (t) => ({ estimateIdx: index("estimate_options_estimate_idx").on(t.orgId, t.estimateId) }),
+);
 
 export const invoices = pgTable(
   "invoices",
@@ -153,28 +215,99 @@ export const invoices = pgTable(
       .notNull()
       .references(() => jobs.id, { onDelete: "cascade" }),
     number: text("number").notNull(),
+    poNumber: text("po_number"),
     status: invoiceStatus("status").default("draft").notNull(),
     total: integer("total").default(0).notNull(),
+    taxRateBps: integer("tax_rate_bps").default(0).notNull(),
+    discountCents: integer("discount_cents").default(0).notNull(),
+    publicToken: text("public_token"),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    createdAt: ts(),
+  },
+  (t) => ({
+    orgStatus: index("invoices_org_status_idx").on(t.orgId, t.status),
+    publicTokenIdx: index("invoices_public_token_idx").on(t.publicToken),
+    orgNumberUidx: uniqueIndex("invoices_org_number_uidx").on(t.orgId, t.number),
+  }),
+);
+
+export const invoiceReminderSchedules = pgTable(
+  "invoice_reminder_schedules",
+  {
+    id: id(),
+    orgId: orgId(),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    daysAfterDue: integer("days_after_due").default(0).notNull(),
+    channel: reminderChannel("channel").default("email").notNull(),
+    message: text("message").notNull(),
+    enabled: boolean("enabled").default(true).notNull(),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    createdAt: ts(),
+  },
+  (t) => ({ invoiceIdx: index("invoice_reminders_invoice_idx").on(t.orgId, t.invoiceId) }),
+);
+
+export const progressInvoiceMilestones = pgTable(
+  "progress_invoice_milestones",
+  {
+    id: id(),
+    orgId: orgId(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+    label: text("label").notNull(),
+    amountCents: integer("amount_cents").default(0).notNull(),
+    percentBps: integer("percent_bps").default(0).notNull(),
+    status: milestoneStatus("status").default("draft").notNull(),
     dueAt: timestamp("due_at", { withTimezone: true }),
     createdAt: ts(),
   },
-  (t) => ({ orgStatus: index("invoices_org_status_idx").on(t.orgId, t.status) }),
+  (t) => ({ jobIdx: index("progress_milestones_job_idx").on(t.orgId, t.jobId) }),
 );
 
-export const payments = pgTable("payments", {
-  id: id(),
-  orgId: orgId(),
-  invoiceId: uuid("invoice_id")
-    .notNull()
-    .references(() => invoices.id, { onDelete: "cascade" }),
-  amount: integer("amount").notNull(), // cents
-  method: text("method").default("manual").notNull(), // manual | card | cash | check
-  reference: text("reference"),
-  paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const payments = pgTable(
+  "payments",
+  {
+    id: id(),
+    orgId: orgId(),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    amount: integer("amount").notNull(),
+    method: text("method").default("manual").notNull(),
+    reference: text("reference"),
+    provider: text("provider").default("manual").notNull(),
+    providerPaymentId: text("provider_payment_id"),
+    idempotencyKey: text("idempotency_key"),
+    paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    invoiceIdx: index("payments_invoice_idx").on(t.orgId, t.invoiceId),
+    providerPayment: uniqueIndex("payments_provider_payment_uidx").on(t.orgId, t.provider, t.providerPaymentId),
+    idempotency: uniqueIndex("payments_idempotency_uidx").on(t.orgId, t.idempotencyKey),
+  }),
+);
 
-// Recurring job templates (e.g. quarterly maintenance). A worker materializes
-// the next concrete job from `nextRunAt`. interval is ISO-ish: days between runs.
+export const stripeWebhookEvents = pgTable(
+  "stripe_webhook_events",
+  {
+    id: id(),
+    eventId: text("event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    orgId: uuid("org_id").references(() => orgs.id, { onDelete: "set null" }),
+    invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+    status: text("status").default("received").notNull(),
+    error: text("error"),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    createdAt: ts(),
+  },
+  (t) => ({ eventUidx: uniqueIndex("stripe_webhook_events_event_uidx").on(t.eventId) }),
+);
+
 export const recurringJobs = pgTable("recurring_jobs", {
   id: id(),
   orgId: orgId(),
@@ -188,7 +321,6 @@ export const recurringJobs = pgTable("recurring_jobs", {
   createdAt: ts(),
 });
 
-// Customer reviews, requested after a job completes. rating 1–5.
 export const reviews = pgTable("reviews", {
   id: id(),
   orgId: orgId(),
@@ -200,9 +332,6 @@ export const reviews = pgTable("reviews", {
   createdAt: ts(),
 });
 
-// Unified activity timeline — every meaningful touch on a customer/job in one
-// place. The thing CRMs scatter across tabs; here it's one queryable log so an
-// owner can see a customer's whole history at a glance.
 export const activities = pgTable(
   "activities",
   {
@@ -210,7 +339,7 @@ export const activities = pgTable(
     orgId: orgId(),
     customerId: uuid("customer_id").references(() => customers.id, { onDelete: "cascade" }),
     jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
-    kind: text("kind").notNull(), // job.created | job.scheduled | invoice.sent | payment.received | review.left | comms.sent ...
+    kind: text("kind").notNull(),
     summary: text("summary").notNull(),
     createdAt: ts(),
   },
@@ -220,7 +349,6 @@ export const activities = pgTable(
   }),
 );
 
-// Calendar/dispatch slots. A job can have one appointment in Phase 1.
 export const appointments = pgTable(
   "appointments",
   {
@@ -239,5 +367,4 @@ export const appointments = pgTable(
   (t) => ({ window: index("appts_window_idx").on(t.orgId, t.startsAt) }),
 );
 
-// Convenience: raw SQL to enable PostGIS (run once; harmless if repeated).
 export const enablePostgis = sql`CREATE EXTENSION IF NOT EXISTS postgis`;

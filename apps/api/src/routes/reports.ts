@@ -4,7 +4,9 @@ import { db, jobs, invoices, reviews, lineItems } from "@ofp/db";
 import { jobCost, jobMargin } from "../totals.js";
 import { resolveOrgId } from "./org.js";
 
-// Owner dashboard numbers: pipeline by status, revenue collected, A/R, ratings.
+// Owner dashboard numbers: pipeline by status, collected revenue, receivables,
+// review rating, and margin. The current implementation favors simple, readable
+// rollups; large shops can promote these to materialized views later.
 export async function reportRoutes(app: FastifyInstance) {
   app.get("/summary", async (req) => {
     const orgId = await resolveOrgId(req);
@@ -30,9 +32,6 @@ export async function reportRoutes(app: FastifyInstance) {
       .from(reviews)
       .where(eq(reviews.orgId, orgId));
 
-    // Margin rollup: fetch the whole org's jobs + line items once, group in JS,
-    // then reuse the pure totals helpers so the math stays identical to the
-    // per-job POST/DELETE path. O(N+M) DB + O(N+M) in-JS; fine at <1000 jobs/org.
     const orgJobs = await db.select().from(jobs).where(eq(jobs.orgId, orgId));
     const orgLines = await db.select().from(lineItems).where(eq(lineItems.orgId, orgId));
     const linesByJob = new Map<string, typeof orgLines>();
