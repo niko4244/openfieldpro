@@ -1,8 +1,11 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, orgs, users } from "@ofp/db";
 import { hashPassword, verifyPassword } from "../auth.js";
+
+const COOKIE_NAME = "ofp_token";
+const WEEK_SECONDS = 60 * 60 * 24 * 7;
 
 const registerBody = z.object({
   orgName: z.string().min(1),
@@ -16,8 +19,18 @@ const loginBody = z.object({
   password: z.string().min(1),
 });
 
+function setSessionCookie(reply: FastifyReply, token: string) {
+  reply.setCookie(COOKIE_NAME, token, {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: WEEK_SECONDS,
+  });
+}
+
 export async function authRoutes(app: FastifyInstance) {
-  // Register creates a new org + its owner in one transaction-ish flow.
+  // Register creates a new org + its owner, then starts a secure browser session.
   app.post("/register", async (req, reply) => {
     const parsed = registerBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -36,6 +49,7 @@ export async function authRoutes(app: FastifyInstance) {
       .returning();
 
     const token = app.jwt.sign({ userId: user.id, orgId: org.id, role: user.role });
+    setSessionCookie(reply, token);
     return reply.code(201).send({ token, user: { id: user.id, name, email, role: user.role }, orgId: org.id });
   });
 
@@ -49,10 +63,16 @@ export async function authRoutes(app: FastifyInstance) {
       return reply.code(401).send({ error: "invalid credentials" });
     }
     const token = app.jwt.sign({ userId: user.id, orgId: user.orgId, role: user.role });
+    setSessionCookie(reply, token);
     return { token, user: { id: user.id, name: user.name, email, role: user.role }, orgId: user.orgId };
   });
 
-  // Whoami — verifies the token and echoes the claims.
+  app.post("/logout", async (_req, reply) => {
+    reply.clearCookie(COOKIE_NAME, { path: "/" });
+    return { ok: true };
+  });
+
+  // Whoami — verifies bearer-token or cookie-based sessions and echoes the claims.
   app.get("/me", async (req, reply) => {
     try {
       await req.jwtVerify();
