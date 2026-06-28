@@ -35,4 +35,16 @@ jobs:
         run: pnpm --filter @ofp/api build
 
       - name: Build web
-        run: pnpm --filter @ofp/web build
+        run: |
+          set +e
+          pnpm --filter @ofp/web build > web-build.log 2>&1
+          status=$?
+          cat web-build.log
+          exit $status
+
+      - name: Upload web build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build-log
+          path: web-build.log
