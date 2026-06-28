@@ -1,20 +1,27 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { db, invoices, payments, jobs, lineItems } from "@ofp/db";
+import { db, invoices, payments, jobs, lineItems, invoiceTemplates } from "@ofp/db";
 import { applyPayment, invoiceNumber } from "../invoicing.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 
-const createBody = z.object({ jobId: z.string().uuid(), dueAt: z.string().datetime().optional() });
+const createBody = z.object({ jobId: z.string().uuid(), dueAt: z.string().datetime().optional(), poNumber: z.string().optional() });
 const payBody = z.object({
-  amount: z.number().int().positive(), // cents
+  amount: z.number().int().positive(),
   method: z.enum(["manual", "cash", "check", "card"]).default("manual"),
   reference: z.string().optional(),
 });
 
 function publicAppUrl() {
   return (process.env.PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+}
+
+function invoiceMath(input: { subtotal: number; discountCents: number; taxRateBps: number }) {
+  const discount = Math.min(input.discountCents, input.subtotal);
+  const taxable = Math.max(input.subtotal - discount, 0);
+  const tax = Math.round((taxable * input.taxRateBps) / 10000);
+  return { discount, tax, total: taxable + tax };
 }
 
 export async function invoiceRoutes(app: FastifyInstance) {
@@ -33,7 +40,6 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return { ...inv, lineItems: items, payments: paid };
   });
 
-  // Generate an invoice from a job (snapshots the job total).
   app.post("/", async (req, reply) => {
     const orgId = await resolveOrgId(req);
     const parsed = createBody.safeParse(req.body);
@@ -50,14 +56,25 @@ export async function invoiceRoutes(app: FastifyInstance) {
       .from(invoices)
       .where(eq(invoices.orgId, orgId));
 
+    const [template] = await db.select().from(invoiceTemplates).where(eq(invoiceTemplates.orgId, orgId)).limit(1);
+    const items = await db.select().from(lineItems).where(and(eq(lineItems.orgId, orgId), eq(lineItems.jobId, job.id)));
+    const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0) || job.total;
+    const taxRateBps = template?.defaultTaxRateBps ?? 0;
+    const discountCents = template?.defaultDiscountCents ?? 0;
+    const math = invoiceMath({ subtotal, taxRateBps, discountCents });
+    const prefix = template?.invoicePrefix ?? "INV";
+
     const [row] = await db
       .insert(invoices)
       .values({
         orgId,
         jobId: job.id,
-        number: invoiceNumber(count),
+        number: `${prefix}-${String(count + 1).padStart(4, "0")}`,
+        poNumber: parsed.data.poNumber ?? null,
         status: "draft",
-        total: job.total,
+        total: math.total,
+        taxRateBps,
+        discountCents: math.discount,
         dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
       })
       .returning();
@@ -76,15 +93,13 @@ export async function invoiceRoutes(app: FastifyInstance) {
     if (inv.status === "void" || inv.status === "paid") return reply.code(400).send({ error: `cannot send ${inv.status} invoice` });
     const [row] = await db
       .update(invoices)
-      .set({ status: "sent" })
+      .set({ status: "sent", lastSentAt: new Date() })
       .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)))
       .returning();
     safeEmitActivity(orgId, "invoice.sent", `Sent invoice ${row.number}`, { jobId: row.jobId });
     return row;
   });
 
-  // Record a manual/offline payment (cash/check/card-on-terminal). Online card
-  // payments go through /checkout + the Stripe webhook instead.
   app.post("/:id/pay", async (req, reply) => {
     const orgId = await resolveOrgId(req);
     const { id } = req.params as { id: string };
@@ -121,8 +136,6 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return { status: result.status, remaining: result.remaining, overpaid: result.overpaid };
   });
 
-  // Online payment — Stripe optional. Returns 501 with guidance if unconfigured
-  // so the app is fully usable offline. Never moves money on its own.
   app.post("/:id/checkout", async (req, reply) => {
     const orgId = await resolveOrgId(req);
     const { id } = req.params as { id: string };
@@ -136,7 +149,6 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
     if (!inv) return reply.code(404).send({ error: "not found" });
 
-    // Lazy import so the app runs without the stripe package installed.
     const Stripe = (await import("stripe")).default;
     const stripe = new Stripe(key);
     const origin = publicAppUrl();
