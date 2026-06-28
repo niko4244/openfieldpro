@@ -1,6 +1,7 @@
 import { api } from "../../../lib/api";
 import { formatMoney } from "@ofp/shared";
 import { PaymentForm } from "../../../components/WorkflowForms";
+import { SendInvoiceButton } from "../../../components/InvoiceActions";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -39,6 +40,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <span className="table-label">Balance</span>
               <strong>{formatMoney(remaining)}</strong>
               <span className={`status-pill status-${invoice.status}`}>{invoice.status}</span>
+              <SendInvoiceButton invoiceId={invoice.id} status={invoice.status} />
             </div>
           </section>
 
