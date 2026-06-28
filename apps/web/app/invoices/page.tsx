@@ -1,5 +1,6 @@
 import { api } from "../../lib/api";
 import { formatMoney } from "@ofp/shared";
+import { PaymentForm } from "../../components/WorkflowForms";
 
 export default async function InvoicesPage() {
   let invoices: Awaited<ReturnType<typeof api.invoices>> = [];
@@ -10,6 +11,7 @@ export default async function InvoicesPage() {
     error = (e as Error).message;
   }
 
+  const openInvoices = invoices.filter((invoice) => invoice.status === "sent" || invoice.status === "draft");
   let outstanding = 0;
   let paid = 0;
   for (const invoice of invoices) {
@@ -22,10 +24,10 @@ export default async function InvoicesPage() {
       <section className="hero-panel">
         <div>
           <p className="eyebrow">Billing</p>
-          <h1>Keep receivables clear and current.</h1>
-          <p className="muted">A flat, scannable invoice queue that works cleanly on desktop and mobile.</p>
+          <h1>Collect faster without losing invoice context.</h1>
+          <p className="muted">Create invoices from job workspaces, then record offline payments directly from the receivables queue.</p>
         </div>
-        <div className="hero-summary">
+        <div className="command-panel">
           <span className="table-label">Outstanding</span>
           <strong>{formatMoney(outstanding)}</strong>
           <p className="muted">Draft and sent invoices still requiring follow-up.</p>
@@ -36,45 +38,41 @@ export default async function InvoicesPage() {
         <div className="metric-card"><span>Total invoices</span><strong>{invoices.length}</strong></div>
         <div className="metric-card"><span>Outstanding</span><strong>{formatMoney(outstanding)}</strong></div>
         <div className="metric-card"><span>Paid</span><strong>{formatMoney(paid)}</strong></div>
-        <div className="metric-card"><span>Open balance</span><strong>{formatMoney(outstanding)}</strong></div>
+        <div className="metric-card"><span>Open invoices</span><strong>{openInvoices.length}</strong></div>
       </section>
 
-      <section className="section-card">
-        <div className="section-header">
-          <div>
-            <h2>Invoices</h2>
-            <p className="muted">Status, invoice number, and total at a glance.</p>
-          </div>
+      <section className="split-grid">
+        <div className="section-card">
+          <div className="section-header"><div><h2>Invoices</h2><p className="muted">Status, invoice number, and total at a glance.</p></div></div>
+          {error ? (
+            <p className="notice error">API unreachable ({error}).</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Number</th><th>Status</th><th>Total</th></tr>
+                </thead>
+                <tbody>
+                  {invoices.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <td><strong>{invoice.number}</strong></td>
+                      <td><span className={`status-pill status-${invoice.status}`}>{invoice.status}</span></td>
+                      <td>{formatMoney(invoice.total)}</td>
+                    </tr>
+                  ))}
+                  {invoices.length === 0 && (
+                    <tr><td colSpan={3}>No invoices yet. Create one from a job workspace.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-        {error ? (
-          <p className="notice error">API unreachable ({error}).</p>
-        ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Number</th>
-                  <th>Status</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td><strong>{invoice.number}</strong></td>
-                    <td><span className={`status-pill status-${invoice.status}`}>{invoice.status}</span></td>
-                    <td>{formatMoney(invoice.total)}</td>
-                  </tr>
-                ))}
-                {invoices.length === 0 && (
-                  <tr>
-                    <td colSpan={3}>No invoices yet. Create one with <code>POST /api/invoices</code>.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+
+        <aside className="section-card">
+          <div className="section-header"><div><h2>Record payment</h2><p className="muted">For cash, check, manual, or card-terminal payments.</p></div></div>
+          {error ? <p className="notice error">API unreachable ({error}).</p> : <PaymentForm invoices={openInvoices} />}
+        </aside>
       </section>
     </div>
   );
