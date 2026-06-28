@@ -32,6 +32,33 @@ export function updateJob(id: string, input: { status?: string; total?: number; 
   return request<{ id: string }>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(input) });
 }
 
+export function addLineItem(
+  jobId: string,
+  input: { description: string; quantity: number; unitPrice: number; unitCost?: number },
+) {
+  return request<{ lineItem: { id: string }; jobTotal: number; jobCostCents: number; jobMarginCents: number }>(
+    `/api/jobs/${jobId}/line-items`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export function deleteLineItem(id: string) {
+  return request<{ ok: true; jobTotal: number; jobCostCents: number; jobMarginCents: number }>(`/api/line-items/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function createEstimate(input: { jobId: string }) {
+  return request<{ id: string; total: number; accepted: boolean }>("/api/estimates", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function acceptEstimate(id: string) {
+  return request<{ id: string; accepted: boolean; jobStatus: string }>(`/api/estimates/${id}/accept`, { method: "POST" });
+}
+
 export function scheduleAppointment(input: { jobId: string; startsAt: string; endsAt: string; technicianId?: string }) {
   return request<{ id: string }>("/api/appointments", { method: "POST", body: JSON.stringify(input) });
 }
