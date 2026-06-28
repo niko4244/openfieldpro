@@ -3,16 +3,23 @@ import { formatMoney } from "@ofp/shared";
 import { PaymentForm } from "../../../components/WorkflowForms";
 import { SendInvoiceButton } from "../../../components/InvoiceActions";
 import { InvoicePreviewCard } from "../../../components/InvoiceTemplateDesigner";
+import { ReminderScheduleForm } from "../../../components/BillingEnhancements";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   let invoice: Awaited<ReturnType<typeof api.invoice>> | null = null;
   let preview: Awaited<ReturnType<typeof api.invoicePreview>> | null = null;
+  let reminderPlan: Awaited<ReturnType<typeof api.invoiceReminderPlan>> | null = null;
   let jobs: Awaited<ReturnType<typeof api.jobs>> = [];
   let error: string | null = null;
 
   try {
-    [invoice, preview, jobs] = await Promise.all([api.invoice(id), api.invoicePreview(id).catch(() => null), api.jobs()]);
+    [invoice, preview, reminderPlan, jobs] = await Promise.all([
+      api.invoice(id),
+      api.invoicePreview(id).catch(() => null),
+      api.invoiceReminderPlan(id).catch(() => null),
+      api.jobs(),
+    ]);
   } catch (e) {
     error = (e as Error).message;
   }
@@ -81,6 +88,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               {isOpen && <PaymentForm invoices={[invoice]} />}
             </aside>
           </section>
+
+          {reminderPlan && (
+            <section className="section-card">
+              <div className="section-header"><div><h2>Reminder schedule</h2><p className="muted">Automated follow-up schedule for sent invoices.</p></div></div>
+              <ReminderScheduleForm invoiceId={invoice.id} schedules={reminderPlan.schedule} />
+            </section>
+          )}
 
           {preview && (
             <section>
