@@ -1,112 +1,85 @@
 import { api } from "../../../lib/api";
 import { formatMoney } from "@ofp/shared";
 
-export default async function CustomerDetailPage({
-  params,
-}: {
-  // Next 15+ passes params as a Promise. Await it for the future-proof shape;
-  // Next 14 also tolerates the await.
-  params: Promise<{ id: string }>;
-}) {
-  const { id: customerId } = await params;
-
-  // Two independent fetches. The customer fetch is the source of truth for
-  // "exists vs. failed to load": if it throws, render a degraded timeline +
-  // jobs page so the user isn't told their own link is invalid. If it returns
-  // undefined, the customer is genuinely missing.
+export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   let customer: Awaited<ReturnType<typeof api.customer>> | null = null;
-  let customerLoadFailed = false;
+  let jobs: Awaited<ReturnType<typeof api.jobs>> = [];
+  let activities: Awaited<ReturnType<typeof api.activities>> = [];
+  let error: string | null = null;
+
   try {
-    customer = await api.customer(customerId);
-  } catch {
-    customerLoadFailed = true;
+    [customer, jobs, activities] = await Promise.all([
+      api.customer(id),
+      api.jobs(),
+      api.activities({ customerId: id }).catch(() => []),
+    ]);
+  } catch (e) {
+    error = (e as Error).message;
   }
 
-  const [allJobs, timeline] = await Promise.all([
-    api.jobs().catch(() => []),
-    api.activities({ customerId }).catch(() => []),
-  ]);
-  const customerJobs = allJobs.filter((j) => j.customerId === customerId);
+  const customerJobs = jobs.filter((job) => job.customerId === id);
+  const lifetime = customerJobs.reduce((sum, job) => sum + job.total, 0);
 
   return (
-    <div>
-      {customerLoadFailed ? (
-        <>
-          <h1>Customer (couldn’t load)</h1>
-          <p style={{ color: "#8a97c2" }}>
-            The customer service is unreachable, but here is what we know about{" "}
-            <code>{customerId}</code>.
-          </p>
-        </>
-      ) : customer ? (
-        <>
-          <h1>{customer.name}</h1>
-          <p style={{ color: "#8a97c2", marginTop: 0 }}>
-            {customer.email ?? "—"} · {customer.phone ?? "—"} ·{" "}
-            added {new Date(customer.createdAt).toLocaleDateString()}
-          </p>
-        </>
+    <div className="page-stack">
+      {error || !customer ? (
+        <section className="section-card"><p className="notice error">Unable to load customer ({error ?? "not found"}).</p></section>
       ) : (
         <>
-          <h1>Customer not found</h1>
-          <p style={{ color: "#8a97c2" }}>No customer with id {customerId} in this org.</p>
+          <section className="hero-panel">
+            <div>
+              <p className="eyebrow">Customer hub</p>
+              <h1>{customer.name}</h1>
+              <p className="muted">{customer.email ?? "No email"} · {customer.phone ?? "No phone"}</p>
+              <div className="hero-actions">
+                <a className="button primary" href={`/jobs/new?customerId=${customer.id}`}>New job</a>
+                <a className="button" href="/schedule">Schedule</a>
+                {customer.phone && <a className="button" href={`tel:${customer.phone}`}>Call</a>}
+                {customer.email && <a className="button" href={`mailto:${customer.email}`}>Email</a>}
+              </div>
+            </div>
+            <div className="command-panel">
+              <span className="table-label">Customer value</span>
+              <strong>{formatMoney(lifetime)}</strong>
+              <p className="muted">Total value across current job records.</p>
+            </div>
+          </section>
+
+          <section className="detail-grid">
+            <div className="detail-item"><span>Jobs</span><strong>{customerJobs.length}</strong></div>
+            <div className="detail-item"><span>Open</span><strong>{customerJobs.filter((job) => job.status !== "completed" && job.status !== "canceled").length}</strong></div>
+            <div className="detail-item"><span>Lifetime</span><strong>{formatMoney(lifetime)}</strong></div>
+          </section>
+
+          <section className="split-grid">
+            <div className="section-card">
+              <div className="section-header"><div><h2>Jobs</h2><p className="muted">Work history and open opportunities.</p></div></div>
+              <div className="card-list">
+                {customerJobs.map((job) => (
+                  <a className="list-row with-rail" href={`/jobs/${job.id}`} key={job.id}>
+                    <div><strong>{job.title}</strong><p className="muted">{formatMoney(job.total)}</p></div>
+                    <span className={`status-pill status-${job.status}`}>{job.status.replaceAll("_", " ")}</span>
+                  </a>
+                ))}
+                {customerJobs.length === 0 && <div className="empty-state">No jobs yet. Create one from this customer hub.</div>}
+              </div>
+            </div>
+
+            <aside className="section-card">
+              <div className="section-header"><div><h2>Activity</h2><p className="muted">Recent customer timeline.</p></div></div>
+              <div className="card-list">
+                {activities.map((activity) => (
+                  <div className="list-row" key={activity.id}>
+                    <div><strong>{activity.summary}</strong><p className="muted">{new Date(activity.createdAt).toLocaleString()}</p></div>
+                  </div>
+                ))}
+                {activities.length === 0 && <div className="empty-state">No activity yet.</div>}
+              </div>
+            </aside>
+          </section>
         </>
       )}
-
-      <div style={{ display: "flex", gap: 32, marginTop: 24 }}>
-        <section style={{ flex: 1 }}>
-          <h2>Activity timeline</h2>
-          {timeline.length === 0 ? (
-            <p style={{ color: "#8a97c2" }}>No activity yet.</p>
-          ) : (
-            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-              {timeline.map((a) => (
-                <li
-                  key={a.id}
-                  style={{
-                    borderLeft: "2px solid #1d2440",
-                    paddingLeft: 12,
-                    marginBottom: 12,
-                  }}
-                >
-                  <div style={{ fontSize: 12, color: "#8a97c2" }}>
-                    {new Date(a.createdAt).toLocaleString()} ·{" "}
-                    <span style={{ color: "#9fb0e0" }}>{a.kind}</span>
-                  </div>
-                  <div>{a.summary}</div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section style={{ flex: 1 }}>
-          <h2>Jobs ({customerJobs.length})</h2>
-          {customerJobs.length === 0 ? (
-            <p style={{ color: "#8a97c2" }}>No jobs yet.</p>
-          ) : (
-            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-              {customerJobs.map((j) => (
-                <li
-                  key={j.id}
-                  style={{
-                    background: "#141b33",
-                    border: "1px solid #1d2440",
-                    borderRadius: 8,
-                    padding: 12,
-                    marginBottom: 8,
-                  }}
-                >
-                  <div style={{ fontWeight: 600 }}>{j.title}</div>
-                  <div style={{ fontSize: 12, color: "#8a97c2" }}>
-                    {j.status} · {formatMoney(j.total)}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
     </div>
   );
 }
