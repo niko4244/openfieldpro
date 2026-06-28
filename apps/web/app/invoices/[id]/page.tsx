@@ -2,15 +2,17 @@ import { api } from "../../../lib/api";
 import { formatMoney } from "@ofp/shared";
 import { PaymentForm } from "../../../components/WorkflowForms";
 import { SendInvoiceButton } from "../../../components/InvoiceActions";
+import { InvoicePreviewCard } from "../../../components/InvoiceTemplateDesigner";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   let invoice: Awaited<ReturnType<typeof api.invoice>> | null = null;
+  let preview: Awaited<ReturnType<typeof api.invoicePreview>> | null = null;
   let jobs: Awaited<ReturnType<typeof api.jobs>> = [];
   let error: string | null = null;
 
   try {
-    [invoice, jobs] = await Promise.all([api.invoice(id), api.jobs()]);
+    [invoice, preview, jobs] = await Promise.all([api.invoice(id), api.invoicePreview(id).catch(() => null), api.jobs()]);
   } catch (e) {
     error = (e as Error).message;
   }
@@ -33,6 +35,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <p className="muted">{job?.title ?? invoice.jobId.slice(0, 8)} · due {invoice.dueAt ? new Date(invoice.dueAt).toLocaleDateString() : "not set"}</p>
               <div className="hero-actions">
                 {job && <a className="button" href={`/jobs/${job.id}`}>Open job</a>}
+                <a className="button" href="/settings/invoice">Customize template</a>
                 <a className="button" href="/invoices">Back to invoices</a>
               </div>
             </div>
@@ -78,6 +81,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               {isOpen && <PaymentForm invoices={[invoice]} />}
             </aside>
           </section>
+
+          {preview && (
+            <section>
+              <div className="section-header"><div><h2>Customer invoice preview</h2><p className="muted">Rendered with the current company invoice template.</p></div></div>
+              <InvoicePreviewCard preview={preview} />
+            </section>
+          )}
         </>
       )}
     </div>
