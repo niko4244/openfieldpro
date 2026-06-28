@@ -34,19 +34,19 @@ export default async function Dashboard() {
           <p className="eyebrow">Today command center</p>
           <h1>See the next job, the stuck work, and the money waiting.</h1>
           <p className="muted">
-            OpenFieldPro now starts like an operator cockpit: create work, schedule it, invoice it, and record payment from the core workflow loop.
+            OpenFieldPro now starts like an operator cockpit: create work, dispatch it, invoice it, and record payment from the core workflow loop.
           </p>
           <div className="hero-actions">
             <a className="button primary" href="/jobs/new">Create job</a>
             <a className="button" href="/customers">Add customer</a>
-            <a className="button" href="/schedule">Schedule board</a>
+            <a className="button" href="/dispatch">Dispatch board</a>
             <a className="button" href="/field/today">Field mode</a>
           </div>
         </div>
         <div className="command-panel" aria-label="Next actions">
           <span className="table-label">Next actions</span>
           <a className="button full" href="/jobs/new">+ New customer/job</a>
-          <a className="button full" href="/schedule">Schedule unscheduled work</a>
+          <a className="button full" href="/dispatch">Dispatch unscheduled work</a>
           <a className="button full" href="/field/today">Open technician agenda</a>
           <a className="button primary full" href="/invoices">Collect {formatMoney(outstanding)}</a>
         </div>
@@ -74,7 +74,7 @@ export default async function Dashboard() {
                   <h2>Work needing attention</h2>
                   <p className="muted">Lead and active jobs are surfaced first.</p>
                 </div>
-                <a className="button compact" href="/jobs">All jobs</a>
+                <a className="button compact" href="/dispatch">Dispatch</a>
               </div>
               <div className="card-list">
                 {[...unassigned, ...active].slice(0, 8).map((job) => (
