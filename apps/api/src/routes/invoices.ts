@@ -10,8 +10,11 @@ import {
   invoiceTemplates,
   invoiceReminderSchedules,
   progressInvoiceMilestones,
+  customers,
+  properties,
 } from "@ofp/db";
 import { applyPayment } from "../invoicing.js";
+import { buildInvoicePdf } from "../invoice-pdf.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 
@@ -181,6 +184,31 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const [updated] = await db.update(progressInvoiceMilestones).set({ invoiceId: invoice.id, status: "invoiced" }).where(eq(progressInvoiceMilestones.id, milestone.id)).returning();
     safeEmitActivity(orgId, "progress_invoice.invoiced", `Created ${invoice.number} for milestone: ${milestone.label}`, { jobId: milestone.jobId });
     return reply.code(201).send({ invoice, milestone: updated });
+  });
+
+  app.get("/:id.pdf", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+    const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
+    if (!inv) return reply.code(404).send({ error: "not found" });
+    const [job] = await db.select().from(jobs).where(and(eq(jobs.orgId, orgId), eq(jobs.id, inv.jobId)));
+    const [template] = await db.select().from(invoiceTemplates).where(eq(invoiceTemplates.orgId, orgId)).limit(1);
+    const [customer] = job ? await db.select({ name: customers.name, email: customers.email, phone: customers.phone }).from(customers).where(and(eq(customers.orgId, orgId), eq(customers.id, job.customerId))).limit(1) : [];
+    const [property] = job?.propertyId ? await db.select({ address: properties.address }).from(properties).where(and(eq(properties.orgId, orgId), eq(properties.id, job.propertyId))).limit(1) : [];
+    const items = await db.select().from(lineItems).where(and(eq(lineItems.orgId, orgId), eq(lineItems.jobId, inv.jobId)));
+    const paidRows = await db.select().from(payments).where(and(eq(payments.orgId, orgId), eq(payments.invoiceId, inv.id)));
+    const paid = paidRows.reduce((sum, payment) => sum + payment.amount, 0);
+    const pdf = buildInvoicePdf({
+      template: template ?? { companyName: "OpenFieldPro" },
+      invoice: inv,
+      customer,
+      property,
+      items,
+      paid,
+    });
+    reply.header("content-type", "application/pdf");
+    reply.header("content-disposition", `attachment; filename=${inv.number}.pdf`);
+    return pdf;
   });
 
   app.get("/:id/reminder-plan", async (req, reply) => {
