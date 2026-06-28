@@ -2,11 +2,24 @@
 
 import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { createCustomer, createInvoice, createJob, recordPayment, scheduleAppointment, updateJob } from "../lib/client-api";
+import {
+  acceptEstimate,
+  addLineItem,
+  createCustomer,
+  createEstimate,
+  createInvoice,
+  createJob,
+  deleteLineItem,
+  recordPayment,
+  scheduleAppointment,
+  updateJob,
+} from "../lib/client-api";
 
 type CustomerOption = { id: string; name: string };
 type JobOption = { id: string; title: string; total?: number; customerId?: string; status?: string };
 type InvoiceOption = { id: string; number: string; total: number; status: string };
+type EstimateOption = { id: string; jobId: string; total: number; accepted: boolean };
+type LineItemOption = { id: string; description: string; quantity: number; unitPrice: number; unitCost: number };
 
 function formDataFrom(event: FormEvent<HTMLFormElement>) {
   event.preventDefault();
@@ -120,6 +133,112 @@ export function JobCreateForm({ customers }: { customers: CustomerOption[] }) {
       <button className="button primary" disabled={pending}>{pending ? "Creating…" : "Create job"}</button>
       <Status message={message} />
     </form>
+  );
+}
+
+export function LineItemForm({ jobId }: { jobId: string }) {
+  const router = useRouter();
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    const formData = formDataFrom(event);
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const result = await addLineItem(jobId, {
+          description: String(formData.get("description") ?? ""),
+          quantity: Math.max(1, Number(formData.get("quantity") ?? 1)),
+          unitPrice: cents(formData.get("unitPrice")),
+          unitCost: cents(formData.get("unitCost")),
+        });
+        setMessage(`Line item added. Job total is now $${(result.jobTotal / 100).toFixed(2)}.`);
+        router.refresh();
+      } catch (e) {
+        setMessage(`Error: ${(e as Error).message}`);
+      }
+    });
+  }
+
+  return (
+    <form onSubmit={submit} className="workflow-form compact-form">
+      <div className="form-grid">
+        <label className="span-2"><span>Description</span><input name="description" required placeholder="Diagnostic labor, part, disposal fee…" /></label>
+        <label><span>Qty</span><input name="quantity" type="number" min="1" step="1" defaultValue="1" /></label>
+        <label><span>Unit price</span><input name="unitPrice" type="number" min="0" step="0.01" placeholder="0.00" /></label>
+        <label><span>Unit cost</span><input name="unitCost" type="number" min="0" step="0.01" placeholder="0.00" /></label>
+      </div>
+      <button className="button primary" disabled={pending}>{pending ? "Adding…" : "Add line item"}</button>
+      <Status message={message} />
+    </form>
+  );
+}
+
+export function LineItemDeleteButton({ item }: { item: LineItemOption }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+
+  function remove() {
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        await deleteLineItem(item.id);
+        router.refresh();
+      } catch (e) {
+        setMessage(`Error: ${(e as Error).message}`);
+      }
+    });
+  }
+
+  return (
+    <div className="inline-action">
+      <button className="button compact" disabled={pending} onClick={remove}>{pending ? "Removing…" : "Remove"}</button>
+      <Status message={message} />
+    </div>
+  );
+}
+
+export function EstimateActionPanel({ job, estimates }: { job: JobOption; estimates: EstimateOption[] }) {
+  const router = useRouter();
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const latest = estimates.find((estimate) => estimate.jobId === job.id);
+
+  function create() {
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const estimate = await createEstimate({ jobId: job.id });
+        setMessage(`Estimate created for $${(estimate.total / 100).toFixed(2)}.`);
+        router.refresh();
+      } catch (e) {
+        setMessage(`Error: ${(e as Error).message}`);
+      }
+    });
+  }
+
+  function accept() {
+    if (!latest) return;
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        await acceptEstimate(latest.id);
+        setMessage("Estimate accepted. Job moved to scheduled.");
+        router.refresh();
+      } catch (e) {
+        setMessage(`Error: ${(e as Error).message}`);
+      }
+    });
+  }
+
+  return (
+    <div className="action-panel">
+      <button className="button" disabled={pending} onClick={create}>Create estimate</button>
+      {latest && !latest.accepted && <button className="button primary" disabled={pending} onClick={accept}>Mark accepted</button>}
+      {latest && <span className={latest.accepted ? "status-pill status-completed" : "status-pill status-draft"}>{latest.accepted ? "accepted" : "draft"}</span>}
+      <Status message={message} />
+    </div>
   );
 }
 
