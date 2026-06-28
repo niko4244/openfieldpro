@@ -11,6 +11,7 @@ import {
   boolean,
   pgEnum,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const jobStatus = pgEnum("job_status", [
@@ -263,17 +264,28 @@ export const progressInvoiceMilestones = pgTable(
   (t) => ({ jobIdx: index("progress_milestones_job_idx").on(t.orgId, t.jobId) }),
 );
 
-export const payments = pgTable("payments", {
-  id: id(),
-  orgId: orgId(),
-  invoiceId: uuid("invoice_id")
-    .notNull()
-    .references(() => invoices.id, { onDelete: "cascade" }),
-  amount: integer("amount").notNull(),
-  method: text("method").default("manual").notNull(),
-  reference: text("reference"),
-  paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const payments = pgTable(
+  "payments",
+  {
+    id: id(),
+    orgId: orgId(),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    amount: integer("amount").notNull(),
+    method: text("method").default("manual").notNull(),
+    reference: text("reference"),
+    provider: text("provider").default("manual").notNull(),
+    providerPaymentId: text("provider_payment_id"),
+    idempotencyKey: text("idempotency_key"),
+    paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    invoiceIdx: index("payments_invoice_idx").on(t.orgId, t.invoiceId),
+    providerPayment: uniqueIndex("payments_provider_payment_uidx").on(t.orgId, t.provider, t.providerPaymentId),
+    idempotency: uniqueIndex("payments_idempotency_uidx").on(t.orgId, t.idempotencyKey),
+  }),
+);
 
 export const recurringJobs = pgTable("recurring_jobs", {
   id: id(),
