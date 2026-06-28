@@ -11,46 +11,63 @@ export default async function CustomersPage() {
   }
 
   return (
-    <div>
-      <h1>Customers</h1>
-      {error ? (
-        <p style={{ color: "#ff8080" }}>API unreachable ({error}).</p>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#8a97c2", fontSize: 13 }}>
-              <th style={{ padding: 8 }}>Name</th>
-              <th style={{ padding: 8 }}>Email</th>
-              <th style={{ padding: 8 }}>Phone</th>
-              <th style={{ padding: 8 }}>Detail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {customers.map((c) => (
-              <tr key={c.id} style={{ borderTop: "1px solid #1d2440" }}>
-                <td style={{ padding: 8 }}>{c.name}</td>
-                <td style={{ padding: 8 }}>{c.email ?? "—"}</td>
-                <td style={{ padding: 8 }}>{c.phone ?? "—"}</td>
-                <td style={{ padding: 8 }}>
-                  <Link
-                    href={`/customers/${c.id}`}
-                    style={{ color: "#9fb0e0", textDecoration: "underline" }}
-                  >
-                    view
-                  </Link>
-                </td>
-              </tr>
-            ))}
-            {customers.length === 0 && (
-              <tr>
-                <td colSpan={4} style={{ padding: 8 }}>
-                  No customers yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      )}
+    <div className="page-stack">
+      <section className="hero-panel">
+        <div>
+          <p className="eyebrow">Customer CRM</p>
+          <h1>Every property, note, and job starts here.</h1>
+          <p className="muted">Keep the customer record clean enough for dispatch, billing, and future service history.</p>
+        </div>
+        <div className="hero-summary">
+          <span className="table-label">Total customers</span>
+          <strong>{customers.length}</strong>
+          <p className="muted">Org-scoped customer records loaded from the API.</p>
+        </div>
+      </section>
+
+      <section className="section-card">
+        <div className="section-header">
+          <div>
+            <h2>Customers</h2>
+            <p className="muted">Quick scan of names, contact details, and service history entry points.</p>
+          </div>
+        </div>
+        {error ? (
+          <p className="notice error">API unreachable ({error}).</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customers.map((customer) => (
+                  <tr key={customer.id}>
+                    <td><strong>{customer.name}</strong></td>
+                    <td>{customer.email ?? "—"}</td>
+                    <td>{customer.phone ?? "—"}</td>
+                    <td>
+                      <Link href={`/customers/${customer.id}`} className="button compact">
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+                {customers.length === 0 && (
+                  <tr>
+                    <td colSpan={4}>No customers yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
