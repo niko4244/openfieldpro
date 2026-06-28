@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -59,6 +60,10 @@ function invoiceStatusLabel(status: string) {
   return status.replaceAll("_", " ");
 }
 
+function newPublicToken(prefix: string) {
+  return `${prefix}_${randomBytes(24).toString("base64url")}`;
+}
+
 function defaultReminderRows(orgId: string, invoiceId: string) {
   return [0, 3, 7, 14].map((daysAfterDue) => ({
     orgId,
@@ -99,7 +104,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const paidRows = await db.select().from(payments).where(eq(payments.orgId, orgId));
     const paidByInvoice = new Map<string, number>();
     for (const payment of paidRows) paidByInvoice.set(payment.invoiceId, (paidByInvoice.get(payment.invoiceId) ?? 0) + payment.amount);
-    const header = ["number", "status", "po_number", "total_cents", "paid_cents", "balance_cents", "due_at", "last_sent_at", "created_at"];
+    const header = ["number", "status", "po_number", "total_cents", "paid_cents", "balance_cents", "due_at", "last_sent_at", "created_at", "public_url"];
     const body = rows.map((invoice) => {
       const paid = paidByInvoice.get(invoice.id) ?? 0;
       return [
@@ -112,6 +117,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
         invoice.dueAt?.toISOString() ?? "",
         invoice.lastSentAt?.toISOString() ?? "",
         invoice.createdAt.toISOString(),
+        invoice.publicToken ? `${publicAppUrl()}/public/invoices/${invoice.publicToken}` : "",
       ].map(csvCell).join(",");
     });
     reply.header("content-type", "text/csv; charset=utf-8");
@@ -170,6 +176,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       total: milestone.amountCents,
       taxRateBps: 0,
       discountCents: 0,
+      publicToken: newPublicToken("inv"),
       dueAt: milestone.dueAt,
     }).returning();
     await db.insert(lineItems).values({
@@ -280,6 +287,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
         total: math.total,
         taxRateBps,
         discountCents: math.discount,
+        publicToken: newPublicToken("inv"),
         dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
       })
       .returning();
@@ -298,12 +306,12 @@ export async function invoiceRoutes(app: FastifyInstance) {
     if (inv.status === "void" || inv.status === "paid") return reply.code(400).send({ error: `cannot send ${inv.status} invoice` });
     const [row] = await db
       .update(invoices)
-      .set({ status: "sent", lastSentAt: new Date() })
+      .set({ status: "sent", lastSentAt: new Date(), publicToken: inv.publicToken ?? newPublicToken("inv") })
       .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)))
       .returning();
     await ensureDefaultReminders(orgId, row.id);
     safeEmitActivity(orgId, "invoice.sent", `Sent invoice ${row.number}`, { jobId: row.jobId });
-    return row;
+    return { ...row, publicUrl: row.publicToken ? `${publicAppUrl()}/public/invoices/${row.publicToken}` : null };
   });
 
   app.post("/:id/pay", async (req, reply) => {
@@ -358,6 +366,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const Stripe = (await import("stripe")).default;
     const stripe = new Stripe(key);
     const origin = publicAppUrl();
+    const successTarget = inv.publicToken ? `/public/invoices/${inv.publicToken}?paid=1` : `/invoices/${id}?paid=1`;
+    const cancelTarget = inv.publicToken ? `/public/invoices/${inv.publicToken}` : `/invoices/${id}`;
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [
@@ -370,8 +380,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
           quantity: 1,
         },
       ],
-      success_url: `${origin}/invoices/${id}?paid=1`,
-      cancel_url: `${origin}/invoices/${id}`,
+      success_url: `${origin}${successTarget}`,
+      cancel_url: `${origin}${cancelTarget}`,
       metadata: { invoiceId: id, orgId },
     });
     return { url: session.url };
