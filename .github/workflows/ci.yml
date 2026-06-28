@@ -1,0 +1,38 @@
+name: OpenFieldPro CI
+
+on:
+  push:
+    branches:
+      - ofp-monorepo
+      - codex/**
+  pull_request:
+    branches:
+      - ofp-monorepo
+
+jobs:
+  verify:
+    name: Verify API and web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Run API tests
+        run: pnpm --filter @ofp/api test
+
+      - name: Build API
+        run: pnpm --filter @ofp/api build
+
+      - name: Build web
+        run: pnpm --filter @ofp/web build
