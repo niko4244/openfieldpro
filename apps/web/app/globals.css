@@ -329,6 +329,8 @@ textarea { min-height: 92px; resize: vertical; }
   align-items: center;
 }
 .action-panel .notice { flex-basis: 100%; }
+.inline-action { display: inline-grid; gap: 6px; justify-items: end; }
+.inline-action .notice { max-width: 220px; font-size: 12px; padding: 8px 10px; }
 .notice { border-radius: 12px; padding: 12px 14px; font-weight: 700; }
 .fine-print { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .empty-state {
@@ -350,7 +352,7 @@ textarea { min-height: 92px; resize: vertical; }
     left: 12px;
     z-index: 30;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     border: 1px solid var(--line);
     border-radius: 22px;
     background: rgba(255, 255, 255, 0.94);
@@ -363,9 +365,9 @@ textarea { min-height: 92px; resize: vertical; }
     flex-direction: column;
     gap: 4px;
     padding: 7px 4px;
-    font-size: 11px;
+    font-size: 10px;
   }
-  .bottom-nav span { font-size: 16px; color: var(--ink); }
+  .bottom-nav span { font-size: 15px; color: var(--ink); }
   .main-content { padding-bottom: 104px; }
 }
 
