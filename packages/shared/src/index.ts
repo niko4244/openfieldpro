@@ -24,6 +24,7 @@ export interface CustomerDTO {
   name: string;
   email?: string | null;
   phone?: string | null;
+  notes?: string | null;
   createdAt: string;
 }
 
@@ -31,9 +32,12 @@ export interface JobDTO {
   id: string;
   customerId: string;
   title: string;
+  description?: string | null;
   status: JobStatus;
   scheduledAt?: string | null;
+  assignedTo?: string | null;
   total: Money;
+  laborCostCents?: Money;
   createdAt: string;
 }
 
