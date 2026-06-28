@@ -1,8 +1,17 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { db, invoices, payments, jobs, lineItems, invoiceTemplates } from "@ofp/db";
-import { applyPayment, invoiceNumber } from "../invoicing.js";
+import {
+  db,
+  invoices,
+  payments,
+  jobs,
+  lineItems,
+  invoiceTemplates,
+  invoiceReminderSchedules,
+  progressInvoiceMilestones,
+} from "@ofp/db";
+import { applyPayment } from "../invoicing.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 
@@ -11,6 +20,20 @@ const payBody = z.object({
   amount: z.number().int().positive(),
   method: z.enum(["manual", "cash", "check", "card"]).default("manual"),
   reference: z.string().optional(),
+});
+const progressBody = z.object({
+  label: z.string().min(1),
+  amountCents: z.number().int().nonnegative().optional(),
+  percentBps: z.number().int().min(0).max(10000).optional(),
+  dueAt: z.string().datetime().optional(),
+});
+const reminderBody = z.object({
+  schedules: z.array(z.object({
+    daysAfterDue: z.number().int().min(0).max(365),
+    channel: z.enum(["email", "sms", "manual"]).default("email"),
+    message: z.string().min(1).max(500),
+    enabled: z.boolean().default(true),
+  })).min(1),
 });
 
 function publicAppUrl() {
@@ -31,6 +54,34 @@ function csvCell(value: unknown) {
 
 function invoiceStatusLabel(status: string) {
   return status.replaceAll("_", " ");
+}
+
+function defaultReminderRows(orgId: string, invoiceId: string) {
+  return [0, 3, 7, 14].map((daysAfterDue) => ({
+    orgId,
+    invoiceId,
+    daysAfterDue,
+    channel: "email" as const,
+    message: daysAfterDue === 0 ? "Invoice due today" : `Invoice overdue by ${daysAfterDue} days`,
+    enabled: true,
+  }));
+}
+
+async function ensureDefaultReminders(orgId: string, invoiceId: string) {
+  const existing = await db
+    .select({ id: invoiceReminderSchedules.id })
+    .from(invoiceReminderSchedules)
+    .where(and(eq(invoiceReminderSchedules.orgId, orgId), eq(invoiceReminderSchedules.invoiceId, invoiceId)));
+  if (existing.length) return;
+  await db.insert(invoiceReminderSchedules).values(defaultReminderRows(orgId, invoiceId));
+}
+
+async function nextInvoiceNumber(orgId: string, prefix: string) {
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(invoices)
+    .where(eq(invoices.orgId, orgId));
+  return `${prefix}-${String(count + 1).padStart(4, "0")}`;
 }
 
 export async function invoiceRoutes(app: FastifyInstance) {
@@ -65,20 +116,100 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return [header.map(csvCell).join(","), ...body].join("\n");
   });
 
+  app.get("/progress/:jobId", async (req) => {
+    const orgId = await resolveOrgId(req);
+    const { jobId } = req.params as { jobId: string };
+    return db
+      .select()
+      .from(progressInvoiceMilestones)
+      .where(and(eq(progressInvoiceMilestones.orgId, orgId), eq(progressInvoiceMilestones.jobId, jobId)))
+      .orderBy(progressInvoiceMilestones.createdAt);
+  });
+
+  app.post("/progress/:jobId", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { jobId } = req.params as { jobId: string };
+    const parsed = progressBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const [job] = await db.select().from(jobs).where(and(eq(jobs.orgId, orgId), eq(jobs.id, jobId)));
+    if (!job) return reply.code(404).send({ error: "job not found" });
+    const amountCents = parsed.data.amountCents ?? Math.round((job.total * (parsed.data.percentBps ?? 0)) / 10000);
+    const [row] = await db.insert(progressInvoiceMilestones).values({
+      orgId,
+      jobId,
+      label: parsed.data.label,
+      amountCents,
+      percentBps: parsed.data.percentBps ?? 0,
+      status: "ready",
+      dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
+    }).returning();
+    safeEmitActivity(orgId, "progress_invoice.created", `Created progress invoice milestone: ${row.label}`, { jobId });
+    return reply.code(201).send(row);
+  });
+
+  app.post("/progress-milestones/:id/invoice", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+    const [milestone] = await db
+      .select()
+      .from(progressInvoiceMilestones)
+      .where(and(eq(progressInvoiceMilestones.orgId, orgId), eq(progressInvoiceMilestones.id, id)));
+    if (!milestone) return reply.code(404).send({ error: "milestone not found" });
+    if (milestone.invoiceId) return reply.code(400).send({ error: "milestone already invoiced" });
+    const [template] = await db.select().from(invoiceTemplates).where(eq(invoiceTemplates.orgId, orgId)).limit(1);
+    const prefix = template?.invoicePrefix ?? "INV";
+    const number = await nextInvoiceNumber(orgId, prefix);
+    const [invoice] = await db.insert(invoices).values({
+      orgId,
+      jobId: milestone.jobId,
+      number,
+      status: "draft",
+      total: milestone.amountCents,
+      taxRateBps: 0,
+      discountCents: 0,
+      dueAt: milestone.dueAt,
+    }).returning();
+    await db.insert(lineItems).values({
+      orgId,
+      jobId: milestone.jobId,
+      description: milestone.label,
+      quantity: 1,
+      unitPrice: milestone.amountCents,
+      unitCost: 0,
+      taxable: true,
+    });
+    const [updated] = await db.update(progressInvoiceMilestones).set({ invoiceId: invoice.id, status: "invoiced" }).where(eq(progressInvoiceMilestones.id, milestone.id)).returning();
+    safeEmitActivity(orgId, "progress_invoice.invoiced", `Created ${invoice.number} for milestone: ${milestone.label}`, { jobId: milestone.jobId });
+    return reply.code(201).send({ invoice, milestone: updated });
+  });
+
   app.get("/:id/reminder-plan", async (req, reply) => {
     const orgId = await resolveOrgId(req);
     const { id } = req.params as { id: string };
     const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
     if (!inv) return reply.code(404).send({ error: "not found" });
+    await ensureDefaultReminders(orgId, inv.id);
     const [template] = await db.select().from(invoiceTemplates).where(eq(invoiceTemplates.orgId, orgId)).limit(1);
-    const terms = template?.paymentTerms ?? "Due on receipt";
-    const schedule = [0, 3, 7, 14].map((daysAfterDue) => ({
-      daysAfterDue,
-      channel: "email",
-      message: daysAfterDue === 0 ? "Invoice due today" : `Invoice overdue by ${daysAfterDue} days`,
-      enabled: inv.status === "sent" && Boolean(inv.dueAt),
-    }));
-    return { invoiceId: inv.id, number: inv.number, status: inv.status, dueAt: inv.dueAt, terms, schedule };
+    const schedule = await db
+      .select()
+      .from(invoiceReminderSchedules)
+      .where(and(eq(invoiceReminderSchedules.orgId, orgId), eq(invoiceReminderSchedules.invoiceId, inv.id)))
+      .orderBy(invoiceReminderSchedules.daysAfterDue);
+    return { invoiceId: inv.id, number: inv.number, status: inv.status, dueAt: inv.dueAt, terms: template?.paymentTerms ?? "Due on receipt", schedule };
+  });
+
+  app.put("/:id/reminders", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+    const parsed = reminderBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
+    if (!inv) return reply.code(404).send({ error: "not found" });
+    await db.delete(invoiceReminderSchedules).where(and(eq(invoiceReminderSchedules.orgId, orgId), eq(invoiceReminderSchedules.invoiceId, id)));
+    const rows = parsed.data.schedules.map((schedule) => ({ ...schedule, orgId, invoiceId: id }));
+    const created = await db.insert(invoiceReminderSchedules).values(rows).returning();
+    safeEmitActivity(orgId, "invoice.reminders.updated", `Updated reminder schedule for ${inv.number}`, { jobId: inv.jobId });
+    return { invoiceId: id, schedule: created };
   });
 
   app.get("/:id", async (req, reply) => {
@@ -102,11 +233,6 @@ export async function invoiceRoutes(app: FastifyInstance) {
       .where(and(eq(jobs.orgId, orgId), eq(jobs.id, parsed.data.jobId)));
     if (!job) return reply.code(404).send({ error: "job not found" });
 
-    const [{ count }] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(invoices)
-      .where(eq(invoices.orgId, orgId));
-
     const [template] = await db.select().from(invoiceTemplates).where(eq(invoiceTemplates.orgId, orgId)).limit(1);
     const items = await db.select().from(lineItems).where(and(eq(lineItems.orgId, orgId), eq(lineItems.jobId, job.id)));
     const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0) || job.total;
@@ -120,7 +246,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       .values({
         orgId,
         jobId: job.id,
-        number: `${prefix}-${String(count + 1).padStart(4, "0")}`,
+        number: await nextInvoiceNumber(orgId, prefix),
         poNumber: parsed.data.poNumber ?? null,
         status: "draft",
         total: math.total,
@@ -147,6 +273,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       .set({ status: "sent", lastSentAt: new Date() })
       .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)))
       .returning();
+    await ensureDefaultReminders(orgId, row.id);
     safeEmitActivity(orgId, "invoice.sent", `Sent invoice ${row.number}`, { jobId: row.jobId });
     return row;
   });
