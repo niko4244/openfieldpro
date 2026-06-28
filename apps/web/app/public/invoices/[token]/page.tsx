@@ -6,13 +6,15 @@ const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replac
 interface PublicInvoiceDetail {
   invoice: { id: string; number: string; status: "draft" | "sent" | "paid" | "void"; total: number; dueAt?: string | null; createdAt: string; poNumber?: string | null };
   job: { id: string; title: string; description?: string | null };
-  customer?: { id: string; name: string; email?: string | null; phone?: string | null } | null;
+  customer?: { id: string; name: string; email?: string | null; phone?: string | null; publicToken?: string | null } | null;
   property?: { address: string } | null;
   org?: { id: string; name: string } | null;
   template?: { companyName: string; paymentTerms: string; acceptedPaymentMethods: string; lateFeePolicy: string; memo: string; footer: string; termsAndConditions: string } | null;
   lineItems: Array<{ description: string; quantity: number; unitPrice: number; taxable?: boolean | null }>;
   payments: Array<{ id: string; amount: number; method: string; paidAt: string }>;
   totals: { paid: number; balance: number };
+  portalToken?: string | null;
+  portalUrl?: string | null;
 }
 
 async function loadInvoice(token: string): Promise<PublicInvoiceDetail> {
@@ -49,6 +51,7 @@ export default async function PublicInvoicePage({ params, searchParams }: { para
               {query.paid && <p className="notice success">Payment session completed. Payment status may take a moment to update.</p>}
               <div className="hero-actions">
                 <a className="button" href={`${BASE}/api/public/invoices/${token}.pdf`}>Download PDF</a>
+                {data.portalUrl && <a className="button" href={data.portalUrl}>Customer portal</a>}
               </div>
             </div>
             <div className="command-panel">
