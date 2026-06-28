@@ -13,6 +13,10 @@ const payBody = z.object({
   reference: z.string().optional(),
 });
 
+function publicAppUrl() {
+  return (process.env.PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+}
+
 export async function invoiceRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     const orgId = await resolveOrgId(req);
@@ -24,8 +28,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
     if (!inv) return reply.code(404).send({ error: "not found" });
-    const items = await db.select().from(lineItems).where(eq(lineItems.jobId, inv.jobId));
-    const paid = await db.select().from(payments).where(eq(payments.invoiceId, id));
+    const items = await db.select().from(lineItems).where(and(eq(lineItems.orgId, orgId), eq(lineItems.jobId, inv.jobId)));
+    const paid = await db.select().from(payments).where(and(eq(payments.orgId, orgId), eq(payments.invoiceId, id)));
     return { ...inv, lineItems: items, payments: paid };
   });
 
@@ -72,7 +76,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
     if (!inv) return reply.code(404).send({ error: "not found" });
 
-    const prior = await db.select().from(payments).where(eq(payments.invoiceId, id));
+    const prior = await db.select().from(payments).where(and(eq(payments.orgId, orgId), eq(payments.invoiceId, id)));
     const priorPaid = prior.reduce((a, p) => a + p.amount, 0);
 
     let result;
@@ -89,7 +93,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       method: parsed.data.method,
       reference: parsed.data.reference,
     });
-    await db.update(invoices).set({ status: result.status }).where(eq(invoices.id, id));
+    await db.update(invoices).set({ status: result.status }).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
     safeEmitActivity(
       orgId,
       "payment.received",
@@ -117,6 +121,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     // Lazy import so the app runs without the stripe package installed.
     const Stripe = (await import("stripe")).default;
     const stripe = new Stripe(key);
+    const origin = publicAppUrl();
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [
@@ -129,8 +134,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.NEXT_PUBLIC_API_URL ?? ""}/invoices/${id}?paid=1`,
-      cancel_url: `${process.env.NEXT_PUBLIC_API_URL ?? ""}/invoices/${id}`,
+      success_url: `${origin}/invoices/${id}?paid=1`,
+      cancel_url: `${origin}/invoices/${id}`,
       metadata: { invoiceId: id, orgId },
     });
     return { url: session.url };
