@@ -57,6 +57,28 @@ export interface InvoiceDetailDTO extends InvoiceDTO {
   payments: PaymentDTO[];
 }
 
+export interface InvoiceReminderScheduleDTO {
+  id: string;
+  invoiceId: string;
+  daysAfterDue: number;
+  channel: "email" | "sms" | "manual";
+  message: string;
+  enabled: boolean;
+  lastSentAt?: string | null;
+}
+
+export interface ProgressInvoiceMilestoneDTO {
+  id: string;
+  jobId: string;
+  invoiceId?: string | null;
+  label: string;
+  amountCents: number;
+  percentBps: number;
+  status: "draft" | "ready" | "invoiced" | "paid" | "void";
+  dueAt?: string | null;
+  createdAt: string;
+}
+
 export interface InvoiceTemplateDTO {
   companyName: string;
   companyAddress?: string | null;
@@ -136,6 +158,8 @@ export const api = {
   },
   invoices: () => get<InvoiceDTO[]>("/api/invoices"),
   invoice: (id: string) => get<InvoiceDetailDTO>(`/api/invoices/${id}`),
+  invoiceReminderPlan: (id: string) => get<{ schedule: InvoiceReminderScheduleDTO[] }>(`/api/invoices/${id}/reminder-plan`),
+  progressMilestones: (jobId: string) => get<ProgressInvoiceMilestoneDTO[]>(`/api/invoices/progress/${jobId}`),
   invoiceTemplate: () => get<InvoiceTemplateDTO>("/api/invoice-template"),
   invoicePreview: (invoiceId?: string) => get<InvoicePreviewDTO>(`/api/invoice-template/preview${invoiceId ? `?invoiceId=${invoiceId}` : ""}`),
   reports: () => get<ReportSummaryDTO>("/api/reports/summary"),
