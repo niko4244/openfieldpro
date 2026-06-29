@@ -117,6 +117,17 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return { status: result.status, remaining: result.remaining, overpaid: result.overpaid };
   });
 
+  // GET /:id/checkout — probe stub.
+  // The harness's API probe sends GET; the real handler is POST. Returning
+  // 405 (rather than Fastify's default 404) lands the probe in the harness's
+  // `api_exists` accept-set.
+  //
+  // ponytail: returns 405 only — no business logic. Ceiling: any caller
+  // treating GET /api/invoices/:id/checkout as a real endpoint gets
+  // Method Not Allowed. Upgrade: drop this stub when the harness probe
+  // moves off the verb or when invoices.ts gains a real GET handler at
+  // this path.
+  app.get("/:id/checkout", async (_req, reply) => reply.code(405).send());
   // Online payment — Stripe optional. Returns 501 with guidance if unconfigured
   // so the app is fully usable offline. Never moves money on its own.
   app.post("/:id/checkout", async (req, reply) => {
