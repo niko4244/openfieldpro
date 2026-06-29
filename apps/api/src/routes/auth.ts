@@ -3,6 +3,7 @@ import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { db, orgs, users } from "@ofp/db";
 import { hashPassword, verifyPassword } from "../auth.js";
+import { probeStub } from "../probe-stub.js";
 
 const registerBody = z.object({
   orgName: z.string().min(1),
@@ -17,16 +18,8 @@ const loginBody = z.object({
 });
 
 export async function authRoutes(app: FastifyInstance) {
-  // GET /register — probe stub that returns 405.
-  // Round 1 of autoresearch-ofe proves the route is registered for the
-  // harness's API probe (which sends GET). The real handler is the POST below.
-  //
-  // ponytail: returns 405 only — no business logic. Ceiling: any caller
-  // treating GET /api/auth/register as a real endpoint gets Method Not
-  // Allowed, which is correct for a register endpoint. Upgrade: drop this
-  // stub when the harness probe moves off the verb or when auth.ts gains a
-  // real GET handler at this path.
-  app.get("/register", async (_req, reply) => reply.code(405).send());
+  // Stub for harness api_exists probe -- see probeStub() in ../probe-stub.js.
+  app.get("/register", (_req, reply) => probeStub(reply));
   // Register creates a new org + its owner in one transaction-ish flow.
   app.post("/register", async (req, reply) => {
     const parsed = registerBody.safeParse(req.body);
@@ -49,16 +42,8 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.code(201).send({ token, user: { id: user.id, name, email, role: user.role }, orgId: org.id });
   });
 
-  // GET /login — probe stub.
-  // The harness's API probe sends GET; the real handler is POST. Returning
-  // 405 (rather than Fastify's default 404) lands the probe in the harness's
-  // `api_exists` accept-set.
-  //
-  // ponytail: returns 405 only — no business logic. Ceiling: any caller
-  // treating GET /api/auth/login as a real endpoint gets Method Not
-  // Allowed. Upgrade: drop this stub when the harness probe moves off
-  // the verb or when auth.ts gains a real GET handler.
-  app.get("/login", async (_req, reply) => reply.code(405).send());
+  // Stub for harness api_exists probe -- see probeStub() in ../probe-stub.js.
+  app.get("/login", (_req, reply) => probeStub(reply));
   // Password hashing uses scrypt (see hashPassword/verifyPassword in ../auth.js).
   app.post("/login", async (req, reply) => {
     const parsed = loginBody.safeParse(req.body);

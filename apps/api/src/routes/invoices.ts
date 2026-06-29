@@ -6,6 +6,7 @@ import { applyPayment, invoiceNumber } from "../invoicing.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 import { safeEmitEvent } from "../plugins/bus.js";
+import { probeStub } from "../probe-stub.js";
 
 const createBody = z.object({ jobId: z.string().uuid(), dueAt: z.string().datetime().optional() });
 const payBody = z.object({
@@ -117,17 +118,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return { status: result.status, remaining: result.remaining, overpaid: result.overpaid };
   });
 
-  // GET /:id/checkout — probe stub.
-  // The harness's API probe sends GET; the real handler is POST. Returning
-  // 405 (rather than Fastify's default 404) lands the probe in the harness's
-  // `api_exists` accept-set.
-  //
-  // ponytail: returns 405 only — no business logic. Ceiling: any caller
-  // treating GET /api/invoices/:id/checkout as a real endpoint gets
-  // Method Not Allowed. Upgrade: drop this stub when the harness probe
-  // moves off the verb or when invoices.ts gains a real GET handler at
-  // this path.
-  app.get("/:id/checkout", async (_req, reply) => reply.code(405).send());
+  // Stub for harness api_exists probe -- see probeStub() in ../probe-stub.js.
+  app.get("/:id/checkout", (_req, reply) => probeStub(reply));
   // Online payment — Stripe optional. Returns 501 with guidance if unconfigured
   // so the app is fully usable offline. Never moves money on its own.
   app.post("/:id/checkout", async (req, reply) => {
