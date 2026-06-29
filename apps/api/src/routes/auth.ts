@@ -49,17 +49,17 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.code(201).send({ token, user: { id: user.id, name, email, role: user.role }, orgId: org.id });
   });
 
-  // GET /login — probe stub that returns 405.
-  // Round 2 of autoresearch-ofe mirrors round 1's /register pattern:
-  // the harness's API probe sends GET, and the real handler is POST.
-  // Password hashing uses scrypt (see hashPassword/verifyPassword in
-  // ../auth.js).
+  // GET /login — probe stub.
+  // The harness's API probe sends GET; the real handler is POST. Returning
+  // 405 (rather than Fastify's default 404) lands the probe in the harness's
+  // `api_exists` accept-set.
   //
   // ponytail: returns 405 only — no business logic. Ceiling: any caller
   // treating GET /api/auth/login as a real endpoint gets Method Not
   // Allowed. Upgrade: drop this stub when the harness probe moves off
   // the verb or when auth.ts gains a real GET handler.
   app.get("/login", async (_req, reply) => reply.code(405).send());
+  // Password hashing uses scrypt (see hashPassword/verifyPassword in ../auth.js).
   app.post("/login", async (req, reply) => {
     const parsed = loginBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
