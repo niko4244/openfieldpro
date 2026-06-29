@@ -17,6 +17,7 @@ import { recurringRoutes } from "./routes/recurring.js";
 import { publicRoutes } from "./routes/public.js";
 import { activityRoutes } from "./routes/activities.js";
 import { syncRoutes } from "./routes/sync.js";
+import { timeEntriesRoutes } from "./routes/time-entries.js";
 import { userRoutes } from "./routes/users.js";
 import { photoRoutes } from "./routes/photos.js";
 import { catalogRoutes } from "./routes/catalog.js";
@@ -47,6 +48,7 @@ export function buildServer() {
   app.register(publicRoutes, { prefix: "/api/public" });
   app.register(activityRoutes, { prefix: "/api/activities" });
   app.register(syncRoutes);
+  app.register(timeEntriesRoutes, { prefix: "/api/time-entries" });
   app.register(userRoutes, { prefix: "/api/users" });
   app.register(equipmentRoutes, { prefix: "/api/equipment" });
   app.register(notificationRoutes, { prefix: "/api/notifications" });
