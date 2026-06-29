@@ -17,6 +17,16 @@ const loginBody = z.object({
 });
 
 export async function authRoutes(app: FastifyInstance) {
+  // GET /register — probe stub that returns 405.
+  // Round 1 of autoresearch-ofe proves the route is registered for the
+  // harness's API probe (which sends GET). The real handler is the POST below.
+  //
+  // ponytail: returns 405 only — no business logic. Ceiling: any caller
+  // treating GET /api/auth/register as a real endpoint gets Method Not
+  // Allowed, which is correct for a register endpoint. Upgrade: drop this
+  // stub when the harness probe moves off the verb or when auth.ts gains a
+  // real GET handler at this path.
+  app.get("/register", async (_req, reply) => reply.code(405).send());
   // Register creates a new org + its owner in one transaction-ish flow.
   app.post("/register", async (req, reply) => {
     const parsed = registerBody.safeParse(req.body);
