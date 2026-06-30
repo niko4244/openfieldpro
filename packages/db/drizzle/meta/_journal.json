@@ -57,6 +57,13 @@
       "when": 1782747134567,
       "tag": "0007_tan_raider",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782777022196,
+      "tag": "0008_add_recurring_job_columns",
+      "breakpoints": true
     }
   ]
 }
