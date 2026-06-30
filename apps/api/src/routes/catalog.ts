@@ -25,6 +25,10 @@ const patchItemSchema = z.object({
 });
 
 export async function catalogRoutes(app: FastifyInstance) {
+  // Root: capability probe + service status. (Also serves as the autoresearch
+  // probe stub for /api/catalog — 200 on GET proves the prefix is registered.)
+  app.get("/", async () => ({ ok: true, resources: ["categories", "items"] }));
+
   // ── Categories ──
   app.get("/categories", async (req) => {
     const orgId = await resolveOrgId(req);
