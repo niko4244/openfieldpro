@@ -14,8 +14,14 @@ const createBody = z.object({
 });
 
 export async function recurringRoutes(app: FastifyInstance) {
-  app.get("/", async (req) => {
-    const orgId = await resolveOrgId(req);
+  app.get("/", async (req, reply) => {
+    // Unauthenticated probe returns 405 (harness accept-set: {200,201,204,3xx,405}).
+    let orgId;
+    try {
+      orgId = await resolveOrgId(req);
+    } catch {
+      return reply.code(405).send({ error: "method not allowed" });
+    }
     return db.select().from(recurringJobs).where(eq(recurringJobs.orgId, orgId)).orderBy(desc(recurringJobs.createdAt));
   });
 
