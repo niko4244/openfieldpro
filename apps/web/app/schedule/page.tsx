@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import type { JobDTO } from "@ofp/shared";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,7 +30,7 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<ViewMode>("day");
+  const [view, setView] = useState<ViewMode>("week"); // ponytail: default to week gives a useful overview on first load. Ceiling: no user preference persistence. Upgrade: save view pref to localStorage.
   const [monthBase, setMonthBase] = useState(() => {
     const d = new Date();
     d.setDate(1);
@@ -162,6 +164,39 @@ export default function SchedulePage() {
   const nextMonth = () => setMonthBase((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
   const monthLabel = monthBase.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
+  // ── Create-appointment dialog ──
+  const [showCreate, setShowCreate] = useState(false);
+  const [createJobId, setCreateJobId] = useState("");
+  const [createStartsAt, setCreateStartsAt] = useState("");
+  const [createEndsAt, setCreateEndsAt] = useState("");
+  const [createTechnician, setCreateTechnician] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
+
+  const handleCreateAppointment = async () => {
+    if (!createJobId || !createStartsAt || !createEndsAt) return;
+    setCreating(true);
+    setCreateErr(null);
+    try {
+      const created = await api.createAppointment({
+        jobId: createJobId,
+        startsAt: new Date(createStartsAt).toISOString(),
+        endsAt: new Date(createEndsAt).toISOString(),
+        technicianId: createTechnician.trim() || undefined,
+      });
+      setAppointments((prev) => [...prev, created]);
+      setShowCreate(false);
+      setCreateJobId("");
+      setCreateStartsAt("");
+      setCreateEndsAt("");
+      setCreateTechnician("");
+    } catch {
+      setCreateErr("Failed to create appointment");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   // ── Loading ──
   if (loading) {
     return (
@@ -197,7 +232,11 @@ export default function SchedulePage() {
       <PageHeader
         title="Schedule"
         description={`${appointments.length} appointment${appointments.length !== 1 ? "s" : ""}${search.trim() ? ` · ${filtered.length} match` : ""}`}
-
+        actions={
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            + New Appointment
+          </Button>
+        }
       />
 
       {/* ── Error ── */}
@@ -212,8 +251,13 @@ export default function SchedulePage() {
         <Card>
           <EmptyState
             title="No appointments yet"
-            description="Create one with POST /api/appointments (jobId + startsAt + endsAt)"
+            description="Create an appointment to get started"
           />
+          <div className="flex justify-center pb-6">
+            <Button size="sm" onClick={() => setShowCreate(true)}>
+              + New Appointment
+            </Button>
+          </div>
         </Card>
       ) : (
         <>
@@ -518,6 +562,91 @@ export default function SchedulePage() {
           )}
         </>
       )}
+
+      {/* ── Create appointment dialog ── */}
+      <Dialog
+        open={showCreate}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCreateJobId("");
+            setCreateStartsAt("");
+            setCreateEndsAt("");
+            setCreateTechnician("");
+            setCreateErr(null);
+          }
+          setShowCreate(open);
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>New Appointment</DialogTitle>
+        </DialogHeader>
+        <DialogContent>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleCreateAppointment();
+            }}
+            className="flex flex-col gap-4"
+          >
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-fg-muted">Job *</label>
+              <select
+                className="h-10 px-3 rounded-lg border border-border bg-surface-300 text-fg text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                value={createJobId}
+                onChange={(e) => setCreateJobId(e.target.value)}
+                required
+              >
+                <option value="">Select a job…</option>
+                {jobs.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.title ?? j.id.slice(0, 8)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-fg-muted">Starts *</label>
+              <input
+                className="h-10 px-3 rounded-lg border border-border bg-surface-300 text-fg text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                type="datetime-local"
+                value={createStartsAt}
+                onChange={(e) => setCreateStartsAt(e.target.value)}
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-fg-muted">Ends *</label>
+              <input
+                className="h-10 px-3 rounded-lg border border-border bg-surface-300 text-fg text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                type="datetime-local"
+                value={createEndsAt}
+                onChange={(e) => setCreateEndsAt(e.target.value)}
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-fg-muted">Technician ID (optional)</label>
+              <input
+                className="h-10 px-3 rounded-lg border border-border bg-surface-300 text-fg text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                value={createTechnician}
+                onChange={(e) => setCreateTechnician(e.target.value)}
+                placeholder="Technician ID"
+              />
+            </div>
+            {createErr && (
+              <p className="text-xs text-red">{createErr}</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="ghost" size="sm" disabled={creating} onClick={() => setShowCreate(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={!createJobId || !createStartsAt || !createEndsAt || creating}>
+                {creating ? "Creating..." : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

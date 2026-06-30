@@ -16,6 +16,7 @@ interface Review {
   jobId: string;
   rating: number;
   comment?: string | null;
+  reply?: string | null;
   createdAt: string;
 }
 
@@ -46,6 +47,9 @@ export default function ReviewsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [replyText, setReplyText] = useState("");
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyingLoading, setReplyingLoading] = useState(false);
   const [sort, setSort] = useState<SortField>("date");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
 
@@ -84,6 +88,25 @@ export default function ReviewsPage() {
     for (const c of customers) m.set(c.id, c);
     return m;
   }, [customers]);
+
+  const handleReply = async (reviewId: string) => {
+    if (!replyText.trim()) return;
+    setReplyingLoading(true);
+    try {
+      const updated = await api.patchReview(reviewId, { reply: replyText.trim() });
+      setData((prev) =>
+        prev
+          ? { ...prev, reviews: prev.reviews.map((r) => (r.id === reviewId ? { ...r, reply: updated.reply } : r)) }
+          : prev
+      );
+      setReplyingTo(null);
+      setReplyText("");
+    } catch {
+      // silently fail — ponytail: no toast system yet
+    } finally {
+      setReplyingLoading(false);
+    }
+  };
 
   const handleSort = (field: SortField) => {
     if (sort === field) setDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -234,6 +257,45 @@ export default function ReviewsPage() {
                           &ldquo;{r.comment}&rdquo;
                         </p>
                       )}
+                      {r.reply && (
+                        <p className="text-xs text-fg-muted italic mb-3 pl-2 border-l-2 border-accent/30">
+                          Reply: {r.reply}
+                        </p>
+                      )}
+                      {replyingTo === r.id ? (
+                        <div className="flex flex-col gap-2 mb-3">
+                          <textarea
+                            className="min-h-[60px] px-2 py-1.5 rounded-lg border border-border bg-surface-300 text-fg text-xs focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none"
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            placeholder="Write a reply..."
+                            autoFocus
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => { setReplyingTo(null); setReplyText(""); }}
+                              className="text-xs text-fg-muted hover:text-fg cursor-pointer bg-transparent border-none px-2 py-1"
+                              disabled={replyingLoading}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleReply(r.id)}
+                              disabled={!replyText.trim() || replyingLoading}
+                              className="text-xs px-3 py-1 rounded-lg bg-accent text-white font-medium border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent/90 transition-colors"
+                            >
+                              {replyingLoading ? "Saving..." : "Reply"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : !r.reply ? (
+                        <button
+                          onClick={() => setReplyingTo(r.id)}
+                          className="text-xs text-fg-link hover:text-fg cursor-pointer bg-transparent border-none mb-3 text-left"
+                        >
+                          + Reply
+                        </button>
+                      ) : null}
                       <div className="flex items-center gap-2 pt-2 border-t border-border">
                         {job && (
                           <Link

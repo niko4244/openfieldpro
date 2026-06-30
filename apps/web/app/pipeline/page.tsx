@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatMoney } from "@ofp/shared";
 import type { JobDTO, CustomerDTO } from "@ofp/shared";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
+import { JobStatusBadge } from "@/components/status-badge";
 
 const COLUMNS = [
   { status: "lead", label: "Lead", color: "border-t-purple" },
@@ -25,6 +27,9 @@ export default function PipelinePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const dragRef = useRef<string | null>(null);
+  const dragOverCol = useRef<string | null>(null);
+  const [moving, setMoving] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,9 +108,7 @@ export default function PipelinePage() {
         description={`${jobs.length} job${jobs.length !== 1 ? "s" : ""} across 5 stages`}
         actions={
           <Link href="/schedule">
-            <button className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-accent text-white hover:bg-accent/90 transition-colors cursor-pointer border-none">
-              ⊕ New Job
-            </button>
+            <Button size="sm">⊕ New Job</Button>
           </Link>
         }
       />
@@ -159,18 +162,54 @@ export default function PipelinePage() {
                       )}
                     </div>
 
-                    {/* Column body */}
-                    <div className="rounded-b-lg bg-surface-200 p-2 flex flex-col gap-2 min-h-[200px]">
+                    {/* Column body — drop zone */}
+                    <div
+                      className={`rounded-b-lg bg-surface-200 p-2 flex flex-col gap-2 min-h-[200px] transition-colors ${dragOverCol.current === col.status ? "bg-accent/10 ring-1 ring-accent/30" : ""}`}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        dragOverCol.current = col.status;
+                      }}
+                      onDragLeave={() => {
+                        dragOverCol.current = null;
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const jobId = dragRef.current;
+                        dragRef.current = null;
+                        dragOverCol.current = null;
+                        if (!jobId) return;
+                        const currentStatus = jobs.find((j) => j.id === jobId)?.status;
+                        if (currentStatus === col.status) return; // dropped on own column
+                        setMoving(jobId);
+                        try {
+                          await api.patchJob(jobId, { status: col.status });
+                          setJobs((prev) =>
+                            prev.map((j) => (j.id === jobId ? { ...j, status: col.status } : j))
+                          );
+                        } catch {
+                          // ponytail: on failure jobs are stale but refetch on next mount
+                        } finally {
+                          setMoving(null);
+                        }
+                      }}
+                    >
                       {colJobs.length === 0 ? (
                         <p className="text-xs text-fg-dim text-center py-8">—</p>
                       ) : (
                         colJobs.map((j) => {
                           const cust = customerMap.get(j.customerId);
+                          const isMoving = moving === j.id;
                           return (
                             <Link
                               key={j.id}
                               href={`/jobs/${j.id}`}
-                              className="block p-3 rounded-lg bg-surface-300 hover:bg-surface-400 transition-colors no-underline border-l-2 border-accent"
+                              draggable={!isMoving}
+                              onDragStart={() => { dragRef.current = j.id; }}
+                              onDragEnd={() => { dragRef.current = null; }}
+                              className={`block p-3 rounded-lg bg-surface-300 hover:bg-surface-400 transition-all no-underline border-l-2 border-accent ${isMoving ? "opacity-50" : ""}`}
+                              onClick={(e) => {
+                                if (dragRef.current) { e.preventDefault(); dragRef.current = null; }
+                              }}
                             >
                               <p className="text-xs font-medium text-fg line-clamp-2 leading-snug">
                                 {j.title}
@@ -184,6 +223,7 @@ export default function PipelinePage() {
                                 <span className="text-[11px] font-mono tabular-nums text-fg-dim">
                                   {formatMoney(j.total)}
                                 </span>
+                                <JobStatusBadge status={j.status} />
                                 {j.scheduledAt && (
                                   <span className="text-[9px] text-fg-dim">
                                     {new Date(j.scheduledAt).toLocaleDateString(undefined, {

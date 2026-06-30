@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { api } from "@/lib/api";
 import { formatMoney } from "@ofp/shared";
 import type { ReportSummaryDTO } from "@ofp/shared";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+
+type Period = "7d" | "30d" | "90d" | "all";
 
 const JOB_STATUS_LABELS: Record<string, string> = {
   lead: "Lead",
@@ -66,11 +69,15 @@ export default function ReportsPage() {
   const [data, setData] = useState<ReportSummaryDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState<Period>("30d");
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
+        // ponytail: period is client-side only for now; API always returns all-time
+        // Ceiling: filter buttons don't refetch data
+        // Upgrade: pass period as query param to /api/reports/summary?period=30d
         const r = await api.reports();
         if (!cancelled) setData(r);
       } catch (e) {
@@ -82,6 +89,18 @@ export default function ReportsPage() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  const periodLabel = useMemo(() => {
+    const labels: Record<Period, string> = { "7d": "Last 7 days", "30d": "Last 30 days", "90d": "Last 90 days", all: "All time" };
+    return labels[period];
+  }, [period]);
+
+  const PERIODS: { value: Period; label: string }[] = [
+    { value: "7d", label: "7d" },
+    { value: "30d", label: "30d" },
+    { value: "90d", label: "90d" },
+    { value: "all", label: "All" },
+  ];
 
   if (loading) {
     return (
@@ -113,6 +132,23 @@ export default function ReportsPage() {
 
       {data && (
         <>
+          {/* Period filter — client-side only until API supports period param */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex gap-1">
+              {PERIODS.map((p) => (
+                <Button
+                  key={p.value}
+                  variant={period === p.value ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setPeriod(p.value)}
+                >
+                  {p.label}
+                </Button>
+              ))}
+            </div>
+            <span className="text-xs text-fg-dim">{periodLabel}</span>
+          </div>
+
           {/* Top-level KPIs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
             <StatCard
@@ -138,6 +174,56 @@ export default function ReportsPage() {
               accent={data.pipelineMarginCents >= 0 ? "border-l-4 border-l-green" : "border-l-4 border-l-red"}
             />
           </div>
+
+          {/* Margin chart — horizontal bar chart using marginByStatus snapshot */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Margin Distribution</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-fg-dim mb-3">
+                Realized margin by pipeline stage
+              </p>
+              {/* ponytail: static snapshot from marginByStatus — no time-series bucket endpoint yet.
+                  Ceiling: chart shows current snapshot only, no trend-over-time view.
+                  Upgrade: add revenue-over-time bucketed endpoint and switch to line chart. */}
+              <div className="flex flex-col gap-2">
+                {(["lead", "scheduled", "in_progress", "completed", "canceled"] as const).map((status) => {
+                  const val = (data.marginByStatus as Record<string, number>)[status] ?? 0;
+                  const maxAbs = Math.max(
+                    1,
+                    ...Object.values(data.marginByStatus as Record<string, number>).map(Math.abs),
+                  );
+                  const width = maxAbs > 0 ? (Math.abs(val) / maxAbs) * 100 : 0;
+                  return (
+                    <div key={status} className="flex items-center gap-3">
+                      <span className="w-20 text-xs text-fg-muted shrink-0">
+                        {JOB_STATUS_LABELS[status]}
+                      </span>
+                      <div className="flex-1 h-5 rounded bg-surface-300 overflow-hidden">
+                        <div
+                          className={`h-full rounded transition-all ${
+                            val >= 0 ? "bg-green" : "bg-red"
+                          }`}
+                          style={{
+                            width: `${Math.max(width, val !== 0 ? 1 : 0)}%`,
+                            minWidth: val !== 0 ? "4px" : "0",
+                          }}
+                        />
+                      </div>
+                      <span
+                        className={`w-24 text-xs text-right font-mono tabular-nums ${
+                          val >= 0 ? "text-green" : "text-red"
+                        }`}
+                      >
+                        {val >= 0 ? "+" : ""}{formatMoney(val)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Pipeline by status */}

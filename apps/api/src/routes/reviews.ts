@@ -30,4 +30,18 @@ export async function reviewRoutes(app: FastifyInstance) {
     const [row] = await db.insert(reviews).values({ orgId, ...parsed.data }).returning();
     return reply.code(201).send(row);
   });
+
+  app.patch("/:id", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+    const parsed = z.object({ reply: z.string().optional() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const [row] = await db
+      .update(reviews)
+      .set(parsed.data)
+      .where(and(eq(reviews.orgId, orgId), eq(reviews.id, id)))
+      .returning();
+    if (!row) return reply.code(404).send({ error: "not found" });
+    return row;
+  });
 }

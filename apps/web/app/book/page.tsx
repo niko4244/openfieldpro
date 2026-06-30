@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/page-header";
+import { api } from "@/lib/api";
 
 interface BookingForm {
   name: string;
@@ -31,6 +31,9 @@ const SERVICES = [
 
 export default function BookPage() {
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [orgId, setOrgId] = useState<string | null>(null);
   const [form, setForm] = useState<BookingForm>({
     name: "",
     email: "",
@@ -42,15 +45,53 @@ export default function BookPage() {
     address: "",
   });
 
+  // Discover demo org on mount
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .publicOrg()
+      .then((r) => {
+        if (!cancelled && r.org) setOrgId(r.org.id);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const update = (field: keyof BookingForm, value: string) => {
     setForm((f) => ({ ...f, [field]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // ponytail: booking form submits locally — no API endpoint yet.
-    // Ceiling: single-org demo. Upgrade: POST /api/public/bookings with email/SMS confirmation.
-    setSubmitted(true);
+    if (!orgId) {
+      setSubmitError("Service unavailable — try again later.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const desc = [
+        form.address && `Address: ${form.address}`,
+        form.preferredDate && `Preferred: ${form.preferredDate} ${form.preferredTime}`,
+        form.notes && `Notes: ${form.notes}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      await api.publicBook(orgId, {
+        name: form.name,
+        email: form.email || undefined,
+        phone: form.phone || undefined,
+        title: form.service,
+        description: desc || undefined,
+      });
+      setSubmitted(true);
+    } catch {
+      setSubmitError("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (submitted) {
@@ -224,15 +265,19 @@ export default function BookPage() {
                 />
               </div>
 
+              {submitError && (
+                <p className="text-xs text-red text-center">{submitError}</p>
+              )}
+
               {/* Submit */}
               <div className="pt-2">
                 <Button
                   type="submit"
                   size="lg"
                   className="w-full"
-                  disabled={!form.name || !form.email || !form.phone || !form.address}
+                  disabled={!form.name || !form.email || !form.phone || !form.address || submitting || !orgId}
                 >
-                  Request Booking
+                  {submitting ? "Submitting..." : "Request Booking"}
                 </Button>
                 <p className="text-xs text-fg-dim text-center mt-3">
                   We&apos;ll contact you within 24 hours to confirm your appointment.

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
 import { Table, TableHead, TableBody, TableRow } from "@/components/ui/table";
+import { Pagination } from "@/components/pagination";
 
 interface Estimate {
   id: string;
@@ -72,6 +73,10 @@ export default function EstimatesPage() {
   const [sort, setSort] = useState<SortField>("date");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [skip, setSkip] = useState(0);
+  const take = 50;
+
+  useEffect(() => { setSkip(0); }, [search, statusFilter]);
 
   // ── Create estimate modal ──
   const [showCreate, setShowCreate] = useState(false);
@@ -202,6 +207,8 @@ export default function EstimatesPage() {
 
     return list;
   }, [estimates, search, sort, dir, statusFilter, jobMap, customerMap]);
+
+  const paginated = useMemo(() => filteredSorted.slice(skip, skip + take), [filteredSorted, skip, take]);
 
   if (loading) {
     return (
@@ -366,7 +373,7 @@ export default function EstimatesPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredSorted.length === 0 ? (
+                {paginated.length === 0 ? (
                   <TableRow>
                     <td colSpan={5} className="text-center py-10">
                       <p className="text-sm text-fg-muted">No estimates match your filters</p>
@@ -379,7 +386,7 @@ export default function EstimatesPage() {
                     </td>
                   </TableRow>
                 ) : (
-                  filteredSorted.map((e) => {
+                  paginated.map((e) => {
                     const job = jobMap.get(e.jobId);
                     const cust = job ? customerMap.get(job.customerId) : null;
                     return (
@@ -422,7 +429,7 @@ export default function EstimatesPage() {
 
           {/* Mobile cards */}
           <div className="md:hidden flex flex-col gap-3">
-            {filteredSorted.length === 0 ? (
+            {paginated.length === 0 ? (
               <Card>
                 <div className="text-center py-10">
                   <p className="text-sm text-fg-muted">No estimates match your filters</p>
@@ -435,7 +442,7 @@ export default function EstimatesPage() {
                 </div>
               </Card>
             ) : (
-              filteredSorted.map((e) => {
+              paginated.map((e) => {
                 const job = jobMap.get(e.jobId);
                 const cust = job ? customerMap.get(job.customerId) : null;
                 return (
@@ -478,6 +485,8 @@ export default function EstimatesPage() {
               })
             )}
           </div>
+
+          <Pagination skip={skip} take={take} total={filteredSorted.length} onSkipChange={setSkip} />
         </>
       )}
     </div>

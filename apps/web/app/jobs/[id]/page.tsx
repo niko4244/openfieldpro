@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { JobStatusBadge, InvoiceStatusBadge } from "@/components/status-badge";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
+import { JobPhotos } from "./job-photos";
 
 interface Appointment {
   id: string;
@@ -50,14 +51,16 @@ export default async function JobDetailPage({
     jobLoadFailed = true;
   }
 
-  const [activities, appointments, invoices, customers, lineItems] = await Promise.all([
+  const [activities, appointments, invoices, customers, lineItems, users] = await Promise.all([
     api.activities({ jobId }).catch(() => [] as ActivityDTO[]),
     api.appointments().catch(() => [] as Appointment[]),
     api.invoices().catch(() => [] as Invoice[]),
     api.customers().catch(() => [] as CustomerDTO[]),
     api.lineItems(jobId).catch(() => [] as LineItem[]),
+    api.users().catch(() => []),
   ]);
 
+  const userMap = new Map(users.map((u) => [u.id, u.name]));
   const customer = job ? customers.find((c) => c.id === job.customerId) : null;
   const jobAppointments = appointments.filter((a) => a.jobId === jobId);
   const jobInvoices = invoices.filter((i) => i.jobId === jobId);
@@ -299,7 +302,7 @@ export default async function JobDetailPage({
                             </p>
                             {a.technicianId && (
                               <p className="text-xs text-fg-dim mt-0.5">
-                                Tech: {a.technicianId.slice(0, 8)}
+                                Tech: {userMap.get(a.technicianId) ?? a.technicianId.slice(0, 8)}
                               </p>
                             )}
                           </div>
@@ -405,17 +408,10 @@ export default async function JobDetailPage({
                 <CardDescription>Job site photos and documents</CardDescription>
               </CardHeader>
               <CardContent>
-                {/* ponytail: photo/attachment upload requires cloud storage (S3/R2).
-                    Ceiling: demo/seed data. Upgrade: add upload endpoint with
-                    presigned URLs, store refs in new attachments table, render
-                    thumbnail grid here. */}
-                <div className="text-center py-6">
-                  <div className="text-3xl mb-3 opacity-40">📷</div>
-                  <p className="text-sm text-fg-muted mb-1">No photos uploaded</p>
-                  <p className="text-xs text-fg-dim">
-                    Photo upload requires cloud storage integration.
-                  </p>
-                </div>
+                {/* ponytail: local-filesystem storage via @fastify/multipart.
+                    Ceiling: single-server, no replication. Upgrade: swap uploads.ts
+                    with an S3 client. */}
+                <JobPhotos jobId={jobId} />
               </CardContent>
             </Card>
           </div>
