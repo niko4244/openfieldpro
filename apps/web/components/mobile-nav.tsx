@@ -4,21 +4,28 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { NAV_LINKS, decodeJwt } from "@/lib/nav";
+import { readStoredSession, visibleNavLinks } from "@/lib/nav";
+import type { RoleName } from "@/lib/nav";
 import { useTheme } from "@/components/theme-provider";
 
 export function MobileNav() {
   const pathname = usePathname();
   const { theme, toggle } = useTheme();
   const [open, setOpen] = useState(false);
-  const [user, setUser] = useState<{ name: string } | null>(null);
+  const [user, setUser] = useState<{ name: string; role?: RoleName } | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("ofp_token");
-    if (token) {
-      const payload = decodeJwt(token);
-      if (payload?.name) setUser({ name: payload.name });
-    }
+    const refreshUser = () => {
+      setUser(readStoredSession());
+    };
+
+    refreshUser();
+    window.addEventListener("storage", refreshUser);
+    window.addEventListener("ofp_auth_changed", refreshUser);
+    return () => {
+      window.removeEventListener("storage", refreshUser);
+      window.removeEventListener("ofp_auth_changed", refreshUser);
+    };
   }, []);
 
   // Close drawer on route change
@@ -100,7 +107,7 @@ export function MobileNav() {
 
         {/* Navigation links */}
         <nav className="flex-1 flex flex-col gap-1 p-3 overflow-y-auto">
-          {NAV_LINKS.map(({ href, label, icon }) => {
+          {visibleNavLinks(user?.role).map(({ href, label, icon }) => {
             const active = pathname === href;
             return (
               <Link
@@ -141,7 +148,12 @@ export function MobileNav() {
               <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center text-xs font-medium text-white shrink-0">
                 {user.name.charAt(0).toUpperCase()}
               </div>
-              <span className="text-sm text-fg-muted truncate">{user.name}</span>
+              <span className="text-sm text-fg-muted truncate">
+                {user.name}
+                {user.role ? (
+                  <span className="ml-1 text-fg-dim">· {user.role}</span>
+                ) : null}
+              </span>
             </div>
           ) : (
             <Link

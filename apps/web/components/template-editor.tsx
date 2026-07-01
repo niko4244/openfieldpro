@@ -1,6 +1,6 @@
 "use client";
 
-// Template editor: WYSIWYG for email, character-counter for SMS, live preview
+// Template editor: email body editor, character-counter for SMS, live preview
 // pane, and a left rail listing the org's templates grouped by channel.
 //
 // Phase 5b+ A/B: per-variant sub-card lives under the Subject input (only
@@ -11,13 +11,7 @@
 // Subject; otherwise the base column drives the rendered subject (the
 // pre-A/B behavior, unchanged).
 //
-// ponytail: react-quill is loaded with ssr:false and a `useMemo` cache so it
-//   doesn't re-init on every state change. Ceiling: a future "build with
-//   blocks" overhaul would swap react-quill for Tiptap/Lexical. We're not
-//   there; the v1 editor is good enough for text + bold + lists + links.
-
 import { useEffect, useMemo, useState, useCallback } from "react";
-import dynamic from "next/dynamic";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,17 +34,6 @@ import {
   SMS_HARD_LIMIT,
 } from "@ofp/shared";
 
-// react-quill touches `findDOMNode` which Next.js's RSC path can't satisfy.
-const ReactQuill = dynamic(() => import("react-quill"), {
-  ssr: false,
-  loading: () => (
-    <div className="h-64 rounded-md border border-border bg-surface-200 animate-pulse" />
-  ),
-});
-// Imported the CSS via a regular import for Next.js to bundle.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import "react-quill/dist/quill.snow.css";
-
 interface EditorState {
   id: string | null;
   channel: TemplateChannel;
@@ -69,15 +52,6 @@ const EMPTY: EditorState = {
   subject: "",
   body: "",
   enabled: true,
-};
-
-const QUILL_MODULES = {
-  toolbar: [
-    [{ header: [1, 2, 3, false] }],
-    ["bold", "italic", "underline"],
-    [{ list: "ordered" }, { list: "bullet" }],
-    ["link", "clean"],
-  ],
 };
 
 function charClass(chars: number): string {
@@ -547,13 +521,13 @@ export function TemplateEditor() {
         </CardHeader>
         <CardContent className="space-y-3">
           {state.channel === "email" ? (
-            <div className="bg-surface-300 rounded-md overflow-hidden">
-              <ReactQuill
-                theme="snow"
-                modules={QUILL_MODULES}
+            <div>
+              <textarea
                 value={state.body}
-                onChange={(v) => setState((s) => ({ ...s, body: v }))}
+                onChange={(e) => setState((s) => ({ ...s, body: e.target.value }))}
+                rows={12}
                 placeholder="Hi {{customer.name}}, just confirming your appointment on {{appointment.startsAt}}…"
+                className="min-h-64 w-full resize-y rounded-md border border-border bg-surface-300 px-3 py-2 text-sm font-mono leading-6 text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
               />
             </div>
           ) : (
@@ -691,6 +665,6 @@ export function TemplateEditor() {
   );
 }
 
-// Intent marker: this file is the templates UI surface. Keep alive so a
-// tree-shaker doesn't accidentally drop the dynamic import shim above.
+// Intent marker: this file is the templates UI surface. Keep the channel
+// constants visible to downstream route-level smoke checks.
 export const TEMPLATE_HANDLES = TEMPLATE_CHANNELS;

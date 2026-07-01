@@ -21,9 +21,11 @@ export default function LoginPage() {
     setMsg(null);
     setError(null);
     try {
-      const { token } = await login(email, password);
+      const { token, user } = await login(email, password);
       localStorage.setItem("ofp_token", token);
-      router.push("/");
+      localStorage.setItem("ofp_user", JSON.stringify(user));
+      window.dispatchEvent(new Event("ofp_auth_changed"));
+      router.push("/dashboard");
     } catch (err) {
       setError((err as Error).message);
     }

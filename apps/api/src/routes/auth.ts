@@ -38,7 +38,13 @@ export async function authRoutes(app: FastifyInstance) {
       })
       .returning();
 
-    const token = app.jwt.sign({ userId: user.id, orgId: org.id, role: user.role });
+    const token = app.jwt.sign({
+      userId: user.id,
+      orgId: org.id,
+      name,
+      email,
+      role: user.role,
+    });
     return reply.code(201).send({ token, user: { id: user.id, name, email, role: user.role }, orgId: org.id });
   });
 
@@ -54,7 +60,13 @@ export async function authRoutes(app: FastifyInstance) {
     if (!user || !user.passwordHash || !(await verifyPassword(password, user.passwordHash))) {
       return reply.code(401).send({ error: "invalid credentials" });
     }
-    const token = app.jwt.sign({ userId: user.id, orgId: user.orgId, role: user.role });
+    const token = app.jwt.sign({
+      userId: user.id,
+      orgId: user.orgId,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    });
     return { token, user: { id: user.id, name: user.name, email, role: user.role }, orgId: user.orgId };
   });
 

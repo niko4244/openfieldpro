@@ -27,6 +27,8 @@ export async function verifyPassword(password: string, stored: string): Promise<
 export interface JwtClaims {
   userId: string;
   orgId: string;
+  name?: string;
+  email?: string;
   role: string;
 }
 

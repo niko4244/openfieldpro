@@ -12,7 +12,9 @@ data/pg/
 
 # Local preview/runtime artifacts
 api-dev.log
+api-dev.err.log
 web-dev.log
+web-dev.err.log
 loop/*.log
 loop/current-chunk.md
 loop/state.json

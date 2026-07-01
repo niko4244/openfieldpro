@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { decodeJwt, visibleNavLinks } from "@/lib/nav";
+import { readStoredSession, visibleNavLinks } from "@/lib/nav";
 import type { RoleName } from "@/lib/nav";
 import { useTheme } from "@/components/theme-provider";
 import { NotificationsPopover } from "@/components/notifications-popover";
@@ -15,17 +15,21 @@ export function Sidebar() {
   const [user, setUser] = useState<{ name: string; role?: RoleName } | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("ofp_token");
-    if (token) {
-      const payload = decodeJwt(token);
-      if (payload?.name) setUser({ name: payload.name, role: payload.role });
-    }
+    const refreshUser = () => {
+      setUser(readStoredSession());
+    };
+
+    refreshUser();
+    window.addEventListener("storage", refreshUser);
+    window.addEventListener("ofp_auth_changed", refreshUser);
+    return () => {
+      window.removeEventListener("storage", refreshUser);
+      window.removeEventListener("ofp_auth_changed", refreshUser);
+    };
   }, []);
 
-  // Phase 7: filter by role. Memoised so role flip doesn't re-filter on
-  // every render. When `user.role` is undefined (dev/test JWT missing the
-  // claim), we fall through to `visibleNavLinks(null)` which only shows
-  // links with no role restriction — safer than disabling the whole nav.
+  // Phase 7: filter by role. When a dev token is stale or incomplete,
+  // visibleNavLinks falls back to the full app nav instead of a blank rail.
   const links = useMemo(() => visibleNavLinks(user?.role), [user?.role]);
 
   return (
