@@ -2,24 +2,31 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { NAV_LINKS, decodeJwt } from "@/lib/nav";
+import { decodeJwt, visibleNavLinks } from "@/lib/nav";
+import type { RoleName } from "@/lib/nav";
 import { useTheme } from "@/components/theme-provider";
 import { NotificationsPopover } from "@/components/notifications-popover";
 
 export function Sidebar() {
   const pathname = usePathname();
   const { theme, toggle } = useTheme();
-  const [user, setUser] = useState<{ name: string } | null>(null);
+  const [user, setUser] = useState<{ name: string; role?: RoleName } | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("ofp_token");
     if (token) {
       const payload = decodeJwt(token);
-      if (payload?.name) setUser({ name: payload.name });
+      if (payload?.name) setUser({ name: payload.name, role: payload.role });
     }
   }, []);
+
+  // Phase 7: filter by role. Memoised so role flip doesn't re-filter on
+  // every render. When `user.role` is undefined (dev/test JWT missing the
+  // claim), we fall through to `visibleNavLinks(null)` which only shows
+  // links with no role restriction — safer than disabling the whole nav.
+  const links = useMemo(() => visibleNavLinks(user?.role), [user?.role]);
 
   return (
     <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-56 flex-col bg-surface-50 border-r border-border z-40">
@@ -34,7 +41,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 flex flex-col gap-1 p-3 overflow-y-auto">
-        {NAV_LINKS.map(({ href, label, icon }) => {
+        {links.map(({ href, label, icon }) => {
           const active = pathname === href;
           return (
             <Link
@@ -52,7 +59,7 @@ export function Sidebar() {
             </Link>
           );
         })}
-      </nav>        {/* Theme toggle */}
+      </nav>
       <div className="p-3 border-t border-border shrink-0">
         <button
           onClick={toggle}
@@ -66,14 +73,19 @@ export function Sidebar() {
         </button>
       </div>
 
-        {/* Bottom section */}
+      {/* Bottom section */}
       <div className="p-3 border-t border-border shrink-0">
         {user ? (
           <div className="flex items-center gap-3 px-3 py-2">
             <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center text-xs font-medium text-white shrink-0">
               {user.name.charAt(0).toUpperCase()}
             </div>
-            <span className="text-sm text-fg-muted truncate">{user.name}</span>
+            <span className="text-sm text-fg-muted truncate">
+              {user.name}
+              {user.role ? (
+                <span className="ml-1 text-fg-dim">· {user.role}</span>
+              ) : null}
+            </span>
           </div>
         ) : (
           <Link

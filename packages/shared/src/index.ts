@@ -164,3 +164,66 @@ export interface SyncRequestDTO {
 export interface SyncResponseDTO {
   results: SyncResultDTO[];
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 7 — Tech GPS + dispatch map.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** POST /api/tech/location body. Note: NO `userId` field — server derives it
+ *  from the verified JWT. Spoofable body IDs would let one tech write to
+ *  another's history; we never let that happen. */
+export interface TechLocationPingBody {
+  lat: number;
+  lng: number;
+  accuracyM?: number;
+  /** When false, marks the tech's last-known location as offline (still inserted). */
+  online?: boolean;
+}
+
+/** Last-known coordinates for one (org_id, user_id) row. */
+export interface TechLocationDTO {
+  lat: number;
+  lng: number;
+  accuracyM: number | null;
+  capturedAt: string;
+  online: boolean;
+}
+
+/**
+ * Tech presence for the dispatch board.
+ * `freshness` is COMPUTED SERVER-SIDE from `lastLocation.capturedAt` so the
+ * dispatcher sees correct staleness even if their tab hasn't refreshed.
+ */
+export type FreshnessTier = "live" | "recent" | "stale" | "dead";
+
+export interface TechPresenceDTO {
+  userId: string;
+  name: string;
+  role: "owner" | "dispatcher" | "technician";
+  lastLocation: TechLocationDTO | null;
+  freshness: FreshnessTier;
+}
+
+/** One dispatchable job with property coordinates for the map. */
+export interface DispatchJobDTO {
+  id: string;
+  title: string;
+  status: JobStatus;
+  scheduledAt: string | null;
+  startsAt: string;
+  endsAt: string;
+  assignedTo: string | null;
+  customerName: string | null;
+  lat: number | null;
+  /** Longitude (Phase 7 keeps `lng` consistent with properties.lat/lng). */
+  lng: number | null;
+  address: string | null;
+}
+
+/** Combined snapshot returned by GET /api/dispatch/state. */
+export interface DispatchStateDTO {
+  techs: TechPresenceDTO[];
+  jobs: DispatchJobDTO[];
+  /** Server clock when this snapshot was generated; lets the UI show its age. */
+  generatedAt: string;
+}

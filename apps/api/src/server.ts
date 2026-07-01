@@ -26,6 +26,8 @@ import { notificationRoutes } from "./routes/notifications.js";
 import { searchRoutes } from "./routes/search.js";
 import { pluginRoutes } from "./routes/plugins.js";
 import { pluginApiRoutes } from "./routes/plugin-api.js";
+import { techRoutes } from "./routes/tech.js";
+import { dispatchRoutes } from "./routes/dispatch.js";
 
 export function buildServer() {
   const app = Fastify({ logger: true });
@@ -55,6 +57,8 @@ export function buildServer() {
   app.register(searchRoutes, { prefix: "/api/search" });
   app.register(pluginRoutes, { prefix: "/api/plugins" }); // owner-facing mgmt
   app.register(pluginApiRoutes, { prefix: "/api/plugin" }); // scoped-token surface
+  app.register(techRoutes, { prefix: "/api/tech" }); // POST /api/tech/location
+  app.register(dispatchRoutes, { prefix: "/api/dispatch" }); // GET /api/dispatch/state
   return app;
 }
 

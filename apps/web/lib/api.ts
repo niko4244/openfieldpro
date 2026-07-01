@@ -363,7 +363,21 @@ export const api = {
   createCatalogItem: (body: { categoryId: string; name: string; description?: string; priceCents: number; costCents: number; taxable?: boolean; active?: boolean }) =>
     request<CatalogItemDTO>("/api/catalog/items", { method: "POST", body: JSON.stringify(body) }),
   patchCatalogItem: (id: string, body: Partial<{ name: string; description: string; priceCents: number; costCents: number; taxable: boolean; active: boolean; categoryId: string }>) =>
-    request<CatalogItemDTO>(`/api/catalog/items/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-  deleteCatalogItem: (id: string) =>
-    request<void>(`/api/catalog/items/${id}`, { method: "DELETE" }),
+    request<CatalogItemDTO>(`/api/catalog/items/${id}`, { method: "PATCH", body: JSON.stringify(body) }),  deleteCatalogItem: (id: string) => request<void>(`/api/catalog/items/${id}`, { method: "DELETE" }),
+
+  // ── Phase 7: Tech GPS + dispatch ──
+  pingTechLocation: (body: { lat: number; lng: number; accuracyM?: number; online?: boolean }) =>
+    request<{ ok: boolean; capturedAt: string; id: string }>("/api/tech/location", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  // Online-flag-only toggle used by tech-tracker on visibilitychange; doesn't
+  // touch the last-known (lat,lng) so the dispatch board fades to "stale" on
+  // the natural freshness clock.
+  setSharingStatus: (online: boolean) =>
+    request<{ ok: boolean; online: boolean; capturedAt: string; id: string }>(
+      "/api/tech/status",
+      { method: "POST", body: JSON.stringify({ online }) },
+    ),
+  fetchDispatchState: () => request<import("@ofp/shared").DispatchStateDTO>("/api/dispatch/state"),
 };

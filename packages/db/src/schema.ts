@@ -18,6 +18,7 @@ import {
   integer,
   timestamp,
   boolean,
+  real,
   jsonb,
   pgEnum,
   index,
@@ -278,6 +279,40 @@ export const appointments = pgTable(
     createdAt: ts(),
   },
   (t) => ({ window: index("appts_window_idx").on(t.orgId, t.startsAt) }),
+);
+
+// Last-known location per technician written via foreground browser
+// geolocation (`navigator.geolocation.watchPosition`). One row per
+// (org_id, user_id); UPSERT-on-conflict keeps the table bounded. The
+// freshness clock RESETS every time the tech closes their tab — that's
+// the architectural price for foreground-only GPS (Phase 7 V1).
+// ponytail: crawler/test rows get cleaned in an opportunistic app.ready
+//   sweep. Ceiling: full retention policy + breadcrumb history belongs in
+//   a follow-up slice alongside a dashboard map replay.
+export const techLocations = pgTable(
+  "tech_locations",
+  {
+    id: id(),
+    orgId: orgId(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    lat: real("lat").notNull(),
+    lng: real("lng").notNull(),
+    accuracyM: real("accuracy_m"),
+    capturedAt: timestamp("captured_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    online: boolean("online").default(true).notNull(),
+    version: version(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    // UPSERT target — at most one row per (org, user).
+    orgUser: uniqueIndex("tech_locations_org_user_idx").on(t.orgId, t.userId),
+    // Time-window scan for stale-row sweep.
+    recent: index("tech_locations_captured_idx").on(t.orgId, t.capturedAt),
+  }),
 );
 
 // Photo uploads linked to jobs. `object_key` is the unique storage path
