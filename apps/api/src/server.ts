@@ -26,6 +26,7 @@ import { notificationRoutes } from "./routes/notifications.js";
 import { searchRoutes } from "./routes/search.js";
 import { pluginRoutes } from "./routes/plugins.js";
 import { pluginApiRoutes } from "./routes/plugin-api.js";
+import { approvalRoutes } from "./routes/approvals.js"; // Phase 6 magic-link approval (NO JWT)
 
 export function buildServer() {
   const app = Fastify({ logger: true });
@@ -55,6 +56,7 @@ export function buildServer() {
   app.register(searchRoutes, { prefix: "/api/search" });
   app.register(pluginRoutes, { prefix: "/api/plugins" }); // owner-facing mgmt
   app.register(pluginApiRoutes, { prefix: "/api/plugin" }); // scoped-token surface
+  app.register(approvalRoutes, { prefix: "/api/public/approvals" }); // Phase 6 (no JWT)
   return app;
 }
 

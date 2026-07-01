@@ -100,6 +100,10 @@ interface Estimate {
   createdAt: string;
 }
 
+/** Phase 6 — magic-link approval flow. */
+type SendEstimateResponse = import("@ofp/shared").SendEstimateResponseDTO;
+type PublicApproval = import("@ofp/shared").PublicApprovalDTO;
+
 interface LineItem {
   id: string;
   jobId: string;
@@ -275,6 +279,18 @@ export const api = {
   estimates: () => request<Estimate[]>("/api/estimates"),
   createEstimate: (body: { jobId: string }) =>
     request<Estimate>("/api/estimates", { method: "POST", body: JSON.stringify(body) }),
+  /** Phase 6 — POST /api/estimates/:id/send, mints magic link (idempotent). */
+  sendEstimate: (id: string) =>
+    request<SendEstimateResponse>(`/api/estimates/${id}/send`, { method: "POST", body: JSON.stringify({}) }),
+  /** Phase 6 — public, no JWT; returns the page payload for the magic link. */
+  fetchPublicApproval: (token: string) =>
+    request<PublicApproval>(`/api/public/approvals/${encodeURIComponent(token)}`),
+  /** Phase 6 — public, no JWT; submits the customer signature. */
+  submitApproval: (token: string, body: { signerName: string; signatureData: string }) =>
+    request<{ ok: boolean; alreadyAccepted: boolean; signedAt: string | null }>(
+      `/api/public/approvals/${encodeURIComponent(token)}/approve`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
 
   reviews: () => request<ReviewList>("/api/reviews"),
   patchReview: (id: string, body: { reply?: string }) =>

@@ -156,18 +156,40 @@ export const lineItems = pgTable("line_items", {
   createdAt: ts(),
 });
 
-export const estimates = pgTable("estimates", {
-  id: id(),
-  orgId: orgId(),
-  jobId: uuid("job_id")
-    .notNull()
-    .references(() => jobs.id, { onDelete: "cascade" }),
-  total: integer("total").default(0).notNull(),
-  accepted: boolean("accepted").default(false).notNull(),
-  version: version(),
-  updatedAt: updatedAt(),
-  createdAt: ts(),
-});
+export const estimates = pgTable(
+  "estimates",
+  {
+    id: id(),
+    orgId: orgId(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "cascade" }),
+    total: integer("total").default(0).notNull(),
+    accepted: boolean("accepted").default(false).notNull(),
+    // Phase 6 — magic-link approval flow. Token is single-use-of-link; high
+    // entropy random, stored raw in V1. Kept off the offline-write surface
+    // (no version columns needed — only the dispatcher/web sends, only the
+    // public endpoint writes signature/accepted).
+    approvalToken: text("approval_token"),
+    approvalTokenSentAt: timestamp("approval_token_sent_at", {
+      withTimezone: true,
+    }),
+    signatureData: text("signature_data"), // data:image/png;base64,...
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    signedBy: text("signed_by"),
+    version: version(),
+    updatedAt: updatedAt(),
+    createdAt: ts(),
+  },
+  (t) => ({
+    // Partial unique index: many estimates stay null until /send is called;
+    // when set, the token must be globally unique. Distinct estimates sent to
+    // different customers cannot collide.
+    approvalTokenIdx: uniqueIndex("estimates_approval_token_idx")
+      .on(t.approvalToken)
+      .where(sql`${t.approvalToken} IS NOT NULL`),
+  }),
+);
 
 export const invoices = pgTable(
   "invoices",

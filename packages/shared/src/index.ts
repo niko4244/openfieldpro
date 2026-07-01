@@ -164,3 +164,45 @@ export interface SyncRequestDTO {
 export interface SyncResponseDTO {
   results: SyncResultDTO[];
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 6 — Estimate magic-link approval.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** Response from POST /api/estimates/:id/send — printed once for the operator. */
+export interface SendEstimateResponseDTO {
+  /** Absolute URL the dispatcher can paste into email/SMS for the customer. */
+  approvalLink: string;
+  /** Unix milliseconds when the link was minted (for display in the UI). */
+  sentAt: number;
+}
+
+/** Public response from GET /api/public/approvals/:token — what the customer sees. */
+export interface PublicApprovalDTO {
+  estimate: {
+    id: string;
+    total: number;
+    accepted: boolean;
+    signedAt: string | null;
+    signedBy: string | null;
+    createdAt: string;
+  };
+  job: { id: string; title: string; description: string | null };
+  customer: { name: string; email: string | null; phone: string | null };
+  /** The org (the "business"); surfaced for the page header + footer. */
+  org: { id: string; name: string };
+  /** Line items denormalized from the job for the items table on the page. */
+  lineItems: Array<{
+    id: string;
+    description: string;
+    quantity: number;
+    unitPrice: number;
+  }>;
+}
+
+/** Body shape of POST /api/public/approvals/:token/approve. */
+export interface ApprovalSubmitBody {
+  signerName: string;
+  /** `data:image/png;base64,...` — opaque to the server, validated by shape only. */
+  signatureData: string;
+}

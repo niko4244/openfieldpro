@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import { Sidebar } from "@/components/sidebar";
-import { MobileNav } from "@/components/mobile-nav";
-import { CommandPalette } from "@/components/command-palette";
+import { PublicAwareShell } from "@/components/public-aware-shell";
 
 export const metadata = {
   title: "OpenFieldPro",
@@ -22,10 +20,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <ThemeProvider>
-          <Sidebar />
-          <MobileNav />
-          <main className="ml-0 md:ml-56 min-h-screen p-4 pt-16 md:p-8">{children}</main>
-          <CommandPalette />
+          <PublicAwareShell>{children}</PublicAwareShell>
         </ThemeProvider>
       </body>
     </html>

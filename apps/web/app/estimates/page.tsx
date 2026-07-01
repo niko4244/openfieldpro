@@ -84,6 +84,16 @@ export default function EstimatesPage() {
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // ── Phase 6: Send-for-approval state ──
+  const [sendResult, setSendResult] = useState<{
+    estimateId: string;
+    link: string;
+    sentAt: number;
+  } | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
   // Jobs that don't already have an estimate
   const estimatedJobIds = useMemo(() => new Set(estimates.map((e) => e.jobId)), [estimates]);
   const unestimatedJobs = useMemo(
@@ -111,6 +121,43 @@ export default function EstimatesPage() {
     setCreateJobId("");
     setCreateError(null);
     setShowCreate(true);
+  };
+
+  const handleSendForApproval = async (estimateId: string) => {
+    setSendingId(estimateId);
+    setSendError(null);
+    setCopied(false);
+    try {
+      const r = await api.sendEstimate(estimateId);
+      setSendResult({ estimateId, link: r.approvalLink, sentAt: r.sentAt });
+    } catch (e) {
+      const raw = (e as Error).message ?? "Send failed";
+      setSendError(/^4\d\d:/.test(raw) ? raw.slice(4) : raw);
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!sendResult?.link) return;
+    try {
+      await navigator.clipboard.writeText(sendResult.link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard failed (Safari/iframe/permission) — degrade to manual select.
+      const ta = document.createElement("textarea");
+      ta.value = sendResult.link;
+      ta.setAttribute("readonly", "true");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
   };
 
   // Escape key handler for create modal
@@ -171,11 +218,9 @@ export default function EstimatesPage() {
   const filteredSorted = useMemo(() => {
     let list = [...estimates];
 
-    // Status filter
     if (statusFilter === "pending") list = list.filter((e) => !e.accepted);
     if (statusFilter === "accepted") list = list.filter((e) => e.accepted);
 
-    // Search
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((e) => {
@@ -186,7 +231,6 @@ export default function EstimatesPage() {
       });
     }
 
-    // Sort
     list.sort((a, b) => {
       const mult = dir === "asc" ? 1 : -1;
       switch (sort) {
@@ -320,6 +364,54 @@ export default function EstimatesPage() {
         </>
       )}
 
+      {/* ── Phase 6: Send success / failure modal ── */}
+      {(sendResult || sendError) && !showCreate && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            onClick={() => { setSendResult(null); setSendError(null); }}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <Card className="w-full max-w-lg">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-semibold text-fg">
+                    {sendResult ? "Approval Link Sent" : "Send Failed"}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => { setSendResult(null); setSendError(null); }}
+                    className="text-fg-muted hover:text-fg transition-colors cursor-pointer bg-transparent border-none text-lg leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {sendResult ? (
+                  <>
+                    <p className="text-sm text-fg-muted mb-3">
+                      Copy this link into email or SMS and send to your customer. It opens a public page
+                      that captures their signature and accepts the estimate.
+                    </p>
+                    <div className="flex gap-2 mb-2">
+                      <Input value={sendResult.link} readOnly className="flex-1 text-xs" />
+                      <Button onClick={handleCopyLink} size="sm">{copied ? "Copied ✓" : "Copy"}</Button>
+                    </div>
+                    <p className="text-xs text-fg-dim">
+                      Sent at {new Date(sendResult.sentAt).toLocaleString()}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-red p-3 rounded bg-red/5">{sendError}</p>
+                )}
+                <div className="flex justify-end mt-6">
+                  <Button variant="secondary" onClick={() => { setSendResult(null); setSendError(null); }}>Close</Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </>
+      )}
+
       {error && (
         <Card className="mb-6 border-red/30 bg-red/5">
           <p className="text-red text-sm">API unreachable ({error}).</p>
@@ -335,7 +427,6 @@ export default function EstimatesPage() {
         </Card>
       ) : (
         <>
-          {/* Search + filter */}
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <Input
               type="search"
@@ -370,12 +461,15 @@ export default function EstimatesPage() {
                   <SortHead field="total" label="Total" sort={sort} dir={dir} onSort={handleSort} className="text-right" />
                   <SortHead field="status" label="Status" sort={sort} dir={dir} onSort={handleSort} />
                   <SortHead field="date" label="Created" sort={sort} dir={dir} onSort={handleSort} />
+                  <TableHead className="px-3 py-2 text-right text-xs font-semibold text-fg-dim uppercase tracking-wider">
+                    {/* Actions */}
+                  </TableHead>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {paginated.length === 0 ? (
                   <TableRow>
-                    <td colSpan={5} className="text-center py-10">
+                    <td colSpan={6} className="text-center py-10">
                       <p className="text-sm text-fg-muted">No estimates match your filters</p>
                       <button
                         onClick={() => { setSearch(""); setStatusFilter("all"); }}
@@ -418,6 +512,17 @@ export default function EstimatesPage() {
                         </td>
                         <td className="px-3 py-3 text-sm text-fg-muted">
                           {new Date(e.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {!e.accepted && (
+                            <button
+                              onClick={() => handleSendForApproval(e.id)}
+                              disabled={sendingId === e.id}
+                              className="text-xs px-2 py-1 rounded bg-accent/15 text-accent hover:bg-accent/25 transition-colors cursor-pointer border-none disabled:opacity-50"
+                            >
+                              {sendingId === e.id ? "Sending…" : "Send"}
+                            </button>
+                          )}
                         </td>
                       </TableRow>
                     );
