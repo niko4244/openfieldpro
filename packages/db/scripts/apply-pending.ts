@@ -29,7 +29,7 @@ import postgres from "postgres";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DRIZZLE_DIR = join(HERE, "..", "drizzle");
 
-const url = process.env.DATABASE_URL ?? "postgres://ofp:ofp@localhost:5432/ofp";
+const url = process.env.DATABASE_URL ?? "postgres://ofp:ofp@localhost:5433/ofp";
 const sql = postgres(url, { max: 1 });
 
 const SAFE_CODES = new Set(["42P07", "42701", "42710"]);

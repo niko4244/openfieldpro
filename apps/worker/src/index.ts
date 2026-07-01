@@ -7,6 +7,11 @@ import { db, recurringJobs, jobs, appointments } from "@ofp/db";
 import { catchUp } from "../../api/src/recurrence.ts";
 import { retryDueDeliveries } from "../../api/src/plugins/retry.ts";
 import { notify } from "./notify.ts";
+import { processAutomationNow } from "./tick.ts";
+import { initProviders } from "@ofp/shared";
+
+// Phase 5d Wave 1a: env-driven ProviderRegistry init, same as the api side.
+initProviders(process.env);
 
 const INTERVAL = Number(process.env.WORKER_INTERVAL_MS ?? 60_000);
 
@@ -50,6 +55,13 @@ async function tick() {
     await sendReminders(now);
     const r = await retryDueDeliveries(now);
     if (r.due > 0) console.log(`[worker] webhook retries: ${r.delivered} delivered, ${r.dead} dead of ${r.due} due`);
+    // Phase 5c: trigger-engine catch-up. Reads pending automation_events
+    // and replays evaluate. Idempotent: automation_runs dedupes by
+    // (rule_id, event_id) so replays don't double-fire.
+    const a = await processAutomationNow(now);
+    if (a.processed > 0) {
+      console.log(`[worker] automation: processed=${a.processed} fired=${a.fired} failed=${a.failed} skipped=${a.skipped}`);
+    }
   } catch (e) {
     console.error(`[worker] tick error: ${(e as Error).message}`);
   }

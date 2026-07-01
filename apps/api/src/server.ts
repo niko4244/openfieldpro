@@ -28,6 +28,9 @@ import { pluginRoutes } from "./routes/plugins.js";
 import { pluginApiRoutes } from "./routes/plugin-api.js";
 import { techRoutes } from "./routes/tech.js";
 import { dispatchRoutes } from "./routes/dispatch.js";
+import { templateRoutes } from "./routes/templates.js";
+import { automationRoutes } from "./routes/automation.js";
+import { inventoryRoutes } from "./routes/inventory.js";
 
 export function buildServer() {
   const app = Fastify({ logger: true });
@@ -59,11 +62,16 @@ export function buildServer() {
   app.register(pluginApiRoutes, { prefix: "/api/plugin" }); // scoped-token surface
   app.register(techRoutes, { prefix: "/api/tech" }); // POST /api/tech/location
   app.register(dispatchRoutes, { prefix: "/api/dispatch" }); // GET /api/dispatch/state
+  app.register(templateRoutes, { prefix: "/api/templates" });
+  app.register(automationRoutes, { prefix: "/api/automation" });
+  app.register(inventoryRoutes, { prefix: "/api/inventory" });
   return app;
 }
 
 // Only listen when run directly (not when imported by tests).
-const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
+const isMain = process.argv[1]
+  ? import.meta.url === pathToFileURL(process.argv[1]).href
+  : false;
 if (isMain) {
   const port = Number(process.env.API_PORT ?? 3001);
   buildServer()

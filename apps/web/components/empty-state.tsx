@@ -1,15 +1,28 @@
-export function EmptyState({
-  title,
-  description,
-}: {
+import * as React from "react";
+import { cn } from "@/lib/utils";
+
+// Lightweight "nothing here yet" block. Used inside Cards and panels when
+// the underlying data is empty or no preview has been rendered yet.
+export interface EmptyStateProps {
   title: string;
   description?: string;
-}) {
+  className?: string;
+  action?: React.ReactNode;
+}
+
+export function EmptyState({ title, description, className, action }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="text-3xl mb-3 opacity-30">◇</div>
-      <p className="text-sm text-fg-muted font-medium">{title}</p>
-      {description && <p className="text-xs text-fg-dim mt-1">{description}</p>}
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center text-center px-4 py-8",
+        className,
+      )}
+    >
+      <p className="text-sm font-medium text-fg">{title}</p>
+      {description && (
+        <p className="text-xs text-fg-muted mt-1 max-w-sm">{description}</p>
+      )}
+      {action && <div className="mt-3">{action}</div>}
     </div>
   );
 }

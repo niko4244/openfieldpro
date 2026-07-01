@@ -64,6 +64,27 @@
       "when": 1782777022196,
       "tag": "0008_add_recurring_job_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1782850000000,
+      "tag": "0009_add_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782950000000,
+      "tag": "0010_add_template_subjects",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783050000000,
+      "tag": "0011_add_automation",
+      "breakpoints": true
     }
   ]
 }

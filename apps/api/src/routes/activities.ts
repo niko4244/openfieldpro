@@ -5,16 +5,13 @@ import { db, activities } from "@ofp/db";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 
-// GET requires at least one filter so a bare /api/activities can't accidentally
-// pull every org row. Tighten the limit later if the timeline page needs pagination.
+// Bare GET returns recent org activity for dashboard modules; customerId/jobId
+// narrow the timeline on detail pages.
 const queryParams = z
   .object({
     customerId: z.string().uuid().optional(),
     jobId: z.string().uuid().optional(),
     limit: z.coerce.number().int().positive().max(200).default(50),
-  })
-  .refine((d) => Boolean(d.customerId) || Boolean(d.jobId), {
-    message: "Provide customerId or jobId",
   });
 
 const createBody = z

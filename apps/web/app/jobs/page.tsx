@@ -145,6 +145,13 @@ export default function JobsPage() {
     );
   };
 
+  // ── No results state ──
+  const paginated = useMemo(() => filteredSorted.slice(skip, skip + take), [filteredSorted, skip, take]);
+
+  const noResults =
+    (jobs.length > 0 && search.trim() && filteredSorted.length === 0) ||
+    (statusFilter !== "all" && filteredSorted.length === 0);
+
   // ── Loading ──
   if (loading) {
     return (
@@ -170,13 +177,6 @@ export default function JobsPage() {
       </div>
     );
   }
-
-  // ── No results state ──
-  const paginated = useMemo(() => filteredSorted.slice(skip, skip + take), [filteredSorted, skip, take]);
-
-  const noResults =
-    (jobs.length > 0 && search.trim() && filteredSorted.length === 0) ||
-    (statusFilter !== "all" && filteredSorted.length === 0);
 
   return (
     <div>

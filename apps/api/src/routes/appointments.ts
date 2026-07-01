@@ -4,6 +4,7 @@ import { eq, and, gte, lte, asc } from "drizzle-orm";
 import { db, appointments, jobs } from "@ofp/db";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
+import { safeEmitDomainEvent } from "../lib/events.js";
 
 const createBody = z.object({
   jobId: z.string().uuid(),
@@ -62,6 +63,25 @@ export async function appointmentRoutes(app: FastifyInstance) {
       `Scheduled appointment for ${new Date(startsAt).toLocaleString()}`,
       { jobId: rest.jobId },
     );
+    // Phase 5c trigger engine: wire the new appointment into the per-org
+    // automation rules. Plugins also see this event via safeEmitDomainEvent.
+    // ponytail: "appointment.created" is a sister of "appointment.scheduled"
+    //   — same shape, different intent (the former is fired on insert for
+    //   any channel that wants to confirm; the latter is the activity-log
+    //   summary and used by rule fans). Ceiling: collapse to one event with
+    //   a type discriminator if rule authors start asking for the diff.
+    void safeEmitDomainEvent({
+      orgId,
+      key: "appointment.created",
+      occurredAt: new Date().toISOString(),
+      payload: {
+        id: row.id,
+        jobId: rest.jobId,
+        startsAt,
+        endsAt,
+        technicianId: rest.technicianId ?? null,
+      },
+    });
     return reply.code(201).send(row);
   });
 

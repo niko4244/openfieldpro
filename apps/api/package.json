@@ -17,12 +17,14 @@
     "@ofp/shared": "workspace:*",
     "drizzle-orm": "^0.36.0",
     "fastify": "^5.1.0",
+    "mustache": "^4.2.0",
     "zod": "^3.23.8"
   },
   "optionalDependencies": {
     "stripe": "^17.4.0"
   },
   "devDependencies": {
+    "@types/mustache": "^4.2.5",
     "@types/node": "^20",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"

@@ -59,6 +59,38 @@ type ActivityDTO = import("@ofp/shared").ActivityDTO;
 type ReportSummaryDTO = import("@ofp/shared").ReportSummaryDTO;
 type UserDTO = import("@ofp/shared").UserDTO;
 type RecurringJobDTO = import("@ofp/shared").RecurringJobDTO;
+type TemplateDTO = import("@ofp/shared").TemplateDTO;
+type TemplateSubjectDTO = import("@ofp/shared").TemplateSubjectDTO;
+type TemplateChannel = import("@ofp/shared").TemplateChannel;
+type InventoryItemDTO = import("@ofp/shared").InventoryItemDTO;
+type InventoryAdjustmentDTO = import("@ofp/shared").InventoryAdjustmentDTO;
+
+interface TemplatePreview {
+  subject: string;
+  body: string;
+  chars?: number;
+  segments?: number;
+  variant?: string | null;
+}
+
+interface AutomationRuleDTO {
+  id: string;
+  orgId: string;
+  name: string;
+  eventKey: string;
+  channel: TemplateChannel;
+  templateId: string;
+  conditionFn: string | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastRun: {
+    status: "pending" | "fired" | "failed" | "skipped";
+    firedAt: string;
+    variantLabel: string | null;
+    error: string | null;
+  } | null;
+}
 
 interface CatalogItemDTO {
   id: string;
@@ -363,7 +395,118 @@ export const api = {
   createCatalogItem: (body: { categoryId: string; name: string; description?: string; priceCents: number; costCents: number; taxable?: boolean; active?: boolean }) =>
     request<CatalogItemDTO>("/api/catalog/items", { method: "POST", body: JSON.stringify(body) }),
   patchCatalogItem: (id: string, body: Partial<{ name: string; description: string; priceCents: number; costCents: number; taxable: boolean; active: boolean; categoryId: string }>) =>
-    request<CatalogItemDTO>(`/api/catalog/items/${id}`, { method: "PATCH", body: JSON.stringify(body) }),  deleteCatalogItem: (id: string) => request<void>(`/api/catalog/items/${id}`, { method: "DELETE" }),
+    request<CatalogItemDTO>(`/api/catalog/items/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteCatalogItem: (id: string) => request<void>(`/api/catalog/items/${id}`, { method: "DELETE" }),
+
+  // ── Templates / Automation ──
+  templates: () => request<TemplateDTO[]>("/api/templates"),
+  createTemplate: (body: {
+    key: string;
+    channel: TemplateChannel;
+    name: string;
+    subject?: string | null;
+    body: string;
+    enabled?: boolean;
+  }) => request<TemplateDTO>("/api/templates", { method: "POST", body: JSON.stringify(body) }),
+  patchTemplate: (
+    id: string,
+    body: Partial<{
+      key: string;
+      channel: TemplateChannel;
+      name: string;
+      subject: string | null;
+      body: string;
+      enabled: boolean;
+    }>,
+  ) => request<TemplateDTO>(`/api/templates/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteTemplate: (id: string) => request<void>(`/api/templates/${id}`, { method: "DELETE" }),
+  templateVariants: (templateId: string) =>
+    request<TemplateSubjectDTO[]>(`/api/templates/${templateId}/variants`),
+  createTemplateVariant: (
+    templateId: string,
+    body: { label: string; weight?: number; subject: string },
+  ) =>
+    request<TemplateSubjectDTO>(`/api/templates/${templateId}/variants`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  patchTemplateVariant: (
+    templateId: string,
+    variantId: string,
+    body: Partial<{ label: string; weight: number; subject: string }>,
+  ) =>
+    request<TemplateSubjectDTO>(`/api/templates/${templateId}/variants/${variantId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteTemplateVariant: (templateId: string, variantId: string) =>
+    request<void>(`/api/templates/${templateId}/variants/${variantId}`, { method: "DELETE" }),
+  previewTemplate: (id: string, q?: { variant?: string }) => {
+    const params = new URLSearchParams();
+    if (q?.variant) params.set("variant", q.variant);
+    const qs = params.toString();
+    return request<TemplatePreview>(`/api/templates/${id}/preview${qs ? `?${qs}` : ""}`, {
+      method: "POST",
+    });
+  },
+  testSendTemplate: (id: string, q?: { variant?: string }) => {
+    const params = new URLSearchParams();
+    if (q?.variant) params.set("variant", q.variant);
+    const qs = params.toString();
+    return request<{ ok: boolean }>(`/api/templates/${id}/test-send${qs ? `?${qs}` : ""}`, {
+      method: "POST",
+    });
+  },
+  automationRules: () => request<AutomationRuleDTO[]>("/api/automation/rules"),
+  createAutomationRule: (body: {
+    name: string;
+    eventKey: string;
+    channel: TemplateChannel;
+    templateId: string;
+    conditionFn?: string | null;
+    enabled?: boolean;
+  }) => request<AutomationRuleDTO>("/api/automation/rules", { method: "POST", body: JSON.stringify(body) }),
+  patchAutomationRule: (
+    id: string,
+    body: Partial<{
+      name: string;
+      eventKey: string;
+      channel: TemplateChannel;
+      templateId: string;
+      conditionFn: string | null;
+      enabled: boolean;
+    }>,
+  ) => request<AutomationRuleDTO>(`/api/automation/rules/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteAutomationRule: (id: string) =>
+    request<void>(`/api/automation/rules/${id}`, { method: "DELETE" }),
+
+  // ── Inventory / Parts ──
+  inventory: (q?: { search?: string; categoryId?: string; stock?: "low" | "out"; active?: string }) => {
+    const params = new URLSearchParams();
+    if (q?.search) params.set("search", q.search);
+    if (q?.categoryId) params.set("categoryId", q.categoryId);
+    if (q?.stock) params.set("stock", q.stock);
+    if (q?.active) params.set("active", q.active);
+    const qs = params.toString();
+    return request<InventoryItemDTO[]>(`/api/inventory${qs ? `?${qs}` : ""}`);
+  },
+  createInventoryPart: (body: {
+    categoryId?: string;
+    categoryName?: string;
+    name: string;
+    description?: string;
+    priceCents?: number;
+    costCents?: number;
+    taxable?: boolean;
+    active?: boolean;
+    quantityOnHand?: number;
+    reorderPoint?: number;
+  }) => request<InventoryItemDTO>("/api/inventory/parts", { method: "POST", body: JSON.stringify(body) }),
+  adjustInventory: (id: string, body: { delta: number; reason?: string; note?: string }) =>
+    request<InventoryAdjustmentDTO>(`/api/inventory/items/${id}/adjustments`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   // ── Phase 7: Tech GPS + dispatch ──
   pingTechLocation: (body: { lat: number; lng: number; accuracyM?: number; online?: boolean }) =>

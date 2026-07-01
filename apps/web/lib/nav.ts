@@ -20,6 +20,7 @@ export const NAV_LINKS: readonly NavLink[] = [
   // Phase 7: dispatch board reachable by owner + dispatcher only. The
   // technician-side counterpart lives at /dashboard/tech (live GPS share).
   { href: "/dashboard/dispatch", label: "Dispatch", icon: "≋", roles: ["owner", "dispatcher"] },
+  { href: "/dashboard/inventory", label: "Inventory", icon: "▦", roles: ["owner", "dispatcher"] },
   // Phase 7: tech-mode mobile page; technicians only.
   { href: "/dashboard/tech", label: "Tech Mode", icon: "◉", roles: ["technician"] },
   { href: "/jobs", label: "Jobs", icon: "⊞", roles: ["owner", "dispatcher", "technician"] },

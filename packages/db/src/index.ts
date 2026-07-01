@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema.js";
 
-const url = process.env.DATABASE_URL ?? "postgres://ofp:ofp@localhost:5432/ofp";
+const url = process.env.DATABASE_URL ?? "postgres://ofp:ofp@localhost:5433/ofp";
 
 // One connection pool per process. ponytail: max 10 is plenty for Phase 1;
 // raise (and add a read replica URL) when concurrency actually demands it.

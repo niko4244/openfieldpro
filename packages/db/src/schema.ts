@@ -39,6 +39,19 @@ export const invoiceStatus = pgEnum("invoice_status", [
   "void",
 ]);
 export const userRole = pgEnum("user_role", ["owner", "dispatcher", "technician"]);
+export const templateChannel = pgEnum("template_channel", ["email", "sms"]);
+export const automationEventStatus = pgEnum("automation_event_status", [
+  "pending",
+  "processed",
+  "skipped",
+]);
+export const automationRunStatus = pgEnum("automation_run_status", [
+  "pending",
+  "fired",
+  "failed",
+  "skipped",
+]);
+export type AutomationRunStatus = (typeof automationRunStatus.enumValues)[number];
 
 const id = () => uuid("id").primaryKey().defaultRandom();
 const orgId = () =>
@@ -371,6 +384,49 @@ export const catalogItems = pgTable(
   }),
 );
 
+export const inventoryLevels = pgTable(
+  "inventory_levels",
+  {
+    id: id(),
+    orgId: orgId(),
+    catalogItemId: uuid("catalog_item_id")
+      .notNull()
+      .references(() => catalogItems.id, { onDelete: "cascade" }),
+    quantityOnHand: integer("quantity_on_hand").default(0).notNull(),
+    reorderPoint: integer("reorder_point").default(0).notNull(),
+    version: version(),
+    updatedAt: updatedAt(),
+    createdAt: ts(),
+  },
+  (t) => ({
+    orgItem: uniqueIndex("inventory_levels_org_item_idx").on(t.orgId, t.catalogItemId),
+    org: index("inventory_levels_org_idx").on(t.orgId),
+  }),
+);
+
+export const inventoryAdjustments = pgTable(
+  "inventory_adjustments",
+  {
+    id: id(),
+    orgId: orgId(),
+    catalogItemId: uuid("catalog_item_id")
+      .notNull()
+      .references(() => catalogItems.id, { onDelete: "cascade" }),
+    delta: integer("delta").notNull(),
+    reason: text("reason").default("manual").notNull(),
+    note: text("note"),
+    quantityAfter: integer("quantity_after").notNull(),
+    createdAt: ts(),
+  },
+  (t) => ({
+    orgItem: index("inventory_adjustments_org_item_idx").on(
+      t.orgId,
+      t.catalogItemId,
+      t.createdAt,
+    ),
+  }),
+);
+
 // Customer-owned equipment (HVAC units, water heaters, etc). Linked to a customer
 // so techs can see install history, warranty, and service notes at a glance.
 // ponytail: no property_id — single-address assumption. Ceiling: some customers
@@ -416,6 +472,124 @@ export const notifications = pgTable(
   (t) => ({
     user: index("notif_user_idx").on(t.orgId, t.userId, t.createdAt),
     unread: index("notif_unread_idx").on(t.orgId, t.userId, t.read),
+  }),
+);
+
+// Notification templates, A/B subject variants, and automation audit tables.
+// These mirror drizzle/0009_add_templates.sql through 0011_add_automation.sql.
+export const templates = pgTable(
+  "templates",
+  {
+    id: id(),
+    orgId: orgId(),
+    key: text("key").notNull(),
+    channel: templateChannel("channel").notNull(),
+    name: text("name").notNull(),
+    subject: text("subject"),
+    body: text("body").notNull(),
+    enabled: boolean("enabled").default(true).notNull(),
+    createdAt: ts(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    orgKeyChannel: uniqueIndex("templates_org_key_channel_idx").on(
+      t.orgId,
+      t.key,
+      t.channel,
+    ),
+    org: index("templates_org_idx").on(t.orgId),
+  }),
+);
+
+export const templateSubjects = pgTable(
+  "template_subjects",
+  {
+    id: id(),
+    orgId: orgId(),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => templates.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    weight: integer("weight").default(1).notNull(),
+    subject: text("subject").notNull(),
+    createdAt: ts(),
+  },
+  (t) => ({
+    templateLabel: uniqueIndex("template_subjects_template_label_idx").on(
+      t.templateId,
+      t.label,
+    ),
+    org: index("template_subjects_org_idx").on(t.orgId),
+  }),
+);
+
+export const automationEvents = pgTable(
+  "automation_events",
+  {
+    id: id(),
+    orgId: orgId(),
+    eventId: text("event_id").notNull(),
+    key: text("key").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    status: automationEventStatus("status").default("pending").notNull(),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    createdAt: ts(),
+  },
+  (t) => ({
+    orgEvent: uniqueIndex("automation_events_org_event_idx").on(t.orgId, t.eventId),
+    due: index("automation_events_due_idx").on(t.status, t.occurredAt),
+    org: index("automation_events_org_idx").on(t.orgId),
+  }),
+);
+
+export const automationRules = pgTable(
+  "automation_rules",
+  {
+    id: id(),
+    orgId: orgId(),
+    name: text("name").notNull(),
+    eventKey: text("event_key").notNull(),
+    channel: templateChannel("channel").notNull(),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => templates.id, { onDelete: "cascade" }),
+    conditionFn: text("condition_fn"),
+    enabled: boolean("enabled").default(true).notNull(),
+    createdAt: ts(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    orgName: uniqueIndex("automation_rules_org_name_idx").on(t.orgId, t.name),
+    orgEvent: index("automation_rules_org_event_idx").on(
+      t.orgId,
+      t.eventKey,
+      t.enabled,
+    ),
+  }),
+);
+
+export const automationRuns = pgTable(
+  "automation_runs",
+  {
+    id: id(),
+    orgId: orgId(),
+    ruleId: uuid("rule_id")
+      .notNull()
+      .references(() => automationRules.id, { onDelete: "cascade" }),
+    eventId: text("event_id").notNull(),
+    eventKey: text("event_key").notNull(),
+    status: automationRunStatus("status").notNull(),
+    variantLabel: text("variant_label"),
+    error: text("error"),
+    firedAt: timestamp("fired_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    ruleEvent: uniqueIndex("automation_runs_rule_event_idx").on(t.ruleId, t.eventId),
+    orgFired: index("automation_runs_org_fired_idx").on(t.orgId, t.firedAt),
+    status: index("automation_runs_status_idx").on(t.status),
   }),
 );
 

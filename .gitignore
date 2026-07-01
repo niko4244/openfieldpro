@@ -9,3 +9,12 @@ drizzle/meta/_journal.json.bak
 .DS_Store
 data/minio/
 data/pg/
+
+# Local preview/runtime artifacts
+api-dev.log
+web-dev.log
+loop/*.log
+loop/current-chunk.md
+loop/state.json
+package-lock.json
+.backups/*.bundle

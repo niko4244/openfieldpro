@@ -7,8 +7,10 @@ import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { TemplateEditor } from "@/components/template-editor";
+import { AutomationRules } from "@/components/automation-rules";
 
-type Tab = "team" | "general";
+type Tab = "team" | "general" | "templates" | "automation";
 
 interface User {
   id: string;
@@ -22,7 +24,7 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <PageHeader title="Settings" description="Manage your team and organization" />
+      <PageHeader title="Settings" description="Manage your team, organization, notification templates, and automation rules" />
 
       {/* Tab bar */}
       <div className="flex gap-1 mb-6 bg-surface-200 rounded-lg p-1 w-fit">
@@ -42,12 +44,34 @@ export default function SettingsPage() {
         >
           General
         </button>
+        <button
+          onClick={() => setTab("templates")}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer border-none ${
+            tab === "templates" ? "bg-accent text-white" : "text-fg-muted hover:text-fg"
+          }`}
+        >
+          Templates
+        </button>
+        <button
+          onClick={() => setTab("automation")}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer border-none ${
+            tab === "automation" ? "bg-accent text-white" : "text-fg-muted hover:text-fg"
+          }`}
+        >
+          Automation
+        </button>
       </div>
 
       {tab === "team" && <TeamTab />}
       {tab === "general" && <GeneralTab />}
+      {tab === "templates" && <TemplatesTab />}
+      {tab === "automation" && <AutomationTab />}
     </div>
   );
+}
+
+function AutomationTab() {
+  return <AutomationRules />;
 }
 
 function TeamTab() {
@@ -232,4 +256,8 @@ function GeneralTab() {
       </CardContent>
     </Card>
   );
+}
+
+function TemplatesTab() {
+  return <TemplateEditor />;
 }

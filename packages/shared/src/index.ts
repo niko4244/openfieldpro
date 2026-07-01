@@ -227,3 +227,35 @@ export interface DispatchStateDTO {
   /** Server clock when this snapshot was generated; lets the UI show its age. */
   generatedAt: string;
 }
+
+export interface InventoryItemDTO {
+  id: string;
+  orgId: string;
+  categoryId: string;
+  categoryName: string | null;
+  name: string;
+  description: string | null;
+  priceCents: Money;
+  costCents: Money;
+  taxable: boolean;
+  active: boolean;
+  quantityOnHand: number;
+  reorderPoint: number;
+  stockStatus: "ok" | "low" | "out";
+  updatedAt: string | null;
+  createdAt: string;
+}
+
+export interface InventoryAdjustmentDTO {
+  id: string;
+  orgId: string;
+  catalogItemId: string;
+  delta: number;
+  reason: string;
+  note: string | null;
+  quantityAfter: number;
+  createdAt: string;
+}
+
+export * from "./template.js";
+export * from "./providers.js";

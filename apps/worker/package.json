@@ -12,9 +12,11 @@
     "@ofp/db": "workspace:*",
     "@ofp/plugin-sdk": "workspace:*",
     "@ofp/shared": "workspace:*",
-    "drizzle-orm": "^0.36.0"
+    "drizzle-orm": "^0.36.0",
+    "mustache": "^4.2.0"
   },
   "devDependencies": {
+    "@types/mustache": "^4.2.5",
     "tsx": "^4.19.0"
   }
 }
