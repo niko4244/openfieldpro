@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { formatMoney } from "@ofp/shared";
 import type { JobDTO, CustomerDTO } from "@ofp/shared";
@@ -25,6 +26,16 @@ interface Invoice {
   createdAt?: string;
 }
 
+interface LineItem {
+  id: string;
+  jobId: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  unitCost: number;
+  createdAt: string;
+}
+
 type SortField = "number" | "status" | "total";
 type SortDir = "asc" | "desc";
 type StatusFilter = "all" | "draft" | "sent" | "paid" | "void";
@@ -37,7 +48,14 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "void", label: "Void" },
 ];
 
+function dateInputAfter(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export default function InvoicesPage() {
+  const router = useRouter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [jobs, setJobs] = useState<JobDTO[]>([]);
   const [customers, setCustomers] = useState<CustomerDTO[]>([]);
@@ -57,15 +75,71 @@ export default function InvoicesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [createJobId, setCreateJobId] = useState("");
   const [createDueAt, setCreateDueAt] = useState("");
+  const [createDueTerm, setCreateDueTerm] = useState<"receipt" | "7" | "14" | "30" | "custom">("14");
+  const [createLineItems, setCreateLineItems] = useState<LineItem[]>([]);
+  const [createLinesLoading, setCreateLinesLoading] = useState(false);
+  const [createSendEmail, setCreateSendEmail] = useState(true);
+  const [createSendText, setCreateSendText] = useState(false);
+  const [createAllowCard, setCreateAllowCard] = useState(true);
+  const [createAllowCashCheck, setCreateAllowCashCheck] = useState(true);
+  const [createMessage, setCreateMessage] = useState("Thanks for choosing us. You can review and pay this invoice online.");
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  // Jobs that don't already have an invoice
-  const invoicedJobIds = useMemo(() => new Set(invoices.map((i) => i.jobId)), [invoices]);
-  const uninvoicedJobs = useMemo(
-    () => jobs.filter((j) => !invoicedJobIds.has(j.id) && j.status !== "canceled"),
-    [jobs, invoicedJobIds],
+  // HCP-style progress invoicing allows another invoice from the same job.
+  const invoiceCandidateJobs = useMemo(
+    () => jobs.filter((j) => j.status !== "canceled"),
+    [jobs],
   );
+
+  const selectedCreateJob = useMemo(
+    () => jobs.find((j) => j.id === createJobId) ?? null,
+    [jobs, createJobId],
+  );
+
+  const selectedCreateCustomer = useMemo(
+    () => (selectedCreateJob ? customers.find((c) => c.id === selectedCreateJob.customerId) ?? null : null),
+    [customers, selectedCreateJob],
+  );
+
+  const createPreviewTotal = useMemo(
+    () =>
+      createLineItems.length > 0
+        ? createLineItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
+        : selectedCreateJob?.total ?? 0,
+    [createLineItems, selectedCreateJob],
+  );
+
+  useEffect(() => {
+    if (!showCreate || !createJobId) {
+      setCreateLineItems([]);
+      return;
+    }
+    let cancelled = false;
+    setCreateLinesLoading(true);
+    api
+      .lineItems(createJobId)
+      .then((items) => {
+        if (!cancelled) setCreateLineItems(items);
+      })
+      .catch(() => {
+        if (!cancelled) setCreateLineItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCreateLinesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showCreate, createJobId]);
+
+  const applyDueTerm = (term: "receipt" | "7" | "14" | "30" | "custom") => {
+    setCreateDueTerm(term);
+    if (term === "receipt") setCreateDueAt(dateInputAfter(0));
+    if (term === "7") setCreateDueAt(dateInputAfter(7));
+    if (term === "14") setCreateDueAt(dateInputAfter(14));
+    if (term === "30") setCreateDueAt(dateInputAfter(30));
+  };
 
   const handleCreateInvoice = async () => {
     if (!createJobId) return;
@@ -80,6 +154,7 @@ export default function InvoicesPage() {
       setShowCreate(false);
       setCreateJobId("");
       setCreateDueAt("");
+      router.push(`/invoices/${inv.id}`);
     } catch (e) {
       setCreateError(String(e));
     } finally {
@@ -89,7 +164,13 @@ export default function InvoicesPage() {
 
   const openCreate = () => {
     setCreateJobId("");
-    setCreateDueAt("");
+    setCreateLineItems([]);
+    setCreateSendEmail(true);
+    setCreateSendText(false);
+    setCreateAllowCard(true);
+    setCreateAllowCashCheck(true);
+    setCreateMessage("Thanks for choosing us. You can review and pay this invoice online.");
+    applyDueTerm("14");
     setCreateError(null);
     setShowCreate(true);
   };
@@ -263,25 +344,32 @@ export default function InvoicesPage() {
       {/* ── Create Invoice modal ── */}
       {showCreate && (
         <>
-          <div
+          <button
+            type="button"
+            aria-label="Close create invoice dialog"
             className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
             onClick={() => setShowCreate(false)}
-            onKeyDown={(e) => { if (e.key === "Escape") setShowCreate(false); }}
           />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <Card className="w-full max-w-5xl max-h-[92vh] overflow-y-auto p-0">
               <form
                 onSubmit={(e) => { e.preventDefault(); handleCreateInvoice(); }}
                 className="p-6"
               >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-semibold text-fg">Create Invoice</h3>
+                <div className="flex items-start justify-between gap-4 mb-5">
+                  <div>
+                    <h3 className="text-lg font-semibold text-fg">Create invoice</h3>
+                    <p className="text-sm text-fg-muted mt-1">
+                      Choose a job, confirm the customer view, then continue in the invoice editor.
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setShowCreate(false)}
-                    className="text-fg-muted hover:text-fg transition-colors cursor-pointer bg-transparent border-none text-lg leading-none"
+                    className="h-9 w-9 rounded-md text-fg-muted hover:bg-surface-200 hover:text-fg"
+                    aria-label="Close create invoice dialog"
                   >
-                    ✕
+                    x
                   </button>
                 </div>
 
@@ -289,50 +377,151 @@ export default function InvoicesPage() {
                   <p className="text-red text-xs mb-3 p-2 rounded bg-red/5">{createError}</p>
                 )}
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-fg-muted mb-1.5">
-                      Job *
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-5">
+                  <div className="space-y-4">
+                    <div className="rounded-lg bg-surface-200 p-4">
+                      <label className="block text-xs font-semibold text-fg-muted mb-1.5">
+                        Job
+                      </label>
+                      <select
+                        value={createJobId}
+                        onChange={(e) => setCreateJobId(e.target.value)}
+                        style={{ colorScheme: "dark" }}
+                        className="h-10 w-full rounded-lg border border-border bg-surface-300 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
+                      >
+                        <option value="">Select a job...</option>
+                        {invoiceCandidateJobs.map((j) => {
+                          const cust = customerMap.get(j.customerId);
+                          return (
+                            <option key={j.id} value={j.id}>
+                              {j.title}{cust ? ` - ${cust}` : ""} | {formatMoney(j.total)}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {invoiceCandidateJobs.length === 0 && (
+                        <p className="text-xs text-fg-dim mt-2">No active jobs are available for invoicing.</p>
+                      )}
+                      {selectedCreateCustomer && (
+                        <div className="mt-3 rounded-md bg-surface-300 p-3">
+                          <p className="text-sm font-medium text-fg">{selectedCreateCustomer.name}</p>
+                          <p className="text-xs text-fg-muted">
+                            {[selectedCreateCustomer.email, selectedCreateCustomer.phone].filter(Boolean).join(" | ") || "No contact on file"}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="rounded-lg bg-surface-200 p-4">
+                        <p className="text-xs font-semibold text-fg-muted mb-2">Due terms</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            ["receipt", "Upon receipt"],
+                            ["7", "Net 7"],
+                            ["14", "Net 14"],
+                            ["30", "Net 30"],
+                          ].map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => applyDueTerm(value as "receipt" | "7" | "14" | "30")}
+                              className={`h-9 rounded-md text-sm font-medium ${createDueTerm === value ? "bg-accent text-white" : "bg-surface-300 text-fg-muted hover:text-fg"}`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <label className="mt-3 block">
+                          <span className="text-xs text-fg-muted">Custom date</span>
+                          <Input
+                            className="mt-1"
+                            type="date"
+                            value={createDueAt}
+                            onChange={(e) => {
+                              setCreateDueTerm("custom");
+                              setCreateDueAt(e.target.value);
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="rounded-lg bg-surface-200 p-4">
+                        <p className="text-xs font-semibold text-fg-muted mb-2">Send and payment options</p>
+                        <div className="space-y-2">
+                          <label className="flex min-h-10 items-center justify-between gap-3 text-sm text-fg">
+                            Email invoice
+                            <input type="checkbox" checked={createSendEmail} onChange={(e) => setCreateSendEmail(e.target.checked)} />
+                          </label>
+                          <label className="flex min-h-10 items-center justify-between gap-3 text-sm text-fg">
+                            Text invoice
+                            <input type="checkbox" checked={createSendText} onChange={(e) => setCreateSendText(e.target.checked)} />
+                          </label>
+                          <label className="flex min-h-10 items-center justify-between gap-3 text-sm text-fg">
+                            Card payments
+                            <input type="checkbox" checked={createAllowCard} onChange={(e) => setCreateAllowCard(e.target.checked)} />
+                          </label>
+                          <label className="flex min-h-10 items-center justify-between gap-3 text-sm text-fg">
+                            Cash/check
+                            <input type="checkbox" checked={createAllowCashCheck} onChange={(e) => setCreateAllowCashCheck(e.target.checked)} />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <label className="block rounded-lg bg-surface-200 p-4">
+                      <span className="text-xs font-semibold text-fg-muted">Invoice message</span>
+                      <textarea
+                        value={createMessage}
+                        onChange={(e) => setCreateMessage(e.target.value)}
+                        className="mt-2 min-h-24 w-full rounded-lg border border-border bg-surface-300 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                      />
                     </label>
-                    <select
-                      value={createJobId}
-                      onChange={(e) => setCreateJobId(e.target.value)}
-                      style={{ colorScheme: "dark" }}
-                      className="h-10 w-full rounded-lg border border-border bg-surface-200 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
-                    >
-                      <option value="">Select a job...</option>
-                      {uninvoicedJobs.map((j) => {
-                        const cust = customerMap.get(j.customerId);
-                        return (
-                          <option key={j.id} value={j.id}>
-                            {j.title}{cust ? ` — ${cust}` : ""} · {formatMoney(j.total)}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    {uninvoicedJobs.length === 0 && (
-                      <p className="text-xs text-fg-dim mt-1">All jobs already have invoices.</p>
-                    )}
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-fg-muted mb-1.5">
-                      Due date (optional)
-                    </label>
-                    <Input
-                      type="date"
-                      value={createDueAt}
-                      onChange={(e) => setCreateDueAt(e.target.value)}
-                    />
+                  <div className="rounded-lg border border-border bg-surface-200 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs text-fg-muted">Preview</p>
+                        <p className="text-base font-semibold text-fg">{selectedCreateJob?.title ?? "Select a job"}</p>
+                      </div>
+                      <span className="text-lg font-semibold text-fg tabular-nums">{formatMoney(createPreviewTotal)}</span>
+                    </div>
+                    <div className="mt-4 rounded-lg bg-surface-300 p-3">
+                      {createLinesLoading ? (
+                        <p className="text-sm text-fg-muted">Loading line items...</p>
+                      ) : createLineItems.length > 0 ? (
+                        <div className="space-y-2">
+                          {createLineItems.map((item) => (
+                            <div key={item.id} className="flex justify-between gap-3 text-sm">
+                              <div className="min-w-0">
+                                <p className="truncate text-fg">{item.description}</p>
+                                <p className="text-xs text-fg-muted">{item.quantity} x {formatMoney(item.unitPrice)}</p>
+                              </div>
+                              <span className="font-mono text-fg tabular-nums">{formatMoney(item.quantity * item.unitPrice)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : selectedCreateJob ? (
+                        <p className="text-sm text-fg-muted">No line items yet. The invoice will use the job total for now.</p>
+                      ) : (
+                        <p className="text-sm text-fg-muted">Choose a job to preview invoice contents.</p>
+                      )}
+                    </div>
+                    <div className="mt-4 space-y-2 text-xs text-fg-muted">
+                      <p>Delivery: {[createSendEmail ? "email" : null, createSendText ? "text" : null].filter(Boolean).join(" + ") || "not selected"}</p>
+                      <p>Payment: {[createAllowCard ? "card" : null, createAllowCashCheck ? "cash/check" : null].filter(Boolean).join(" + ") || "offline only"}</p>
+                      <p>Due: {createDueAt || "No due date"}</p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2 mt-6">
+                <div className="flex flex-wrap gap-2 mt-6">
                   <Button
                     type="submit"
                     disabled={!createJobId || createSubmitting}
                   >
-                    {createSubmitting ? "Creating..." : "Create Invoice"}
+                    {createSubmitting ? "Creating..." : "Create and edit invoice"}
                   </Button>
                   <Button
                     type="button"

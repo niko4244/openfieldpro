@@ -9,6 +9,15 @@ import { safeEmitDomainEvent } from "../lib/events.js";
 import { probeStub } from "../probe-stub.js";
 
 const createBody = z.object({ jobId: z.string().uuid(), dueAt: z.string().datetime().optional() });
+const patchBody = z
+  .object({
+    status: z.enum(["sent", "void"]).optional(),
+    dueAt: z.string().datetime().nullable().optional(),
+    syncTotal: z.boolean().optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, {
+    message: "at least one field is required",
+  });
 const payBody = z.object({
   amount: z.number().int().positive(), // cents
   method: z.enum(["manual", "cash", "check", "card"]).default("manual"),
@@ -76,6 +85,48 @@ export async function invoiceRoutes(app: FastifyInstance) {
       payload: { id: row.id, number: row.number, jobId: job.id, total: row.total },
     });
     return reply.code(201).send(row);
+  });
+
+  app.patch("/:id", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+    const parsed = patchBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+
+    const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
+    if (!inv) return reply.code(404).send({ error: "not found" });
+    if (inv.status === "void" && parsed.data.status !== "void") {
+      return reply.code(400).send({ error: "cannot edit a void invoice" });
+    }
+
+    const patch: { status?: "sent" | "void"; dueAt?: Date | null; total?: number } = {};
+    if (parsed.data.status) patch.status = parsed.data.status;
+    if ("dueAt" in parsed.data) {
+      patch.dueAt = parsed.data.dueAt ? new Date(parsed.data.dueAt) : null;
+    }
+    if (parsed.data.syncTotal) {
+      const [job] = await db
+        .select({ total: jobs.total })
+        .from(jobs)
+        .where(and(eq(jobs.orgId, orgId), eq(jobs.id, inv.jobId)));
+      if (!job) return reply.code(404).send({ error: "job not found" });
+      patch.total = job.total;
+    }
+
+    const [row] = await db
+      .update(invoices)
+      .set(patch)
+      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)))
+      .returning();
+
+    if (parsed.data.status === "sent") {
+      safeEmitActivity(orgId, "invoice.sent", `Marked invoice ${row.number} as sent`, { jobId: row.jobId });
+    }
+    if (parsed.data.status === "void") {
+      safeEmitActivity(orgId, "invoice.void", `Voided invoice ${row.number}`, { jobId: row.jobId });
+    }
+
+    return { ok: true, ...row };
   });
 
   // Record a manual/offline payment (cash/check/card-on-terminal). Online card

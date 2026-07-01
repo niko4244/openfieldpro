@@ -184,6 +184,13 @@ interface InvoiceDetail extends Invoice {
   payments: Payment[];
 }
 
+interface LineItemMutationResult {
+  lineItem: LineItem;
+  jobTotal: number;
+  jobCostCents: number;
+  jobMarginCents: number;
+}
+
 interface NotificationDTO {
   id: string;
   orgId: string;
@@ -292,12 +299,14 @@ export const api = {
   invoice: (id: string) => request<InvoiceDetail>(`/api/invoices/${id}`),
   createInvoice: (body: { jobId: string; dueAt?: string }) =>
     request<Invoice>("/api/invoices", { method: "POST", body: JSON.stringify(body) }),
-  updateInvoiceStatus: (id: string, status: "sent" | "void") =>
-    request<{ ok: boolean; status: string }>(`/api/invoices/${id}`, {
+  patchInvoice: (id: string, body: { dueAt?: string | null; status?: "sent" | "void"; syncTotal?: boolean }) =>
+    request<Invoice & { ok: boolean }>(`/api/invoices/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(body),
     }),
-  recordPayment: (id: string, body: { amount: number; method?: string }) =>
+  updateInvoiceStatus: (id: string, status: "sent" | "void") =>
+    api.patchInvoice(id, { status }),
+  recordPayment: (id: string, body: { amount: number; method?: string; reference?: string }) =>
     request<{ status: string; remaining: number; overpaid: number }>(`/api/invoices/${id}/pay`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -330,6 +339,26 @@ export const api = {
   },
 
   lineItems: (jobId: string) => request<LineItem[]>(`/api/jobs/${jobId}/line-items`),
+  createLineItem: (
+    jobId: string,
+    body: { description: string; quantity: number; unitPrice: number; unitCost?: number },
+  ) =>
+    request<LineItemMutationResult>(`/api/jobs/${jobId}/line-items`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  patchLineItem: (
+    id: string,
+    body: { description?: string; quantity?: number; unitPrice?: number; unitCost?: number },
+  ) =>
+    request<LineItemMutationResult>(`/api/line-items/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteLineItem: (id: string) =>
+    request<{ ok: boolean; jobTotal: number; jobCostCents: number; jobMarginCents: number }>(`/api/line-items/${id}`, {
+      method: "DELETE",
+    }),
 
   users: () => request<UserDTO[]>("/api/users"),
   recurring: () => request<RecurringJobDTO[]>("/api/recurring"),
