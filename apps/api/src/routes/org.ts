@@ -8,6 +8,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, orgs } from "@ofp/db";
 import type { JwtClaims } from "../auth.js";
+import { verifyLicenseKey } from "../lib/license.js";
 
 export async function resolveOrgId(req: FastifyRequest): Promise<string> {
   // 1. Verified JWT (the real path once a client logs in).
@@ -63,6 +64,23 @@ export async function orgSettingsRoutes(app: FastifyInstance) {
       .set(parsed.data)
       .where(eq(orgs.id, orgId))
       .returning();
+    if (!row) return reply.code(404).send({ error: "not found" });
+    return row;
+  });
+
+  // Redeem an offline-signed license key: verifies locally (no license
+  // server) and flips the org's plan. See ../lib/license.ts for format.
+  app.post("/license", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const parsed = z.object({ key: z.string().min(16) }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: "license key required" });
+    let plan;
+    try {
+      ({ plan } = verifyLicenseKey(parsed.data.key));
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message });
+    }
+    const [row] = await db.update(orgs).set({ plan }).where(eq(orgs.id, orgId)).returning();
     if (!row) return reply.code(404).send({ error: "not found" });
     return row;
   });

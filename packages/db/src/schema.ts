@@ -73,6 +73,10 @@ export const orgs = pgTable("orgs", {
   id: id(),
   name: text("name").notNull(),
   timezone: text("timezone").default("America/New_York").notNull(),
+  // Open-core entitlement: 'free' shows the sponsor slot; 'pro' (activated
+  // by an offline-signed license key, see apps/api/src/routes/org.ts)
+  // removes it and unlocks extended features. Mirrors drizzle/0017_org_plan.sql.
+  plan: text("plan").default("free").notNull(),
   createdAt: ts(),
 });
 

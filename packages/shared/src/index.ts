@@ -12,6 +12,11 @@ export type JobStatus = (typeof JOB_STATUS)[number];
 export const INVOICE_STATUS = ["draft", "sent", "paid", "void"] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUS)[number];
 
+/** Open-core plans. 'free' shows the sponsor slot; 'pro' removes it and
+ * unlocks extended features. Activated by an offline-signed license key. */
+export const PLANS = ["free", "pro"] as const;
+export type Plan = (typeof PLANS)[number];
+
 export type Money = number; // cents, integer
 
 /** Render integer cents as a dollar string. Canonical formatter for web/mobile. */

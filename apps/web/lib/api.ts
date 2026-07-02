@@ -66,6 +66,13 @@ type TemplateChannel = import("@ofp/shared").TemplateChannel;
 type InventoryItemDTO = import("@ofp/shared").InventoryItemDTO;
 type InventoryAdjustmentDTO = import("@ofp/shared").InventoryAdjustmentDTO;
 
+export interface OrgDTO {
+  id: string;
+  name: string;
+  timezone: string;
+  plan: import("@ofp/shared").Plan;
+}
+
 interface TemplatePreview {
   subject: string;
   body: string;
@@ -450,12 +457,11 @@ export const api = {
   deleteCatalogItem: (id: string) => request<void>(`/api/catalog/items/${id}`, { method: "DELETE" }),
 
   // ── Org settings ──
-  org: () => request<{ id: string; name: string; timezone: string }>("/api/org"),
+  org: () => request<OrgDTO>("/api/org"),
   patchOrg: (body: { name?: string; timezone?: string }) =>
-    request<{ id: string; name: string; timezone: string }>("/api/org", {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
+    request<OrgDTO>("/api/org", { method: "PATCH", body: JSON.stringify(body) }),
+  redeemLicense: (key: string) =>
+    request<OrgDTO>("/api/org/license", { method: "POST", body: JSON.stringify({ key }) }),
 
   // ── Templates / Automation ──
   templates: () => request<TemplateDTO[]>("/api/templates"),

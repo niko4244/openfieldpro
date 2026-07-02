@@ -203,12 +203,29 @@ const COMMON_TIMEZONES = [
 ];
 
 function GeneralTab() {
-  const [org, setOrg] = useState<{ id: string; name: string; timezone: string } | null>(null);
+  const [org, setOrg] = useState<import("@/lib/api").OrgDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState("America/New_York");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [licenseKey, setLicenseKey] = useState("");
+  const [redeeming, setRedeeming] = useState(false);
+  const [licenseMsg, setLicenseMsg] = useState<string | null>(null);
+
+  const redeem = async () => {
+    setRedeeming(true);
+    setLicenseMsg(null);
+    try {
+      const updated = await api.redeemLicense(licenseKey.trim());
+      setOrg(updated);
+      setLicenseKey("");
+      setLicenseMsg("Pro activated — thank you for supporting OpenFieldPro!");
+    } catch (e) {
+      setLicenseMsg(`Activation failed: ${(e as Error).message}`);
+    }
+    setRedeeming(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -250,7 +267,8 @@ function GeneralTab() {
   }
 
   return (
-    <Card className="max-w-xl">
+    <div className="max-w-xl space-y-6">
+    <Card>
       <CardHeader>
         <CardTitle>Organization</CardTitle>
         <p className="text-xs text-fg-muted pt-1">
@@ -297,6 +315,49 @@ function GeneralTab() {
         )}
       </CardContent>
     </Card>
+
+    {org && (
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle>Plan</CardTitle>
+          <span
+            className={`text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
+              org.plan === "pro" ? "bg-accent/20 text-accent" : "bg-surface-300 text-fg-muted"
+            }`}
+          >
+            {org.plan}
+          </span>
+        </CardHeader>
+        <CardContent>
+          {org.plan === "pro" ? (
+            <p className="text-sm text-fg-muted">
+              Pro is active — the sponsor slot is removed and extended features are unlocked.
+              Thank you for supporting open-source OpenFieldPro!
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-fg-muted">
+                OpenFieldPro is free and open source. A Pro license removes the sponsor slot
+                and unlocks extended features — activation is offline; no account needed.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  value={licenseKey}
+                  onChange={(e) => setLicenseKey(e.target.value)}
+                  placeholder="OFP1.…"
+                  className="flex-1 h-9 rounded-md border border-border bg-surface-300 px-2.5 text-sm font-mono text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                />
+                <Button onClick={redeem} disabled={redeeming || licenseKey.trim().length < 16}>
+                  {redeeming ? "Activating…" : "Activate"}
+                </Button>
+              </div>
+            </div>
+          )}
+          {licenseMsg && <p className="text-xs text-fg-muted pt-2">{licenseMsg}</p>}
+        </CardContent>
+      </Card>
+    )}
+    </div>
   );
 }
 
