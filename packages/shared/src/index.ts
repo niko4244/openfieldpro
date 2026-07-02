@@ -30,11 +30,23 @@ export interface CustomerDTO {
 export interface JobDTO {
   id: string;
   customerId: string;
+  propertyId?: string | null;
   title: string;
   status: JobStatus;
   scheduledAt?: string | null;
   assignedTo?: string | null;
   total: Money;
+  createdAt: string;
+}
+
+/** Service location for a customer; jobs reference it for history/dispatch. */
+export interface PropertyDTO {
+  id: string;
+  orgId: string;
+  customerId: string;
+  address: string;
+  lat?: string | null;
+  lng?: string | null;
   createdAt: string;
 }
 

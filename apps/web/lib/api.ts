@@ -55,6 +55,7 @@ export async function login(email: string, password: string): Promise<LoginResul
 
 type JobDTO = import("@ofp/shared").JobDTO;
 type CustomerDTO = import("@ofp/shared").CustomerDTO;
+type PropertyDTO = import("@ofp/shared").PropertyDTO;
 type ActivityDTO = import("@ofp/shared").ActivityDTO;
 type ReportSummaryDTO = import("@ofp/shared").ReportSummaryDTO;
 type UserDTO = import("@ofp/shared").UserDTO;
@@ -283,6 +284,25 @@ export const api = {
     request<CustomerDTO>("/api/customers", { method: "POST", body: JSON.stringify(body) }),
   patchCustomer: (id: string, body: { name?: string; email?: string | null; phone?: string | null; notes?: string | null }) =>
     request<CustomerDTO>(`/api/customers/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  customerProperties: (customerId: string) =>
+    request<PropertyDTO[]>(`/api/customers/${customerId}/properties`),
+  createProperty: (customerId: string, body: { address: string; lat?: string; lng?: string }) =>
+    request<PropertyDTO>(`/api/customers/${customerId}/properties`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  patchProperty: (
+    customerId: string,
+    propertyId: string,
+    body: { address?: string; lat?: string | null; lng?: string | null },
+  ) =>
+    request<PropertyDTO>(`/api/customers/${customerId}/properties/${propertyId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteProperty: (customerId: string, propertyId: string) =>
+    request<void>(`/api/customers/${customerId}/properties/${propertyId}`, { method: "DELETE" }),
 
   activities: (q?: { customerId?: string; jobId?: string }) => {
     const params = new URLSearchParams();

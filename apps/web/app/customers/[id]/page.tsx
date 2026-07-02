@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/page-header";
 import { JobStatusBadge } from "@/components/status-badge";
 import { EditCustomerDialog } from "./edit-dialog";
 import { CustomerEquipment } from "./customer-equipment";
+import { CustomerProperties } from "./customer-properties";
 
 export default async function CustomerDetailPage({
   params,
@@ -99,6 +100,11 @@ export default async function CustomerDetailPage({
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Properties + service history */}
+      <div className="mt-6">
+        <CustomerProperties customerId={customerId} jobs={customerJobs} />
       </div>
 
       {/* Equipment */}

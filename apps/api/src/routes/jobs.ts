@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
-import { db, jobs } from "@ofp/db";
+import { db, jobs, properties } from "@ofp/db";
 import { JOB_STATUS } from "@ofp/shared";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
@@ -9,6 +9,7 @@ import { safeEmitEvent } from "../plugins/bus.js";
 
 const createBody = z.object({
   customerId: z.string().uuid(),
+  propertyId: z.string().uuid().optional(),
   title: z.string().min(1),
   description: z.string().optional(),
   status: z.enum(JOB_STATUS).optional(),
@@ -18,12 +19,33 @@ const createBody = z.object({
 });
 
 const patchBody = z.object({
+  propertyId: z.string().uuid().nullable().optional(),
   status: z.enum(JOB_STATUS).optional(),
   scheduledAt: z.string().datetime().nullable().optional(),
   assignedTo: z.string().uuid().nullable().optional(),
   total: z.number().int().nonnegative().optional(),
-  laborCostCents: z.number().int().nonnegative().optional().default(0),
+  // No .default(0) here: a PATCH that omits laborCostCents must not reset it.
+  laborCostCents: z.number().int().nonnegative().optional(),
 });
+
+/** Property must exist in this org and belong to this customer. */
+async function propertyMatchesCustomer(
+  orgId: string,
+  propertyId: string,
+  customerId: string,
+): Promise<boolean> {
+  const [p] = await db
+    .select({ id: properties.id })
+    .from(properties)
+    .where(
+      and(
+        eq(properties.orgId, orgId),
+        eq(properties.id, propertyId),
+        eq(properties.customerId, customerId),
+      ),
+    );
+  return !!p;
+}
 
 export async function jobRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
@@ -45,6 +67,12 @@ export async function jobRoutes(app: FastifyInstance) {
     const parsed = createBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { scheduledAt, ...rest } = parsed.data;
+    if (
+      rest.propertyId &&
+      !(await propertyMatchesCustomer(orgId, rest.propertyId, rest.customerId))
+    ) {
+      return reply.code(400).send({ error: "property does not belong to this customer" });
+    }
     const [row] = await db
       .insert(jobs)
       .values({
@@ -67,6 +95,16 @@ export async function jobRoutes(app: FastifyInstance) {
     const parsed = patchBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { scheduledAt, ...rest } = parsed.data;
+    if (rest.propertyId) {
+      const [job] = await db
+        .select({ customerId: jobs.customerId })
+        .from(jobs)
+        .where(and(eq(jobs.orgId, orgId), eq(jobs.id, id)));
+      if (!job) return reply.code(404).send({ error: "not found" });
+      if (!(await propertyMatchesCustomer(orgId, rest.propertyId, job.customerId))) {
+        return reply.code(400).send({ error: "property does not belong to this customer" });
+      }
+    }
     const [row] = await db
       .update(jobs)
       .set({

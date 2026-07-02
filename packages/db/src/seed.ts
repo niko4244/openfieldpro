@@ -1,7 +1,7 @@
 // Minimal seed: one org, an owner, two customers, one scheduled job with an
 // invoice. Enough to render a non-empty dashboard. Idempotent-ish: skips if an
 // org named "Demo HVAC" already exists.
-import { db, orgs, users, customers, jobs, invoices, equipment, notifications, plugins } from "./index.js";
+import { db, orgs, users, customers, properties, jobs, invoices, equipment, notifications, plugins } from "./index.js";
 import { eq } from "drizzle-orm";
 import { scryptSync, randomBytes } from "node:crypto";
 
@@ -68,11 +68,23 @@ async function main() {
       ])
       .returning();
 
+    const [aliceHome] = await tx
+      .insert(properties)
+      .values({
+        orgId: org.id,
+        customerId: alice.id,
+        address: "742 Maple St, Springfield, IL 62704",
+        lat: "39.7817",
+        lng: "-89.6501",
+      })
+      .returning();
+
     const [job] = await tx
       .insert(jobs)
       .values({
         orgId: org.id,
         customerId: alice.id,
+        propertyId: aliceHome.id,
         title: "AC tune-up",
         status: "scheduled",
         scheduledAt: new Date(Date.now() + 86_400_000),
