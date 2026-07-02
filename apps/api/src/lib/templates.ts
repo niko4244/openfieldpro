@@ -10,7 +10,7 @@
 // exactly like before the A/B follow-up landed.
 
 import Mustache from "mustache";
-import { formatMoney } from "@ofp/shared";
+import { formatMoney, planAtLeast } from "@ofp/shared";
 import {
   type TemplateContext,
   type TemplateDTO,
@@ -71,7 +71,7 @@ export function wrapEmailHtml(bodyHtml: string, ctx: TemplateContext): string {
       ${content}
     </div>
     <p style="text-align:center;color:#9ca3af;font-size:12px;margin-top:16px;">
-      Sent by ${orgName} &middot; Powered by OpenFieldPro
+      Sent by ${orgName}${planAtLeast(ctx.org?.plan, "pro") ? "" : " &middot; Powered by OpenFieldPro"}
     </p>
   </div>
 </body>

@@ -22,6 +22,14 @@ test("valid key verifies and returns the plan", () => {
   assert.equal(verifyLicenseKey(makeKey(good)).plan, "pro");
 });
 
+test("business tier key verifies", () => {
+  assert.equal(verifyLicenseKey(makeKey({ ...good, plan: "business" })).plan, "business");
+});
+
+test("unknown plan is rejected", () => {
+  assert.throws(() => verifyLicenseKey(makeKey({ ...good, plan: "enterprise" })), /unknown plan/);
+});
+
 test("tampered payload is rejected", () => {
   const key = makeKey(good);
   const [p, payload, sig] = key.split(".");

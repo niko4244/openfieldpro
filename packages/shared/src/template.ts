@@ -83,7 +83,7 @@ export interface TemplateContext {
     total?: string | number | null;
     dueAt?: string | null;
   } | null;
-  org?: { name?: string; timezone?: string } | null;
+  org?: { name?: string; timezone?: string; plan?: string } | null;
 }
 
 /**

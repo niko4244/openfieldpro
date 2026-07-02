@@ -201,7 +201,7 @@ export async function buildTemplateContext(env: EventEnvelope): Promise<Template
   const ctx: TemplateContext = {};
 
   const [org] = await db
-    .select({ name: orgs.name, timezone: orgs.timezone })
+    .select({ name: orgs.name, timezone: orgs.timezone, plan: orgs.plan })
     .from(orgs)
     .where(eq(orgs.id, env.orgId));
   if (org) ctx.org = org;

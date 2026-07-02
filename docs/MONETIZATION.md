@@ -28,10 +28,34 @@ optional Pro licenses, with zero infrastructure to operate.
 The signing **private key** lives at `~/.ofp/license-signing-key.pem` —
 back it up; never commit it. The public key in the repo is not a secret.
 
+## Tiers
+
+| | Free ($0) | Pro (~$10/mo · $96/yr) | Business (~$29/mo · $290/yr) |
+|---|---|---|---|
+| Complete job-to-cash workflow | ✔ | ✔ | ✔ |
+| Unlimited jobs, customers, techs | ✔ | ✔ | ✔ |
+| Dispatch + GPS, mobile, automations | ✔ | ✔ | ✔ |
+| Sponsor slot on dashboard | shown | removed | removed |
+| "Powered by OpenFieldPro" on emails | shown | removed | removed |
+| Premium plugins (QuickBooks, Zapier) | — | — | ✔ |
+
+Never gate: user counts, job counts, or anything in the five HCP parity
+buckets (core parity stays free — see the hcp-evaluator agent brief).
+Optional: a Founder lifetime key (no `exp`, ~$249) for early supporters.
+
+Issue tier keys with `--plan pro` or `--plan business`; annual
+subscriptions are keys with `--exp`.
+
 ## What gates on `plan` today
 
-- `orgs.plan` column (`free` | `pro`), migration `0017_org_plan.sql`.
+- `orgs.plan` column (`free` | `pro` | `business`), migration `0017_org_plan.sql`;
+  ranking helper `planAtLeast()` in `@ofp/shared`.
 - Sponsor slot renders only on `free`.
+- Email footer attribution ("Powered by OpenFieldPro") drops on `pro`+.
+- Premium plugins (`REQUIRED_PLAN` map in `apps/api/src/routes/plugins.ts`:
+  quickbooks, zapier → business) — install and enable return 402 below the
+  required plan; the catalog exposes `requiredPlan`/`planSatisfied` and the
+  Integrations UI shows a tier badge with an upgrade link.
 - Redemption: `POST /api/org/license` → verifies key → flips plan.
   Checks: `apps/api/test/license.test.ts`.
 

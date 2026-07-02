@@ -329,16 +329,19 @@ function GeneralTab() {
           </span>
         </CardHeader>
         <CardContent>
-          {org.plan === "pro" ? (
+          {org.plan !== "free" ? (
             <p className="text-sm text-fg-muted">
-              Pro is active — the sponsor slot is removed and extended features are unlocked.
+              {org.plan === "business"
+                ? "Business is active — premium integrations are unlocked, the sponsor slot is removed, and your documents are unbranded."
+                : "Pro is active — the sponsor slot is removed and your customer-facing documents are unbranded."}{" "}
               Thank you for supporting open-source OpenFieldPro!
             </p>
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-fg-muted">
                 OpenFieldPro is free and open source. A Pro license removes the sponsor slot
-                and unlocks extended features — activation is offline; no account needed.
+                and unbrands your invoices and emails; Business adds premium integrations
+                like QuickBooks and Zapier. Activation is offline — no account needed.
               </p>
               <div className="flex gap-2">
                 <input

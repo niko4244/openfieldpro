@@ -9,9 +9,25 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
-import { db, plugins, pluginInstalls, apiTokens, pluginEvents } from "@ofp/db";
+import { db, plugins, pluginInstalls, apiTokens, pluginEvents, orgs } from "@ofp/db";
+import { planAtLeast, type Plan } from "@ofp/shared";
 import { resolveOrgId } from "./org.js";
 import { generateToken, generateWebhookSecret } from "../plugins/crypto.js";
+
+// Open-core seam: premium first-party plugins gate on the org's plan
+// (docs/MONETIZATION.md). Everything not listed here is free. ponytail:
+// slug map in code, not a manifest column — three entries don't earn a
+// migration. Ceiling: many premium plugins. Upgrade: `required_plan`
+// column on the plugins table.
+const REQUIRED_PLAN: Record<string, Plan> = {
+  quickbooks: "business",
+  zapier: "business",
+};
+
+async function orgPlan(orgId: string): Promise<string> {
+  const [row] = await db.select({ plan: orgs.plan }).from(orgs).where(eq(orgs.id, orgId));
+  return row?.plan ?? "free";
+}
 
 const installBody = z.object({
   pluginId: z.string().uuid(),
@@ -34,13 +50,17 @@ export async function pluginRoutes(app: FastifyInstance) {
       db.select().from(pluginInstalls).where(eq(pluginInstalls.orgId, orgId)),
     ]);
     const byPlugin = new Map(installs.map((i) => [i.pluginId, i]));
+    const plan = await orgPlan(orgId);
     return catalog.map((p) => {
       const install = byPlugin.get(p.id);
+      const requiredPlan = REQUIRED_PLAN[p.slug] ?? "free";
       return {
         ...p,
         installed: !!install,
         installId: install?.id ?? null,
         enabled: install?.enabled ?? false,
+        requiredPlan,
+        planSatisfied: planAtLeast(plan, requiredPlan),
       };
     });
   });
@@ -73,6 +93,13 @@ export async function pluginRoutes(app: FastifyInstance) {
 
     const [plugin] = await db.select().from(plugins).where(eq(plugins.id, parsed.data.pluginId));
     if (!plugin) return reply.code(404).send({ error: "plugin not found" });
+
+    const requiredPlan = REQUIRED_PLAN[plugin.slug] ?? "free";
+    if (!planAtLeast(await orgPlan(orgId), requiredPlan)) {
+      return reply
+        .code(402)
+        .send({ error: `${plugin.name} requires the ${requiredPlan} plan`, requiredPlan });
+    }
 
     const [existing] = await db
       .select({ id: pluginInstalls.id })
@@ -110,6 +137,22 @@ export async function pluginRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const parsed = patchBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    // Re-check the plan gate on enable: covers installs that predate the
+    // gate and orgs whose annual key lapsed.
+    if (parsed.data.enabled === true) {
+      const [joined] = await db
+        .select({ slug: plugins.slug, name: plugins.name })
+        .from(pluginInstalls)
+        .innerJoin(plugins, eq(pluginInstalls.pluginId, plugins.id))
+        .where(and(eq(pluginInstalls.orgId, orgId), eq(pluginInstalls.id, id)));
+      if (!joined) return reply.code(404).send({ error: "not found" });
+      const requiredPlan = REQUIRED_PLAN[joined.slug] ?? "free";
+      if (!planAtLeast(await orgPlan(orgId), requiredPlan)) {
+        return reply
+          .code(402)
+          .send({ error: `${joined.name} requires the ${requiredPlan} plan`, requiredPlan });
+      }
+    }
     const [row] = await db
       .update(pluginInstalls)
       .set(parsed.data)

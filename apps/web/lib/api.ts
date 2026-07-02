@@ -246,6 +246,8 @@ interface PluginCatalogEntry {
   installed: boolean;
   installId: string | null;
   enabled: boolean;
+  requiredPlan: string;
+  planSatisfied: boolean;
 }
 
 interface PluginInstall {

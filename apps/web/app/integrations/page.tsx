@@ -22,6 +22,8 @@ interface CatalogEntry {
   installed: boolean;
   installId: string | null;
   enabled: boolean;
+  requiredPlan: string;
+  planSatisfied: boolean;
 }
 
 // Tailored placeholder so notifier installs know exactly what URL to paste.
@@ -132,6 +134,9 @@ export default function IntegrationsPage() {
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-semibold text-fg">{p.name}</h3>
                     {p.firstParty && <Badge variant="completed">first-party</Badge>}
+                    {p.requiredPlan !== "free" && (
+                      <Badge variant="sent">{p.requiredPlan}</Badge>
+                    )}
                     {p.installed && (
                       <Badge variant={p.enabled ? "completed" : "draft"}>{p.enabled ? "active" : "paused"}</Badge>
                     )}
@@ -180,10 +185,17 @@ export default function IntegrationsPage() {
                       Uninstall
                     </Button>
                   </>
-                ) : (
+                ) : p.planSatisfied ? (
                   <Button disabled={busyId === p.id} onClick={() => install(p)}>
                     {busyId === p.id ? "Installing…" : "Install"}
                   </Button>
+                ) : (
+                  <a
+                    href="/settings"
+                    className="text-xs text-accent hover:underline no-underline self-center"
+                  >
+                    Requires the {p.requiredPlan} plan — activate a license →
+                  </a>
                 )}
               </div>
             </CardContent>

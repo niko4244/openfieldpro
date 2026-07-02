@@ -12,10 +12,18 @@ export type JobStatus = (typeof JOB_STATUS)[number];
 export const INVOICE_STATUS = ["draft", "sent", "paid", "void"] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUS)[number];
 
-/** Open-core plans. 'free' shows the sponsor slot; 'pro' removes it and
- * unlocks extended features. Activated by an offline-signed license key. */
-export const PLANS = ["free", "pro"] as const;
+/** Open-core plans, ranked. 'free' is the complete core product with a
+ * sponsor slot; 'pro' removes the slot and unbrands customer-facing docs;
+ * 'business' adds premium integrations. Activated by offline-signed keys. */
+export const PLANS = ["free", "pro", "business"] as const;
 export type Plan = (typeof PLANS)[number];
+
+/** true when `plan` grants at least `required` (free < pro < business).
+ * Unknown/missing plans rank as free. */
+export function planAtLeast(plan: string | undefined | null, required: Plan): boolean {
+  const rank = (p: string | undefined | null) => Math.max(0, PLANS.indexOf(p as Plan));
+  return rank(plan) >= PLANS.indexOf(required);
+}
 
 export type Money = number; // cents, integer
 

@@ -4,10 +4,13 @@ Open-source, self-hostable **field service management** — a HouseCall Pro alte
 CRM, scheduling/dispatch, work orders, estimates, invoicing, and payments for home-service
 businesses (HVAC, plumbing, electrical, cleaning, etc.).
 
-> **Status: Phase 1 — Foundation.** The full-stack spine is in place and runs end-to-end
-> (Postgres → Drizzle → Fastify API → Next web, plus an Expo technician app and the infra
-> compose). The remaining HouseCall Pro modules are built by following the same vertical
-> slice — see the roadmap below.
+> **Status: core parity shipped.** The full job-to-cash workflow runs end-to-end:
+> CRM (customers, properties, equipment, service history), scheduling, live-GPS
+> dispatch board, estimates, invoicing workbench with customer preview, payments,
+> price book, inventory, reviews, reports with margins, notification templates
+> (email/SMS with A/B subjects), event-driven automations, and an open plugin
+> portal. Free and self-hosted under AGPL-3.0; optional Pro/Business licenses
+> fund development — see [License & pricing](#license--pricing).
 
 ## Stack
 
@@ -79,9 +82,27 @@ Each row is one vertical slice on the existing spine (schema → API route → w
 | 3 ✅ | Reminders & notifications | done — `@ofp/worker` sends appointment reminders via pluggable `notify` (ntfy/console; SMS/email plug in) |
 | 4 ✅ | Online booking page | done — public `POST /api/public/:orgId/book` → `lead` job (no auth) |
 | 4 ✅ | Recurring jobs, reviews, reporting | done — recurring templates materialized by the worker; reviews API; `/api/reports/summary` |
+| 5 ✅ | Templates & automation | done — email/SMS templates with merge fields + A/B subjects, branded HTML shell, event-driven automation rules with audit trail |
+| 6 ✅ | Plugin portal | done — manifest catalog, per-org installs, HMAC-signed webhooks, scoped API tokens, delivery journal |
+| 7 ✅ | Dispatch board + inventory + CRM depth | done — live-GPS dispatch map, tech mode, inventory/parts, property profiles with per-property service history |
 
-All roadmap modules now have a working slice. Remaining work is polish (drag-drop calendar UI,
-invoice PDF/email, an estimates/booking web page, a `reminded_at` dedupe column) rather than net-new capability.
+All roadmap modules have a working, verified slice. Daily quality is watched by an
+automated evaluation loop that scores the app against Housecall Pro feature-by-feature.
+
+## License & pricing
+
+OpenFieldPro is **AGPL-3.0** ([LICENSE](LICENSE)): self-host the complete product free,
+forever, with unlimited jobs, customers, and technicians. Optional licenses support
+development — activation is a single offline key, no account, no phone-home:
+
+| | Free | Pro | Business |
+|---|---|---|---|
+| Everything in the app | ✔ | ✔ | ✔ |
+| Sponsor line on dashboard | shown | removed | removed |
+| Your branding on invoices & emails | — | ✔ | ✔ |
+| Premium plugins (QuickBooks, Zapier) | — | — | ✔ |
+
+Details in [docs/MONETIZATION.md](docs/MONETIZATION.md).
 
 ## Deploy
 
