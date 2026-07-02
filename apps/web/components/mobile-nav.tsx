@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { readStoredSession, visibleNavLinks } from "@/lib/nav";
+import { activeNavHref, readStoredSession, visibleNavLinks } from "@/lib/nav";
 import type { RoleName } from "@/lib/nav";
 import { useTheme } from "@/components/theme-provider";
 
@@ -108,7 +108,7 @@ export function MobileNav() {
         {/* Navigation links */}
         <nav className="flex-1 flex flex-col gap-1 p-3 overflow-y-auto">
           {visibleNavLinks(user?.role).map(({ href, label, icon }) => {
-            const active = pathname === href;
+            const active = href === activeNavHref(visibleNavLinks(user?.role), pathname);
             return (
               <Link
                 key={href}

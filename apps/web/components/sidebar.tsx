@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { readStoredSession, visibleNavLinks } from "@/lib/nav";
+import { activeNavHref, readStoredSession, visibleNavLinks } from "@/lib/nav";
 import type { RoleName } from "@/lib/nav";
 import { useTheme } from "@/components/theme-provider";
 import { NotificationsPopover } from "@/components/notifications-popover";
@@ -44,21 +44,21 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 flex flex-col gap-1 p-3 overflow-y-auto">
+      <nav className="flex-1 flex flex-col gap-0.5 p-3 overflow-y-auto">
         {links.map(({ href, label, icon }) => {
-          const active = pathname === href;
+          const active = href === activeNavHref(links, pathname);
           return (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 no-underline",
+                "flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-all duration-150 no-underline",
                 active
                   ? "bg-accent text-white font-medium"
                   : "text-fg-muted hover:text-fg hover:bg-surface-300",
               )}
             >
-              <span className="text-base w-5 text-center">{icon}</span>
+              <span className="text-base leading-none w-5 text-center">{icon}</span>
               {label}
             </Link>
           );

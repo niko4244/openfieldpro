@@ -114,3 +114,19 @@ export function visibleNavLinks(role: RoleName | undefined | null): readonly Nav
   if (!role) return NAV_LINKS;
   return NAV_LINKS.filter((l) => !l.roles || l.roles.includes(role));
 }
+
+/**
+ * The single nav link that should show as active for a pathname.
+ * Longest-prefix wins so /dashboard/dispatch highlights Dispatch, not
+ * Dashboard; detail pages (/invoices/123) keep their section highlighted;
+ * "/" maps to Dashboard (both routes serve the same overview).
+ */
+export function activeNavHref(
+  links: readonly NavLink[],
+  pathname: string,
+): string | undefined {
+  if (pathname === "/") return links.find((l) => l.href === "/dashboard")?.href;
+  return links
+    .filter((l) => pathname === l.href || pathname.startsWith(l.href + "/"))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+}
