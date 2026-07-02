@@ -1,4 +1,6 @@
-// OpenFieldPro technician app — dashboard with stat cards, appointments, and job cards.
+// OpenFieldPro technician app — sign-in, then a dashboard with stat cards,
+// appointments, and job cards. Plan-aware: the free tier shows the sponsor
+// banner; pro/business hide it (same open-core gate as the web app).
 // Run: pnpm --filter @ofp/mobile dev  (requires Expo Go or a simulator).
 import { useEffect, useState, useMemo, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
@@ -8,36 +10,59 @@ import {
   View,
   ScrollView,
   ActivityIndicator,
+  TouchableOpacity,
 } from "react-native";
 import type { JobDTO } from "@ofp/shared";
 import { formatMoney } from "@ofp/shared";
 import { StatCard } from "./components/StatCard";
 import { JobCard } from "./components/JobCard";
 import { AppointmentCard } from "./components/AppointmentCard";
+import { LoginScreen } from "./components/LoginScreen";
+import { SponsorBanner } from "./components/SponsorBanner";
 import { SyncService } from "./src/sync";
+import {
+  api,
+  getToken,
+  hasToken,
+  setToken,
+  type AppointmentDTO,
+  type InvoiceDTO,
+  type SessionUser,
+} from "./src/api";
 
 const API = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 
-interface Appointment {
-  id: string;
-  jobId: string;
-  technicianId: string | null;
-  startsAt: string;
-  endsAt: string;
-}
-
-interface Invoice {
-  id: string;
-  jobId: string;
-  number: string;
-  status: "draft" | "sent" | "paid" | "void";
-  total: number;
-}
-
 export default function App() {
+  const [authed, setAuthed] = useState(hasToken());
+  const [user, setUser] = useState<SessionUser | null>(null);
+
+  if (!authed) {
+    return (
+      <LoginScreen
+        onLogin={(u) => {
+          setUser(u);
+          setAuthed(true);
+        }}
+      />
+    );
+  }
+  return (
+    <Dashboard
+      user={user}
+      onLogout={() => {
+        setToken(null);
+        setUser(null);
+        setAuthed(false);
+      }}
+    />
+  );
+}
+
+function Dashboard({ user, onLogout }: { user: SessionUser | null; onLogout: () => void }) {
   const [jobs, setJobs] = useState<JobDTO[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [appointments, setAppointments] = useState<AppointmentDTO[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceDTO[]>([]);
+  const [plan, setPlan] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
@@ -47,15 +72,17 @@ export default function App() {
     let cancelled = false;
     async function load() {
       try {
-        const [jr, ar, ir] = await Promise.all([
-          fetch(`${API}/api/jobs`).then((r) => r.json()).catch(() => []),
-          fetch(`${API}/api/appointments`).then((r) => r.json()).catch(() => []),
-          fetch(`${API}/api/invoices`).then((r) => r.json()).catch(() => []),
+        const [jr, ar, ir, org] = await Promise.all([
+          api.jobs().catch(() => []),
+          api.appointments().catch(() => []),
+          api.invoices().catch(() => []),
+          api.org().catch(() => null),
         ]);
         if (!cancelled) {
           setJobs(jr);
           setAppointments(ar);
           setInvoices(ir);
+          setPlan(org?.plan ?? "free");
         }
       } catch (e) {
         if (!cancelled) setErr(String(e));
@@ -66,9 +93,8 @@ export default function App() {
     load();
 
     // Init sync service and pull on mount + every 30s
-    const token = process.env.EXPO_PUBLIC_AUTH_TOKEN ?? "";
     const orgId = process.env.EXPO_PUBLIC_ORG_ID ?? "";
-    syncRef.current = new SyncService({ apiUrl: API, orgId, token });
+    syncRef.current = new SyncService({ apiUrl: API, orgId, token: getToken() });
 
     const doSync = () => {
       syncRef.current
@@ -146,11 +172,22 @@ export default function App() {
       >
         {/* ── Header ── */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Dashboard</Text>
+          <View style={styles.headerRow}>
+            <Text style={styles.headerTitle}>Dashboard</Text>
+            <TouchableOpacity onPress={onLogout} hitSlop={8}>
+              <Text style={styles.logout}>Sign out</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.headerSub}>
+            {user ? `${user.name} · ` : ""}
             {jobs.length} jobs · {stats.active} active
             {lastSync && ` · synced ${lastSync}`}
           </Text>
+        </View>
+
+        {/* ── Open-core sponsor banner (free plan only) ── */}
+        <View style={styles.bannerWrap}>
+          <SponsorBanner plan={plan} />
         </View>
 
         {/* ── Error banner ── */}
@@ -282,6 +319,19 @@ const styles = StyleSheet.create({
     color: "#8a97c2",
     fontSize: 13,
     marginTop: 4,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  logout: {
+    color: "#6b7aa8",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  bannerWrap: {
+    paddingHorizontal: 20,
   },
 
   // ── Error ──

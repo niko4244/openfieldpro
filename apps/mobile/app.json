@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "splash": { "backgroundColor": "#0b1020" },
-    "ios": { "supportsTablet": true },
-    "android": {}
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.openfieldpro.app" },
+    "android": { "package": "com.openfieldpro.app" }
   }
 }
