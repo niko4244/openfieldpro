@@ -19,6 +19,7 @@ import {
   assertSmsWithinLimit,
   previewTemplate,
 } from "../lib/templates.js";
+import { DEFAULT_TEMPLATES } from "../lib/default-templates.js";
 import { resolveOrgId } from "./org.js";
 import {
   type TemplateChannel,
@@ -113,6 +114,35 @@ export async function templateRoutes(app: FastifyInstance) {
       .limit(1);
     if (!row) return reply.code(404).send({ error: "not found" });
     return toDto(row);
+  });
+
+  // Install the starter template set. Skips (channel, key) pairs the org
+  // already has a template for, so it's safe to call repeatedly and never
+  // clobbers edited copies.
+  app.post("/defaults", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const existing = await db
+      .select({ key: templates.key, channel: templates.channel })
+      .from(templates)
+      .where(eq(templates.orgId, orgId));
+    const taken = new Set(existing.map((t) => `${t.channel}:${t.key}`));
+    const missing = DEFAULT_TEMPLATES.filter((d) => !taken.has(`${d.channel}:${d.key}`));
+    if (missing.length === 0) return { created: [] };
+    const rows = await db
+      .insert(templates)
+      .values(
+        missing.map((d) => ({
+          orgId,
+          key: d.key,
+          channel: d.channel,
+          name: d.name,
+          subject: d.subject,
+          body: d.body,
+          enabled: true,
+        })),
+      )
+      .returning();
+    return reply.code(201).send({ created: rows.map(toDto) });
   });
 
   app.post("/", async (req, reply) => {

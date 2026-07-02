@@ -48,6 +48,36 @@ export function renderEmailBody(rawHtml: string, ctx: TemplateContext): string {
   return renderMustache(rawHtml, ctx);
 }
 
+/**
+ * Branded HTML shell applied to every rendered email so plain-paragraph
+ * template bodies come out looking like a real business email instead of
+ * unstyled text on a white page. Authors who paste a full HTML document
+ * (contains `<html`) are left alone; bodies with no HTML tags at all get
+ * their newlines converted to <br> first.
+ */
+export function wrapEmailHtml(bodyHtml: string, ctx: TemplateContext): string {
+  if (/<html[\s>]/i.test(bodyHtml)) return bodyHtml;
+  const orgName = ctx.org?.name ?? "OpenFieldPro";
+  const hasTags = /<[a-z][^>]*>/i.test(bodyHtml);
+  const content = hasTags ? bodyHtml : bodyHtml.replace(/\r?\n/g, "<br>\n");
+  return `<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#f4f5f7;">
+  <div style="max-width:560px;margin:0 auto;padding:24px 16px;font-family:Arial,Helvetica,sans-serif;">
+    <div style="background:#111827;color:#ffffff;border-radius:8px 8px 0 0;padding:18px 24px;font-size:17px;font-weight:bold;letter-spacing:0.2px;">
+      ${orgName}
+    </div>
+    <div style="background:#ffffff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:24px;color:#111827;font-size:14px;line-height:1.6;">
+      ${content}
+    </div>
+    <p style="text-align:center;color:#9ca3af;font-size:12px;margin-top:16px;">
+      Sent by ${orgName} &middot; Powered by OpenFieldPro
+    </p>
+  </div>
+</body>
+</html>`;
+}
+
 export function renderSmsBody(
   rawText: string,
   ctx: TemplateContext,
@@ -163,7 +193,7 @@ export function previewTemplate(
   }
   return {
     subject: baseSubject,
-    body: renderEmailBody(template.body, ctx),
+    body: wrapEmailHtml(renderEmailBody(template.body, ctx), ctx),
     channel: "email",
     variant: pickedLabel,
   };

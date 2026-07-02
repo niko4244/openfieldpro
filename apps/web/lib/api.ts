@@ -275,6 +275,8 @@ export const api = {
 
   jobs: () => request<JobDTO[]>("/api/jobs"),
   job: (id: string) => request<JobDTO>(`/api/jobs/${id}`),
+  createJob: (body: { customerId: string; propertyId?: string; title: string; description?: string }) =>
+    request<JobDTO>("/api/jobs", { method: "POST", body: JSON.stringify(body) }),
   patchJob: (id: string, data: Record<string, unknown>) =>
     request<JobDTO>(`/api/jobs/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 
@@ -447,8 +449,18 @@ export const api = {
     request<CatalogItemDTO>(`/api/catalog/items/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteCatalogItem: (id: string) => request<void>(`/api/catalog/items/${id}`, { method: "DELETE" }),
 
+  // ── Org settings ──
+  org: () => request<{ id: string; name: string; timezone: string }>("/api/org"),
+  patchOrg: (body: { name?: string; timezone?: string }) =>
+    request<{ id: string; name: string; timezone: string }>("/api/org", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
   // ── Templates / Automation ──
   templates: () => request<TemplateDTO[]>("/api/templates"),
+  installDefaultTemplates: () =>
+    request<{ created: TemplateDTO[] }>("/api/templates/defaults", { method: "POST" }),
   createTemplate: (body: {
     key: string;
     channel: TemplateChannel;
@@ -494,8 +506,11 @@ export const api = {
     const params = new URLSearchParams();
     if (q?.variant) params.set("variant", q.variant);
     const qs = params.toString();
+    // body "{}" required: request() always sends content-type json and
+    // Fastify 400s a JSON POST with an empty body.
     return request<TemplatePreview>(`/api/templates/${id}/preview${qs ? `?${qs}` : ""}`, {
       method: "POST",
+      body: "{}",
     });
   },
   testSendTemplate: (id: string, q?: { variant?: string }) => {
@@ -504,6 +519,7 @@ export const api = {
     const qs = params.toString();
     return request<{ ok: boolean }>(`/api/templates/${id}/test-send${qs ? `?${qs}` : ""}`, {
       method: "POST",
+      body: "{}",
     });
   },
   automationRules: () => request<AutomationRuleDTO[]>("/api/automation/rules"),

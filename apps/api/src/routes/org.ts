@@ -3,7 +3,9 @@
 // existing customer/job routes keep working without a login during local dev.
 // ponytail: header/first-org fallback is dev-only. Ceiling: do NOT ship with the
 // fallback enabled in prod — gate it behind NODE_ENV !== "production".
-import type { FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { db, orgs } from "@ofp/db";
 import type { JwtClaims } from "../auth.js";
 
@@ -27,4 +29,41 @@ export async function resolveOrgId(req: FastifyRequest): Promise<string> {
   const [first] = await db.select({ id: orgs.id }).from(orgs).limit(1);
   if (!first) throw new Error("no org found — run `pnpm db:seed`");
   return first.id;
+}
+
+// ── Org settings (Settings → General) ──
+
+const orgPatchBody = z.object({
+  name: z.string().min(1).max(120).optional(),
+  timezone: z.string().min(1).max(64).optional(),
+});
+
+export async function orgSettingsRoutes(app: FastifyInstance) {
+  app.get("/", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const [row] = await db.select().from(orgs).where(eq(orgs.id, orgId));
+    if (!row) return reply.code(404).send({ error: "not found" });
+    return row;
+  });
+
+  app.patch("/", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const parsed = orgPatchBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    if (parsed.data.timezone) {
+      try {
+        // Intl throws on unknown zone ids — the cheapest full validation.
+        new Intl.DateTimeFormat("en-US", { timeZone: parsed.data.timezone });
+      } catch {
+        return reply.code(400).send({ error: "invalid timezone" });
+      }
+    }
+    const [row] = await db
+      .update(orgs)
+      .set(parsed.data)
+      .where(eq(orgs.id, orgId))
+      .returning();
+    if (!row) return reply.code(404).send({ error: "not found" });
+    return row;
+  });
 }

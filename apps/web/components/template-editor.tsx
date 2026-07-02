@@ -11,7 +11,7 @@
 // Subject; otherwise the base column drives the rendered subject (the
 // pre-A/B behavior, unchanged).
 //
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -85,7 +85,9 @@ export function TemplateEditor() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savingVariant, setSavingVariant] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -154,10 +156,14 @@ export function TemplateEditor() {
   const fetchPreview = useCallback(async () => {
     if (!state.id) {
       // Local preview for unsaved drafts: no server round-trip needed; the
-      // fields already validate the regex / char limits client-side.
+      // fields already validate the regex / char limits client-side. Saved
+      // templates get the full branded shell from the server renderer.
       setPreviewHtml({
         subject: state.subject || "(no subject)",
-        body: state.body,
+        body:
+          state.channel === "email"
+            ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#111827;padding:16px;">${state.body.replace(/\r?\n/g, "<br>\n")}</div>`
+            : state.body,
         chars: state.body.length,
         segments: smsSegmentCount(state.body.length),
       });
@@ -225,9 +231,40 @@ export function TemplateEditor() {
     }
   }, [state.id, state.name, reload]);
 
+  // Insert at the caret (falls back to appending when the textarea hasn't
+  // been focused yet), then restore focus with the caret after the token.
   const insertField = useCallback((mustache: string) => {
-    setState((s) => ({ ...s, body: s.body + mustache }));
+    const el = bodyRef.current;
+    setState((s) => {
+      const at = el ? el.selectionStart : s.body.length;
+      const end = el ? el.selectionEnd : s.body.length;
+      const body = s.body.slice(0, at) + mustache + s.body.slice(end);
+      requestAnimationFrame(() => {
+        if (!el) return;
+        el.focus();
+        el.selectionStart = el.selectionEnd = at + mustache.length;
+      });
+      return { ...s, body };
+    });
   }, []);
+
+  const installDefaults = useCallback(async () => {
+    setInstalling(true);
+    setStatusMsg(null);
+    try {
+      const r = await api.installDefaultTemplates();
+      await reload();
+      setStatusMsg(
+        r.created.length === 0
+          ? "All starter templates already installed."
+          : `Installed ${r.created.length} starter templates.`,
+      );
+    } catch (e) {
+      setStatusMsg(`Install failed: ${(e as Error).message}`);
+    } finally {
+      setInstalling(false);
+    }
+  }, [reload]);
 
   const addVariant = useCallback(async () => {
     if (!state.id) return;
@@ -274,9 +311,9 @@ export function TemplateEditor() {
   const totalWeight = variants.reduce((s, v) => s + v.weight, 0);
 
   return (
-    <div className="grid grid-cols-12 gap-4">
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
       {/* Left rail: template list */}
-      <Card className="col-span-3">
+      <Card className="xl:col-span-3">
         <CardHeader>
           <CardTitle>Templates</CardTitle>
           <div className="flex gap-1 pt-2">
@@ -313,7 +350,15 @@ export function TemplateEditor() {
           {loading ? (
             <div className="p-3 text-sm text-fg-muted">Loading…</div>
           ) : filtered.length === 0 ? (
-            <EmptyState title="No templates yet" description="Pick a channel above and click +" />
+            <div className="px-4 pb-4">
+              <EmptyState
+                title="No templates yet"
+                description="Start from the professional defaults — invoices, reminders, and review requests — then tweak the wording."
+              />
+              <Button onClick={installDefaults} disabled={installing} className="w-full">
+                {installing ? "Installing…" : "Install starter templates"}
+              </Button>
+            </div>
           ) : (
             <ul className="divide-y divide-border">
               {filtered.map((t) => (
@@ -338,7 +383,7 @@ export function TemplateEditor() {
       </Card>
 
       {/* Center: editor */}
-      <Card className="col-span-5">
+      <Card className="xl:col-span-5">
         <CardHeader>
           <CardTitle>{state.id ? "Edit template" : "New template"}</CardTitle>
           <div className="grid grid-cols-2 gap-3 pt-3">
@@ -389,19 +434,30 @@ export function TemplateEditor() {
             )}
           </div>
 
-          {/* Insert field picker */}
+          {/* Insert field picker, grouped so it reads as a palette instead of
+              a wall of tokens. Chips show the short field name; the full
+              mustache token appears on hover and is what gets inserted. */}
           <div className="pt-3">
-            <span className="text-xs text-fg-muted">Insert field</span>
-            <div className="flex flex-wrap gap-1 pt-1">
-              {TEMPLATE_FIELDS.map((f) => (
-                <button
-                  key={f.mustache}
-                  onClick={() => insertField(f.mustache)}
-                  title={`e.g. ${f.example}`}
-                  className="px-2 py-0.5 text-xs rounded bg-surface-300 hover:bg-surface-200 text-fg cursor-pointer border border-border transition-colors"
-                >
-                  {f.mustache}
-                </button>
+            <span className="text-xs text-fg-muted">Insert field at cursor</span>
+            <div className="space-y-1.5 pt-1">
+              {[...new Set(TEMPLATE_FIELDS.map((f) => f.group))].map((group) => (
+                <div key={group} className="flex items-baseline gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-dim w-20 shrink-0">
+                    {group}
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {TEMPLATE_FIELDS.filter((f) => f.group === group).map((f) => (
+                      <button
+                        key={f.mustache}
+                        onClick={() => insertField(f.mustache)}
+                        title={`${f.mustache} — e.g. ${f.example}`}
+                        className="px-2 py-0.5 text-xs rounded bg-surface-300 hover:bg-surface-200 text-fg cursor-pointer border border-border transition-colors"
+                      >
+                        {f.field}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -414,7 +470,7 @@ export function TemplateEditor() {
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-sm font-medium text-fg">
-                    Subject variants (A/D add)
+                    Subject variants (A/B test)
                   </h4>
                   <p className="text-xs text-fg-muted pt-0.5">
                     {variants.length === 0
@@ -523,6 +579,7 @@ export function TemplateEditor() {
           {state.channel === "email" ? (
             <div>
               <textarea
+                ref={bodyRef}
                 value={state.body}
                 onChange={(e) => setState((s) => ({ ...s, body: e.target.value }))}
                 rows={12}
@@ -533,6 +590,7 @@ export function TemplateEditor() {
           ) : (
             <div>
               <textarea
+                ref={bodyRef}
                 value={state.body}
                 onChange={(e) => setState((s) => ({ ...s, body: e.target.value }))}
                 rows={6}
@@ -586,7 +644,7 @@ export function TemplateEditor() {
       </Card>
 
       {/* Right: preview pane */}
-      <Card className="col-span-4">
+      <Card className="xl:col-span-4">
         <CardHeader>
           <CardTitle>Preview</CardTitle>
           <p className="text-xs text-fg-muted pt-1">

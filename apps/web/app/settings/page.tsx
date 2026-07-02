@@ -28,38 +28,24 @@ export default function SettingsPage() {
 
       {/* Tab bar */}
       <div className="flex gap-1 mb-6 bg-surface-200 rounded-lg p-1 w-fit">
-        <button
-          onClick={() => setTab("team")}
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer border-none ${
-            tab === "team" ? "bg-accent text-white" : "text-fg-muted hover:text-fg"
-          }`}
-        >
-          Team
-        </button>
-        <button
-          onClick={() => setTab("general")}
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer border-none ${
-            tab === "general" ? "bg-accent text-white" : "text-fg-muted hover:text-fg"
-          }`}
-        >
-          General
-        </button>
-        <button
-          onClick={() => setTab("templates")}
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer border-none ${
-            tab === "templates" ? "bg-accent text-white" : "text-fg-muted hover:text-fg"
-          }`}
-        >
-          Templates
-        </button>
-        <button
-          onClick={() => setTab("automation")}
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer border-none ${
-            tab === "automation" ? "bg-accent text-white" : "text-fg-muted hover:text-fg"
-          }`}
-        >
-          Automation
-        </button>
+        {(
+          [
+            ["team", "Team"],
+            ["general", "General"],
+            ["templates", "Templates"],
+            ["automation", "Automation"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer border-none ${
+              tab === key ? "bg-accent text-white" : "text-fg-muted hover:text-fg"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {tab === "team" && <TeamTab />}
@@ -160,9 +146,8 @@ function TeamTab() {
                     className="h-8 rounded-md border border-border bg-surface-300 px-2 text-xs text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer disabled:opacity-50"
                   >
                     <option value="owner">Owner</option>
-                    <option value="admin">Admin</option>
-                    <option value="tech">Tech</option>
                     <option value="dispatcher">Dispatcher</option>
+                    <option value="technician">Technician</option>
                   </select>
                 </TableCell>
                 <TableCell>
@@ -207,19 +192,51 @@ function TeamTab() {
   );
 }
 
+const COMMON_TIMEZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+];
+
 function GeneralTab() {
-  const [org, setOrg] = useState<{ id: string; name: string } | null>(null);
+  const [org, setOrg] = useState<{ id: string; name: string; timezone: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [timezone, setTimezone] = useState("America/New_York");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    api.publicOrg().then((r) => {
-      if (!cancelled) setOrg(r.org);
+    api.org().then((o) => {
+      if (cancelled) return;
+      setOrg(o);
+      setName(o.name);
+      setTimezone(o.timezone);
     }).catch(() => {}).finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
   }, []);
+
+  const dirty = org !== null && (name !== org.name || timezone !== org.timezone);
+
+  const save = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const updated = await api.patchOrg({ name, timezone });
+      setOrg(updated);
+      setMsg("Saved.");
+    } catch (e) {
+      setMsg(`Save failed: ${(e as Error).message}`);
+    }
+    setSaving(false);
+  };
 
   if (loading) {
     return (
@@ -233,22 +250,47 @@ function GeneralTab() {
   }
 
   return (
-    <Card>
-      <CardHeader><CardTitle>Organization</CardTitle></CardHeader>
+    <Card className="max-w-xl">
+      <CardHeader>
+        <CardTitle>Organization</CardTitle>
+        <p className="text-xs text-fg-muted pt-1">
+          The business name appears on invoices, estimates, and every customer email.
+        </p>
+      </CardHeader>
       <CardContent>
         {org ? (
-          <div className="space-y-3">
+          <div className="space-y-4">
+            <label className="block">
+              <span className="text-xs font-semibold text-fg-muted">Business name</span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="mt-1 w-full h-9 rounded-md border border-border bg-surface-300 px-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold text-fg-muted">Timezone</span>
+              <select
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                style={{ colorScheme: "dark" }}
+                className="mt-1 w-full h-9 rounded-md border border-border bg-surface-300 px-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
+              >
+                {[...new Set([org.timezone, ...COMMON_TIMEZONES])].map((tz) => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
+            </label>
             <div>
-              <p className="text-xs font-semibold text-fg-muted mb-1">Name</p>
-              <p className="text-sm text-fg">{org.name}</p>
+              <p className="text-xs font-semibold text-fg-muted mb-1">Organization ID</p>
+              <p className="text-fg-muted font-mono text-xs">{org.id}</p>
             </div>
-            <div>
-              <p className="text-xs font-semibold text-fg-muted mb-1">ID</p>
-              <p className="text-sm text-fg-muted font-mono text-xs">{org.id}</p>
+            <div className="flex items-center gap-3 pt-1">
+              <Button onClick={save} disabled={saving || !dirty || !name.trim()}>
+                {saving ? "Saving…" : "Save changes"}
+              </Button>
+              {msg && <span className="text-xs text-fg-muted">{msg}</span>}
             </div>
-            {/* ponytail: read-only org info. Ceiling: no org settings/update API yet.
-                Upgrade: add PATCH /api/org/:id endpoint and editable fields. */}
-            <p className="text-xs text-fg-dim mt-4">Organization settings are read-only for now.</p>
           </div>
         ) : (
           <p className="text-sm text-fg-muted">Could not load organization info.</p>

@@ -31,6 +31,7 @@ import { dispatchRoutes } from "./routes/dispatch.js";
 import { templateRoutes } from "./routes/templates.js";
 import { automationRoutes } from "./routes/automation.js";
 import { inventoryRoutes } from "./routes/inventory.js";
+import { orgSettingsRoutes } from "./routes/org.js";
 
 export function buildServer() {
   const app = Fastify({ logger: true });
@@ -38,6 +39,7 @@ export function buildServer() {
   app.register(jwt, { secret: process.env.JWT_SECRET ?? "change-me-in-production" });
   app.register(healthRoutes);
   app.register(authRoutes, { prefix: "/api/auth" });
+  app.register(orgSettingsRoutes, { prefix: "/api/org" });
   app.register(customerRoutes, { prefix: "/api/customers" });
   app.register(jobRoutes, { prefix: "/api/jobs" });
   app.register(appointmentRoutes, { prefix: "/api/appointments" });
