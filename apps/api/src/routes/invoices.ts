@@ -61,8 +61,15 @@ export async function invoiceRoutes(app: FastifyInstance) {
       .where(and(eq(jobs.orgId, orgId), eq(jobs.id, parsed.data.jobId)));
     if (!job) return reply.code(404).send({ error: "job not found" });
 
-    const [{ count }] = await db
-      .select({ count: sql<number>`count(*)::int` })
+    // Next number = highest existing numeric suffix + 1. A count() here
+    // reissued duplicate numbers as soon as any invoice was seeded or
+    // deleted out of sequence. invoiceNumber(seq) renders INV-{1000+seq},
+    // so seq = (maxSuffix + 1) - 1000. ponytail: still racy under two
+    // concurrent creates. Ceiling: unique index on (org_id, number) + retry.
+    const [{ maxSuffix }] = await db
+      .select({
+        maxSuffix: sql<number>`coalesce(max((regexp_match(${invoices.number}, '(\\d+)$'))[1]::int), 1000)`,
+      })
       .from(invoices)
       .where(eq(invoices.orgId, orgId));
 
@@ -71,7 +78,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       .values({
         orgId,
         jobId: job.id,
-        number: invoiceNumber(count),
+        number: invoiceNumber(maxSuffix + 1 - 1000),
         status: "draft",
         total: job.total,
         dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,

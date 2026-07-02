@@ -37,12 +37,17 @@ import {
   automationRuns,
   templates,
   templateSubjects,
+  orgs,
+  jobs,
+  customers,
+  invoices,
+  appointments,
   type AutomationRunStatus,
 } from "@ofp/db";
 import { safeEmitEvent } from "../plugins/bus.js";
 import { previewTemplate } from "./templates.js";
 import { notify } from "./notify.js";
-import type { TemplateSubjectDTO } from "@ofp/shared";
+import { formatMoney, type TemplateContext, type TemplateSubjectDTO } from "@ofp/shared";
 
 // ponytail: event keys kept in lock-step with the EVENT_KEYS const in
 //   routes/automation.ts. Add a new entry on both sides when a new kind is
@@ -182,6 +187,94 @@ async function recordEvent(env: EventEnvelope): Promise<string> {
  * with at-most-once semantics; on notify-throws we UPDATE the audit row
  * to status='failed' with the error message.
  */
+/**
+ * Hydrate a flat event payload into the nested TemplateContext the renderer
+ * expects, by resolving ids against the DB. Emitters send thin envelopes
+ * ({ id, jobId, total }); templates want {{customer.name}} / {{invoice.total}}.
+ * By event-key convention `payload.id` is the key's noun ("invoice.created"
+ * -> id is the invoice id). Every lookup is org-scoped; anything missing just
+ * renders as an empty field, same as before.
+ */
+export async function buildTemplateContext(env: EventEnvelope): Promise<TemplateContext> {
+  const p = env.payload as Record<string, unknown>;
+  const noun = env.key.split(".")[0];
+  const ctx: TemplateContext = {};
+
+  const [org] = await db
+    .select({ name: orgs.name, timezone: orgs.timezone })
+    .from(orgs)
+    .where(eq(orgs.id, env.orgId));
+  if (org) ctx.org = org;
+  const tz = org?.timezone ?? "America/New_York";
+  const fmtWhen = (d: Date | null): string | null =>
+    d ? d.toLocaleString("en-US", { timeZone: tz, dateStyle: "medium", timeStyle: "short" }) : null;
+
+  const asId = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
+  const invoiceId = asId(noun === "invoice" ? p.id : p.invoiceId);
+  const appointmentId = asId(noun === "appointment" ? p.id : p.appointmentId);
+  let jobId = asId(noun === "job" ? p.id : p.jobId);
+
+  if (invoiceId) {
+    const [inv] = await db
+      .select()
+      .from(invoices)
+      .where(and(eq(invoices.orgId, env.orgId), eq(invoices.id, invoiceId)));
+    if (inv) {
+      ctx.invoice = {
+        id: inv.id,
+        number: inv.number,
+        total: formatMoney(inv.total),
+        dueAt: inv.dueAt ? fmtWhen(inv.dueAt) : null,
+      };
+      jobId = jobId ?? inv.jobId;
+    }
+  }
+
+  if (appointmentId) {
+    const [appt] = await db
+      .select()
+      .from(appointments)
+      .where(and(eq(appointments.orgId, env.orgId), eq(appointments.id, appointmentId)));
+    if (appt) {
+      ctx.appointment = {
+        id: appt.id,
+        startsAt: fmtWhen(appt.startsAt),
+        endsAt: fmtWhen(appt.endsAt),
+      };
+      jobId = jobId ?? appt.jobId;
+    }
+  }
+
+  if (jobId) {
+    const [job] = await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.orgId, env.orgId), eq(jobs.id, jobId)));
+    if (job) {
+      ctx.job = {
+        id: job.id,
+        title: job.title,
+        status: job.status,
+        scheduledAt: fmtWhen(job.scheduledAt),
+        total: formatMoney(job.total),
+      };
+      const [cust] = await db
+        .select()
+        .from(customers)
+        .where(and(eq(customers.orgId, env.orgId), eq(customers.id, job.customerId)));
+      if (cust) {
+        ctx.customer = {
+          name: cust.name,
+          email: cust.email ?? undefined,
+          phone: cust.phone ?? undefined,
+        };
+      }
+    }
+  }
+
+  return ctx;
+}
+
 async function evaluateRulesForEvent(
   env: EventEnvelope,
   eventId: string,
@@ -200,6 +293,10 @@ async function evaluateRulesForEvent(
   let fired = 0;
   let failed = 0;
   let skipped = 0;
+  if (rules.length === 0) return { fired, failed, skipped };
+
+  // Real recipient data for the merge fields — never the preview sample.
+  const ctx = await buildTemplateContext(env);
 
   for (const rule of rules) {
     const [tpl] = await db
@@ -244,11 +341,20 @@ async function evaluateRulesForEvent(
       }));
     }
 
-    const rendered = previewTemplate(tpl, {
-      variants,
-      variantLabel: null,
-      recipientKey: recipientKeyFor(rule.channel, env.payload),
-    });
+    const rendered = previewTemplate(
+      tpl,
+      {
+        variants,
+        variantLabel: null,
+        // Hydrated ctx preferred: it has customer email/phone even when the
+        // thin event payload didn't carry them.
+        recipientKey: recipientKeyFor(rule.channel, {
+          customer: ctx.customer ?? (env.payload as { customer?: { email?: string; phone?: string } }).customer,
+          job: ctx.job ?? (env.payload as { job?: { id?: string } }).job,
+        }),
+      },
+      ctx,
+    );
 
     // Reserve the audit row FIRST. onConflictDoNothing makes this safe for
     // concurrent evaluators + tick retries: if a row already exists for
@@ -292,12 +398,13 @@ async function evaluateRulesForEvent(
       failed++;
     }
 
-    if (finalStatus !== "fired" || error !== null) {
-      await db
-        .update(automationRuns)
-        .set({ status: finalStatus, error })
-        .where(eq(automationRuns.id, auditId));
-    }
+    // Always flip the reserved row to its terminal status — success included.
+    // (Leaving successful rows at 'pending' made the Automation tab show
+    // every fire as stuck.)
+    await db
+      .update(automationRuns)
+      .set({ status: finalStatus, error })
+      .where(eq(automationRuns.id, auditId));
   }
   return { fired, failed, skipped };
 }
