@@ -58,6 +58,13 @@ artifacts there on branch `autoresearch/jun30-openfieldpro-hcp`:
    Note UX deltas (mobile/offline) and pricing-relevant items as annotations,
    not scores.
 
+   Business-model lens (see docs/MONETIZATION.md): the product is AGPL
+   open-core — the free self-hosted tier must reach HCP parity on the core
+   job-to-cash spine; extended/premium value ships as first-party plugins
+   gated on `org.plan === "pro"`. When ranking gaps, core-parity gaps
+   outrank premium-feature ideas; never propose gating a bucket-scored
+   core feature behind Pro.
+
 4. **Quality gate.** `pnpm --filter @ofp/api build`,
    `pnpm --filter @ofp/web build`, `npx tsx --test test/*.test.ts` in
    apps/api, then browser-check 3 core routes for console errors/broken
