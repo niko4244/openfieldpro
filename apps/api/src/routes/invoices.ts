@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { db, invoices, payments, jobs, lineItems } from "@ofp/db";
 import { applyPayment, invoiceNumber } from "../invoicing.js";
-import { resolveOrgId, requireRole } from "./org.js";
+import { resolveOrgId, resolveIdentity } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 import { safeEmitDomainEvent } from "../lib/events.js";
 import { probeStub } from "../probe-stub.js";
@@ -25,7 +25,12 @@ const payBody = z.object({
 });
 
 export async function invoiceRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", requireRole("owner", "dispatcher"));
+  // Technicians invoice on site: create, send, and take payment are open to
+  // every role. Voiding stays owner/dispatcher (checked inside PATCH) and
+  // financial rollups live in /api/reports (owner/dispatcher there).
+  // ponytail: techs see the whole org's invoice list, not just their jobs.
+  //   Ceiling: big crews. Upgrade: filter list by jobs.assigned_to for the
+  //   technician role.
   app.get("/", async (req) => {
     const orgId = await resolveOrgId(req);
     const { skip, take } = req.query as { skip?: string; take?: string };
@@ -105,6 +110,14 @@ export async function invoiceRoutes(app: FastifyInstance) {
     if (!inv) return reply.code(404).send({ error: "not found" });
     if (inv.status === "void" && parsed.data.status !== "void") {
       return reply.code(400).send({ error: "cannot edit a void invoice" });
+    }
+    // Voiding erases receivables — management only. Everything else in this
+    // PATCH (send, due terms, resync) is part of the on-site flow.
+    if (parsed.data.status === "void") {
+      const { role } = await resolveIdentity(req);
+      if (role === "technician") {
+        return reply.code(403).send({ error: "voiding an invoice requires owner or dispatcher" });
+      }
     }
 
     const patch: { status?: "sent" | "void"; dueAt?: Date | null; total?: number } = {};

@@ -27,7 +27,8 @@ export const NAV_LINKS: readonly NavLink[] = [
   { href: "/customers", label: "Customers", icon: "⊕", roles: ["owner", "dispatcher"] },
   { href: "/schedule", label: "Schedule", icon: "◐", roles: ["owner", "dispatcher", "technician"] },
   { href: "/estimates", label: "Estimates", icon: "◷", roles: ["owner", "dispatcher"] },
-  { href: "/invoices", label: "Invoices", icon: "◎", roles: ["owner", "dispatcher"] },
+  // Technicians invoice on site — create/send/collect from the field.
+  { href: "/invoices", label: "Invoices", icon: "◎", roles: ["owner", "dispatcher", "technician"] },
   { href: "/price-book", label: "Price Book", icon: "⊡", roles: ["owner", "dispatcher"] },
   { href: "/reviews", label: "Reviews", icon: "★", roles: ["owner", "dispatcher"] },
   { href: "/reports", label: "Reports", icon: "◫", roles: ["owner", "dispatcher"] },

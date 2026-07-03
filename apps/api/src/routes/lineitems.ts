@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { db, lineItems, jobs } from "@ofp/db";
 import { sumLines, jobCost, jobMargin } from "../totals.js";
-import { resolveOrgId, requireRoleForWrites } from "./org.js";
+import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 
 const createBody = z.object({
@@ -40,7 +40,8 @@ async function recomputeJobTotals(orgId: string, jobId: string) {
 }
 
 export async function lineItemRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", requireRoleForWrites("owner", "dispatcher"));
+  // No role gate: technicians build line items on site (labor, parts,
+  // flat services) — the job-total recompute is their quote/invoice basis.
   app.get("/jobs/:jobId/line-items", async (req) => {
     const orgId = await resolveOrgId(req);
     const { jobId } = req.params as { jobId: string };
