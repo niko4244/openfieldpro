@@ -20,7 +20,7 @@ import {
   previewTemplate,
 } from "../lib/templates.js";
 import { DEFAULT_TEMPLATES } from "../lib/default-templates.js";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRole } from "./org.js";
 import {
   type TemplateChannel,
   type TemplateDTO,
@@ -93,6 +93,7 @@ async function loadVariants(orgId: string, templateId: string) {
 }
 
 export async function templateRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRole("owner"));
   // ── Templates (parent) ──
 
   // List all templates for the active org (the editor's left rail).

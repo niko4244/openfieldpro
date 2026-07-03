@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { db, jobs, users, techLocations, properties, appointments } from "@ofp/db";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRole } from "./org.js";
 import { freshnessTier } from "../dispatch.js";
 
 // GET /api/dispatch/state — combined snapshot for the dispatch map page.
@@ -16,6 +16,7 @@ import { freshnessTier } from "../dispatch.js";
 //   Ceiling: when the org has 10k+ jobs/day, switch to a Redis-cached daily
 //   snapshot + invalidate on appointment.create.
 export async function dispatchRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRole("owner", "dispatcher"));
   app.get("/state", async (req, reply) => {
     const orgId = await resolveOrgId(req);
 

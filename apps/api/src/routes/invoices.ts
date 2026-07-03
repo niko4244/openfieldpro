@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { db, invoices, payments, jobs, lineItems } from "@ofp/db";
 import { applyPayment, invoiceNumber } from "../invoicing.js";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRole } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 import { safeEmitDomainEvent } from "../lib/events.js";
 import { probeStub } from "../probe-stub.js";
@@ -25,6 +25,7 @@ const payBody = z.object({
 });
 
 export async function invoiceRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRole("owner", "dispatcher"));
   app.get("/", async (req) => {
     const orgId = await resolveOrgId(req);
     const { skip, take } = req.query as { skip?: string; take?: string };

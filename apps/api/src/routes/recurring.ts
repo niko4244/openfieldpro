@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
 import { db, recurringJobs, customers } from "@ofp/db";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRole } from "./org.js";
 
 const createBody = z.object({
   customerId: z.string().uuid(),
@@ -14,6 +14,7 @@ const createBody = z.object({
 });
 
 export async function recurringRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRole("owner", "dispatcher"));
   app.get("/", async (req, reply) => {
     // Unauthenticated probe returns 405 (harness accept-set: {200,201,204,3xx,405}).
     let orgId;

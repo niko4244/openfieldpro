@@ -2,10 +2,11 @@ import type { FastifyInstance } from "fastify";
 import { eq, and, sql } from "drizzle-orm";
 import { db, jobs, invoices, reviews, lineItems } from "@ofp/db";
 import { jobCost, jobMargin } from "../totals.js";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRole } from "./org.js";
 
 // Owner dashboard numbers: pipeline by status, revenue collected, A/R, ratings.
 export async function reportRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRole("owner", "dispatcher"));
   app.get("/summary", async (req) => {
     const orgId = await resolveOrgId(req);
 

@@ -52,13 +52,22 @@ async function main() {
 
   await db.transaction(async (tx) => {
     const [org] = await tx.insert(orgs).values({ name: "Demo HVAC" }).returning();
-    await tx.insert(users).values({
-      orgId: org.id,
-      email: "owner@demo.test",
-      name: "Dana Owner",
-      role: "owner",
-      passwordHash: seedHash("demo12345"),
-    });
+    await tx.insert(users).values([
+      {
+        orgId: org.id,
+        email: "owner@demo.test",
+        name: "Dana Owner",
+        role: "owner",
+        passwordHash: seedHash("demo12345"),
+      },
+      {
+        orgId: org.id,
+        email: "tech@demo.test",
+        name: "Terry Tech",
+        role: "technician",
+        passwordHash: seedHash("demo12345"),
+      },
+    ]);
 
     const [alice, bob] = await tx
       .insert(customers)

@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
 import { db, customers, properties } from "@ofp/db";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRoleForWrites } from "./org.js";
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -19,6 +19,7 @@ const patchBody = z.object({
 });
 
 export async function customerRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRoleForWrites("owner", "dispatcher"));
   app.get("/", async (req) => {
     const orgId = await resolveOrgId(req);
     const { skip, take } = req.query as { skip?: string; take?: string };

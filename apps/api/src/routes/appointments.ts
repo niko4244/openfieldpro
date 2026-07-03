@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, gte, lte, asc } from "drizzle-orm";
 import { db, appointments, jobs } from "@ofp/db";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRoleForWrites } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 import { safeEmitDomainEvent } from "../lib/events.js";
 
@@ -21,6 +21,7 @@ const patchBody = z.object({
 });
 
 export async function appointmentRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRoleForWrites("owner", "dispatcher"));
   // List, optionally within [from, to] for a calendar view.
   app.get("/", async (req) => {
     const orgId = await resolveOrgId(req);

@@ -32,6 +32,59 @@ export async function resolveOrgId(req: FastifyRequest): Promise<string> {
   return first.id;
 }
 
+// ── Role-based authorization ──
+
+export type Role = "owner" | "dispatcher" | "technician";
+
+export interface Identity {
+  orgId: string;
+  userId: string | null;
+  role: Role;
+}
+
+/**
+ * Like resolveOrgId but also returns who is asking. Dev fallback (no JWT
+ * outside production) acts as an owner so seeded local workflows and RSC
+ * fetches keep working; production requires a verified token.
+ */
+export async function resolveIdentity(req: FastifyRequest): Promise<Identity> {
+  try {
+    await req.jwtVerify();
+    const claims = req.user as JwtClaims;
+    if (claims?.orgId) {
+      return {
+        orgId: claims.orgId,
+        userId: claims.userId ?? null,
+        role: (claims.role as Role) ?? "technician",
+      };
+    }
+  } catch {
+    /* fall through */
+  }
+  // resolveOrgId throws 401 in production when unauthenticated.
+  const orgId = await resolveOrgId(req);
+  return { orgId, userId: null, role: "owner" };
+}
+
+/** preHandler: reject with 403 unless the caller's role is in the list. */
+export function requireRole(...roles: Role[]) {
+  return async (req: FastifyRequest, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => {
+    const { role } = await resolveIdentity(req);
+    if (!roles.includes(role)) {
+      return reply.code(403).send({ error: `requires role: ${roles.join(" or ")}` });
+    }
+  };
+}
+
+/** preHandler: reads pass through; writes (POST/PATCH/PUT/DELETE) need a role. */
+export function requireRoleForWrites(...roles: Role[]) {
+  const gate = requireRole(...roles);
+  return async (req: FastifyRequest, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => {
+    if (req.method === "GET" || req.method === "HEAD") return;
+    return gate(req, reply);
+  };
+}
+
 // ── Org settings (Settings → General) ──
 
 const orgPatchBody = z.object({
@@ -47,7 +100,7 @@ export async function orgSettingsRoutes(app: FastifyInstance) {
     return row;
   });
 
-  app.patch("/", async (req, reply) => {
+  app.patch("/", { preHandler: requireRole("owner") }, async (req, reply) => {
     const orgId = await resolveOrgId(req);
     const parsed = orgPatchBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
@@ -70,7 +123,7 @@ export async function orgSettingsRoutes(app: FastifyInstance) {
 
   // Redeem an offline-signed license key: verifies locally (no license
   // server) and flips the org's plan. See ../lib/license.ts for format.
-  app.post("/license", async (req, reply) => {
+  app.post("/license", { preHandler: requireRole("owner") }, async (req, reply) => {
     const orgId = await resolveOrgId(req);
     const parsed = z.object({ key: z.string().min(16) }).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "license key required" });

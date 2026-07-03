@@ -8,7 +8,7 @@ import {
   inventoryAdjustments,
   inventoryLevels,
 } from "@ofp/db";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRole } from "./org.js";
 import type { InventoryAdjustmentDTO, InventoryItemDTO } from "@ofp/shared";
 
 const createPartBody = z.object({
@@ -127,6 +127,7 @@ async function fetchInventoryItem(orgId: string, itemId: string): Promise<Invent
 }
 
 export async function inventoryRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRole("owner", "dispatcher"));
   app.get("/", async (req) => {
     const orgId = await resolveOrgId(req);
     const query = req.query as {

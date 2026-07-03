@@ -396,6 +396,8 @@ export const api = {
 
   // ── Settings / Users ──
   patchUser: (id: string, body: { role?: string }) => request<UserDTO>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  createUser: (body: { name: string; email: string; role: string; password: string }) =>
+    request<UserDTO>("/api/users", { method: "POST", body: JSON.stringify(body) }),
   deleteUser: (id: string) => request<void>(`/api/users/${id}`, { method: "DELETE" }),
 
   // ── Notifications ──

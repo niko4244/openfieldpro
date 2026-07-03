@@ -60,12 +60,36 @@ function AutomationTab() {
   return <AutomationRules />;
 }
 
+const initMember = { name: "", email: "", role: "technician", password: "" };
+
 function TeamTab() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [member, setMember] = useState(initMember);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const handleAdd = async () => {
+    setAdding(true);
+    setAddError(null);
+    try {
+      const created = await api.createUser(member);
+      setUsers((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setAddOpen(false);
+      setMember(initMember);
+    } catch (e) {
+      setAddError(
+        (e as Error).message.includes("409")
+          ? "That email is already in use."
+          : "Couldn't add member. Password needs at least 8 characters.",
+      );
+    }
+    setAdding(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -122,6 +146,70 @@ function TeamTab() {
 
   return (
     <>
+      <div className="flex justify-end mb-3">
+        <Button size="sm" onClick={() => setAddOpen(true)}>Add member</Button>
+      </div>
+
+      {addOpen && (
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Add team member</CardTitle>
+            <p className="text-xs text-fg-muted pt-1">
+              Technicians sign in to the tech view (jobs, schedule, tech mode) — they can&apos;t
+              see invoices, reports, or settings. Share the password with them directly.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                placeholder="Full name"
+                value={member.name}
+                onChange={(e) => setMember((m) => ({ ...m, name: e.target.value }))}
+                className="h-9 rounded-md border border-border bg-surface-300 px-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              />
+              <input
+                placeholder="email@company.com"
+                autoComplete="off"
+                value={member.email}
+                onChange={(e) => setMember((m) => ({ ...m, email: e.target.value }))}
+                className="h-9 rounded-md border border-border bg-surface-300 px-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              />
+              <select
+                value={member.role}
+                onChange={(e) => setMember((m) => ({ ...m, role: e.target.value }))}
+                style={{ colorScheme: "dark" }}
+                className="h-9 rounded-md border border-border bg-surface-300 px-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
+              >
+                <option value="technician">Technician — tech view only</option>
+                <option value="dispatcher">Dispatcher — operations, no settings</option>
+                <option value="owner">Owner — full access</option>
+              </select>
+              <input
+                placeholder="Initial password (8+ chars)"
+                type="password"
+                autoComplete="new-password"
+                value={member.password}
+                onChange={(e) => setMember((m) => ({ ...m, password: e.target.value }))}
+                className="h-9 rounded-md border border-border bg-surface-300 px-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              />
+            </div>
+            {addError && <p className="text-xs text-red">{addError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" disabled={adding} onClick={() => { setAddOpen(false); setMember(initMember); }}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={adding || !member.name.trim() || !member.email.includes("@") || member.password.length < 8}
+                onClick={handleAdd}
+              >
+                {adding ? "Adding…" : "Add member"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="overflow-hidden">
         <Table>
           <TableHeader>

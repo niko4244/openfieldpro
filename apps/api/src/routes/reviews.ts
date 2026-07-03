@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { db, reviews, jobs } from "@ofp/db";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRole } from "./org.js";
 
 const createBody = z.object({
   jobId: z.string().uuid(),
@@ -11,6 +11,7 @@ const createBody = z.object({
 });
 
 export async function reviewRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRole("owner", "dispatcher"));
   app.get("/", async (req) => {
     const orgId = await resolveOrgId(req);
     const rows = await db.select().from(reviews).where(eq(reviews.orgId, orgId)).orderBy(desc(reviews.createdAt));

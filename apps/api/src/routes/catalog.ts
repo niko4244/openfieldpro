@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc, ilike } from "drizzle-orm";
 import { db, catalogCategories, catalogItems } from "@ofp/db";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRole } from "./org.js";
 
 const createCategorySchema = z.object({ name: z.string().min(1), description: z.string().optional() });
 const createItemSchema = z.object({
@@ -25,6 +25,7 @@ const patchItemSchema = z.object({
 });
 
 export async function catalogRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRole("owner", "dispatcher"));
   // Root: capability probe + service status. (Also serves as the autoresearch
   // probe stub for /api/catalog — 200 on GET proves the prefix is registered.)
   app.get("/", async () => ({ ok: true, resources: ["categories", "items"] }));

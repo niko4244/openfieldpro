@@ -11,7 +11,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRole } from "./org.js";
 import { type AutomationRunStatus } from "@ofp/db";
 import {
   createRule,
@@ -58,6 +58,7 @@ type RuleWithLastRun = AutomationRuleDTO & {
 };
 
 export async function automationRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRole("owner"));
   // ── Rules ──
   app.get("/rules", async (req): Promise<RuleWithLastRun[]> => {
     const orgId = await resolveOrgId(req);

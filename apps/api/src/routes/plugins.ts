@@ -11,7 +11,7 @@ import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
 import { db, plugins, pluginInstalls, apiTokens, pluginEvents, orgs } from "@ofp/db";
 import { planAtLeast, type Plan } from "@ofp/shared";
-import { resolveOrgId } from "./org.js";
+import { resolveOrgId, requireRole } from "./org.js";
 import { generateToken, generateWebhookSecret } from "../plugins/crypto.js";
 
 // Open-core seam: premium first-party plugins gate on the org's plan
@@ -42,6 +42,7 @@ const patchBody = z.object({
 });
 
 export async function pluginRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireRole("owner"));
   // Catalog + this org's install status for each plugin.
   app.get("/", async (req) => {
     const orgId = await resolveOrgId(req);
