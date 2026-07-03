@@ -33,6 +33,8 @@ import { templateRoutes } from "./routes/templates.js";
 import { automationRoutes } from "./routes/automation.js";
 import { inventoryRoutes } from "./routes/inventory.js";
 import { orgSettingsRoutes } from "./routes/org.js";
+import { packRoutes } from "./routes/packs.js";
+import { connectorRoutes } from "./routes/connectors.js";
 
 // The well-known placeholder secret shipped in .env.example / compose defaults.
 // Booting production with this means anyone can forge a token for any org/role,
@@ -111,14 +113,15 @@ export function buildServer() {
   app.register(templateRoutes, { prefix: "/api/templates" });
   app.register(automationRoutes, { prefix: "/api/automation" });
   app.register(inventoryRoutes, { prefix: "/api/inventory" });
+  app.register(packRoutes, { prefix: "/api/packs" });
+  app.register(connectorRoutes, { prefix: "/api/connectors" });
   return app;
 }
 
-// Only listen when run directly (not when imported by tests).
-const isMain = process.argv[1]
-  ? import.meta.url === pathToFileURL(process.argv[1]).href
-  : false;
-if (isMain) {
+/** Build and start listening. Shared by the direct-run check below and dev.ts
+ * (which can't rely on the isMain trick since IT is process.argv[1], not this
+ * file). */
+export function startServer(): void {
   const port = Number(process.env.API_PORT ?? 3001);
   buildServer()
     .listen({ port, host: "0.0.0.0" })
@@ -127,3 +130,10 @@ if (isMain) {
       process.exit(1);
     });
 }
+
+// Only auto-start when this file is run directly (prod: `node dist/server.js`),
+// not when imported by tests or by dev.ts.
+const isMain = process.argv[1]
+  ? import.meta.url === pathToFileURL(process.argv[1]).href
+  : false;
+if (isMain) startServer();

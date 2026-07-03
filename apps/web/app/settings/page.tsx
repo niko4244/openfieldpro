@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { planLabel } from "@ofp/shared";
+import { planLabel, featuresForPlan, THEMES } from "@ofp/shared";
 import { api, friendlyError } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { TemplateEditor } from "@/components/template-editor";
 import { AutomationRules } from "@/components/automation-rules";
+import { useTheme } from "@/components/theme-provider";
 
 type Tab = "team" | "general" | "templates" | "automation";
 
@@ -485,7 +486,66 @@ function GeneralTab() {
         </CardContent>
       </Card>
     )}
+
+    {org && <AppearanceCard plan={org.plan} />}
     </div>
+  );
+}
+
+// Theme-pack picker (accent-color reskin, separate from the sidebar's
+// light/dark mode toggle). Free always keeps default/dark; everything else
+// needs Pro/Founder/Business. If the org's plan no longer covers the
+// currently-applied pack (e.g. an annual key lapsed), silently reset to
+// default — a display setting, not user data, so no confirmation needed.
+function AppearanceCard({ plan }: { plan: import("@ofp/shared").Plan }) {
+  const { themePack, setThemePack } = useTheme();
+  const unlocked = featuresForPlan(plan).customThemes;
+
+  useEffect(() => {
+    if (!unlocked && themePack !== "default") setThemePack("default");
+  }, [unlocked, themePack, setThemePack]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Appearance</CardTitle>
+        <p className="text-xs text-fg-muted pt-1">
+          Accent color pack. Pairs with the light/dark mode toggle in the sidebar.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {THEMES.map((t) => {
+            const locked = t.tierRequired !== "free" && !unlocked;
+            const active = themePack === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                disabled={locked}
+                onClick={() => setThemePack(t.id)}
+                title={t.description}
+                className={`text-left rounded-md border px-3 py-2 text-xs transition-colors ${
+                  active ? "border-accent bg-accent/10" : "border-border bg-surface-300"
+                } ${locked ? "opacity-50 cursor-not-allowed" : "hover:border-accent/60 cursor-pointer"}`}
+              >
+                <span className="flex items-center justify-between gap-1">
+                  <span className="font-semibold text-fg">{t.name}</span>
+                  {locked && (
+                    <span className="text-[10px] uppercase tracking-wide text-fg-dim">Pro</span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {!unlocked && (
+          <p className="text-[11px] text-fg-dim pt-3">
+            Premium theme packs unlock with a Pro, Founder, or Business license.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

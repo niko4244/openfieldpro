@@ -57,6 +57,35 @@
   --color-blue: #2563eb;
 }
 
+/* ── Theme packs (Pro): accent-only reskin, layered on top of light/dark
+   mode via a separate [data-theme-pack] attribute. "default"/"dark" are
+   intentionally absent here — they use the base --color-accent above. ── */
+[data-theme-pack="blue-collar"] {
+  --color-accent: #c9781f;
+  --color-accent-hover: #e08a2a;
+  --color-accent-muted: #4a3319;
+}
+[data-theme-pack="industrial"] {
+  --color-accent: #d9691f;
+  --color-accent-hover: #f0812f;
+  --color-accent-muted: #4a3a2c;
+}
+[data-theme-pack="minimal"] {
+  --color-accent: #5a6080;
+  --color-accent-hover: #6b7294;
+  --color-accent-muted: #2a2e40;
+}
+[data-theme-pack="seasonal-halloween"] {
+  --color-accent: #d97a1f;
+  --color-accent-hover: #f0912f;
+  --color-accent-muted: #3d2952;
+}
+[data-theme-pack="seasonal-christmas"] {
+  --color-accent: #c41e3a;
+  --color-accent-hover: #e0304d;
+  --color-accent-muted: #1a4a2c;
+}
+
 /* ── Base layer ── */
 @layer base {
   * { @apply border-border; }

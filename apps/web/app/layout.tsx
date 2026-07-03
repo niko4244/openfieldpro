@@ -16,7 +16,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var t=localStorage.getItem("ofp_theme");if(t==="light")document.documentElement.setAttribute("data-theme","light")})()`,
+            __html: `(function(){var t=localStorage.getItem("ofp_theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");var p=localStorage.getItem("ofp_theme_pack");if(p)document.documentElement.setAttribute("data-theme-pack",p)})()`,
           }}
         />
       </head>
