@@ -40,7 +40,9 @@ services:
     environment:
       DATABASE_URL: postgres://ofp:${POSTGRES_PASSWORD:-ofp}@postgres:5432/ofp
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      # Required: compose refuses to start if unset, so production never boots
+      # with the well-known placeholder secret (token-forgery risk).
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env — see docs/SELF_HOSTING.md}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       NODE_ENV: production

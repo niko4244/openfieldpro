@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { db, techLocations, users } from "@ofp/db";
+import { devAuthFallback } from "../env.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitDomainEvent } from "../lib/events.js";
 import {
@@ -220,10 +221,10 @@ async function resolveTechIdentity(
   } catch {
     /* fall through to dev fallback */
   }
-  if (process.env.NODE_ENV === "production") {
+  if (!devAuthFallback()) {
     throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
   }
-  // Dev: first technician, then any user.
+  // Dev (development only): first technician, then any user.
   const [tech] = await db
     .select({ id: users.id })
     .from(users)

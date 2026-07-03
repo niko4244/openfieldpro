@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert";
 import { generateKeyPairSync, sign as edSign } from "node:crypto";
-import { verifyLicenseKey } from "../src/lib/license.ts";
+import { verifyLicenseKey, resolvePlan } from "../src/lib/license.ts";
 
 // Ephemeral keypair; env override keeps the test independent of the
 // maintainer's real key.
@@ -49,4 +49,59 @@ test("wrong product is rejected", () => {
 test("garbage is rejected", () => {
   assert.throws(() => verifyLicenseKey("OFP1.not.real"), /invalid signature|malformed/);
   assert.throws(() => verifyLicenseKey("hello"), /malformed/);
+});
+
+// ── Founder / lifetime ──
+
+test("founder key verifies and is lifetime (no exp)", () => {
+  const p = verifyLicenseKey(makeKey({ ...good, plan: "founder" }));
+  assert.equal(p.plan, "founder");
+  assert.equal(p.exp, undefined);
+});
+
+test("lifetime key never expires — valid decades out", () => {
+  const key = makeKey({ ...good, plan: "founder" });
+  assert.equal(verifyLicenseKey(key, new Date("2099-01-01")).plan, "founder");
+});
+
+test("payload identity fields round-trip", () => {
+  const p = verifyLicenseKey(
+    makeKey({ ...good, id: "lic-1", name: "Acme HVAC", email: "owner@acme.test" }),
+  );
+  assert.equal(p.name, "Acme HVAC");
+  assert.equal(p.email, "owner@acme.test");
+});
+
+// ── resolvePlan: the entitlement read used by org/plugins/emails ──
+
+test("resolvePlan: no key → free, no license info", () => {
+  assert.deepEqual(resolvePlan(null), { plan: "free", license: null });
+});
+
+test("resolvePlan: valid pro annual → pro with expiry facts", () => {
+  const exp = new Date(Date.now() + 86400_000).toISOString();
+  const { plan, license } = resolvePlan(makeKey({ ...good, exp, name: "Acme" }));
+  assert.equal(plan, "pro");
+  assert.equal(license?.expiresAt, exp);
+  assert.equal(license?.lifetime, false);
+  assert.equal(license?.customerName, "Acme");
+  assert.equal(license?.invalidReason, null);
+});
+
+test("resolvePlan: founder → lifetime", () => {
+  const { plan, license } = resolvePlan(makeKey({ ...good, plan: "founder" }));
+  assert.equal(plan, "founder");
+  assert.equal(license?.lifetime, true);
+  assert.equal(license?.expiresAt, null);
+});
+
+test("resolvePlan: expired annual falls back to free, with reason", () => {
+  const { plan, license } = resolvePlan(makeKey({ ...good, exp: "2020-01-01" }));
+  assert.equal(plan, "free");
+  assert.match(license?.invalidReason ?? "", /expired/);
+});
+
+test("resolvePlan: tampered/garbage keys fall back to free without throwing", () => {
+  assert.equal(resolvePlan("hello").plan, "free");
+  assert.equal(resolvePlan("OFP1.bm90.cmVhbA").plan, "free");
 });

@@ -1,13 +1,36 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-class ApiError extends Error {
-  constructor(
-    public status: number,
-    body: string,
-  ) {
+export class ApiError extends Error {
+  /** The raw response body (for debugging). */
+  readonly body: string;
+  constructor(status: number, body: string) {
     super(`${status}: ${body}`);
+    this.status = status;
+    this.body = body;
     this.name = "ApiError";
   }
+  readonly status: number;
+
+  /**
+   * A user-facing message: the API's `{ "error": ... }` field when present,
+   * otherwise the raw body, otherwise a generic line. Never the "400: {...}"
+   * debug string that leaks JSON into the UI.
+   */
+  get friendlyMessage(): string {
+    try {
+      const parsed = JSON.parse(this.body) as { error?: unknown };
+      if (typeof parsed?.error === "string") return parsed.error;
+    } catch {
+      /* body wasn't JSON */
+    }
+    return this.body || `request failed (${this.status})`;
+  }
+}
+
+/** Extract a clean message from any thrown value (ApiError or otherwise). */
+export function friendlyError(e: unknown): string {
+  if (e instanceof ApiError) return e.friendlyMessage;
+  return e instanceof Error ? e.message : "something went wrong";
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -66,11 +89,23 @@ type TemplateChannel = import("@ofp/shared").TemplateChannel;
 type InventoryItemDTO = import("@ofp/shared").InventoryItemDTO;
 type InventoryAdjustmentDTO = import("@ofp/shared").InventoryAdjustmentDTO;
 
+/** Verified license facts (never the raw key) from GET /api/org. */
+export interface LicenseInfoDTO {
+  tier: import("@ofp/shared").Plan;
+  /** null = lifetime. */
+  expiresAt: string | null;
+  lifetime: boolean;
+  customerName: string | null;
+  /** Set when the stored key no longer verifies (expired/invalid). */
+  invalidReason: string | null;
+}
+
 export interface OrgDTO {
   id: string;
   name: string;
   timezone: string;
   plan: import("@ofp/shared").Plan;
+  license: LicenseInfoDTO | null;
 }
 
 interface TemplatePreview {

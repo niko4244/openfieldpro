@@ -1,14 +1,15 @@
 // Tenancy resolver. Phase 2: prefer the org_id from a verified JWT. Falls back
 // to the `x-org-id` header and then the first org (dev convenience) so the
 // existing customer/job routes keep working without a login during local dev.
-// ponytail: header/first-org fallback is dev-only. Ceiling: do NOT ship with the
-// fallback enabled in prod — gate it behind NODE_ENV !== "production".
+// The fallback is enabled ONLY when NODE_ENV is explicitly "development"
+// (see env.ts) — an unset/unknown NODE_ENV is treated as locked-down.
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, orgs } from "@ofp/db";
 import type { JwtClaims } from "../auth.js";
-import { verifyLicenseKey } from "../lib/license.js";
+import { devAuthFallback } from "../env.js";
+import { verifyLicenseKey, resolvePlan } from "../lib/license.js";
 
 export async function resolveOrgId(req: FastifyRequest): Promise<string> {
   // 1. Verified JWT (the real path once a client logs in).
@@ -20,11 +21,11 @@ export async function resolveOrgId(req: FastifyRequest): Promise<string> {
     /* no/invalid token — fall through to dev fallbacks */
   }
 
-  if (process.env.NODE_ENV === "production") {
+  if (!devAuthFallback()) {
     throw Object.assign(new Error("unauthorized"), { statusCode: 401 });
   }
 
-  // 2. Dev fallbacks.
+  // 2. Dev fallbacks (development only).
   const header = req.headers["x-org-id"];
   if (typeof header === "string" && header) return header;
   const [first] = await db.select({ id: orgs.id }).from(orgs).limit(1);
@@ -92,12 +93,22 @@ const orgPatchBody = z.object({
   timezone: z.string().min(1).max(64).optional(),
 });
 
+/** Shape an org row for API responses: effective plan is re-derived from the
+ * stored license key (annual keys lapse locally to 'free'), and the raw key
+ * never leaves the server — only its verified facts do. */
+function presentOrg(row: typeof orgs.$inferSelect) {
+  const { licenseKey, ...rest } = row;
+  if (!licenseKey) return { ...rest, license: null };
+  const { plan, license } = resolvePlan(licenseKey);
+  return { ...rest, plan, license };
+}
+
 export async function orgSettingsRoutes(app: FastifyInstance) {
   app.get("/", async (req, reply) => {
     const orgId = await resolveOrgId(req);
     const [row] = await db.select().from(orgs).where(eq(orgs.id, orgId));
     if (!row) return reply.code(404).send({ error: "not found" });
-    return row;
+    return presentOrg(row);
   });
 
   app.patch("/", { preHandler: requireRole("owner") }, async (req, reply) => {
@@ -118,23 +129,42 @@ export async function orgSettingsRoutes(app: FastifyInstance) {
       .where(eq(orgs.id, orgId))
       .returning();
     if (!row) return reply.code(404).send({ error: "not found" });
-    return row;
+    return presentOrg(row);
   });
 
   // Redeem an offline-signed license key: verifies locally (no license
-  // server) and flips the org's plan. See ../lib/license.ts for format.
+  // server, no phone-home) and stores the key so entitlement can be
+  // re-verified on every read. See ../lib/license.ts for format.
   app.post("/license", { preHandler: requireRole("owner") }, async (req, reply) => {
     const orgId = await resolveOrgId(req);
     const parsed = z.object({ key: z.string().min(16) }).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: "license key required" });
+    const key = parsed.data.key.trim();
     let plan;
     try {
-      ({ plan } = verifyLicenseKey(parsed.data.key));
+      ({ plan } = verifyLicenseKey(key));
     } catch (e) {
       return reply.code(400).send({ error: (e as Error).message });
     }
-    const [row] = await db.update(orgs).set({ plan }).where(eq(orgs.id, orgId)).returning();
+    const [row] = await db
+      .update(orgs)
+      .set({ plan, licenseKey: key })
+      .where(eq(orgs.id, orgId))
+      .returning();
     if (!row) return reply.code(404).send({ error: "not found" });
-    return row;
+    return presentOrg(row);
+  });
+
+  // Remove the stored license (revert to Free). Owner-only, destructive to
+  // entitlement only — user data is untouched.
+  app.delete("/license", { preHandler: requireRole("owner") }, async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const [row] = await db
+      .update(orgs)
+      .set({ plan: "free", licenseKey: null })
+      .where(eq(orgs.id, orgId))
+      .returning();
+    if (!row) return reply.code(404).send({ error: "not found" });
+    return presentOrg(row);
   });
 }

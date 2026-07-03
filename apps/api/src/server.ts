@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import { IS_PRODUCTION } from "./env.js";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./routes/auth.js";
 import { customerRoutes } from "./routes/customers.js";
@@ -33,10 +34,53 @@ import { automationRoutes } from "./routes/automation.js";
 import { inventoryRoutes } from "./routes/inventory.js";
 import { orgSettingsRoutes } from "./routes/org.js";
 
+// The well-known placeholder secret shipped in .env.example / compose defaults.
+// Booting production with this means anyone can forge a token for any org/role,
+// so we refuse to start rather than fail open silently.
+const DEFAULT_JWT_SECRET = "change-me-in-production";
+
 export function buildServer() {
+  const secret = process.env.JWT_SECRET ?? DEFAULT_JWT_SECRET;
+  if (IS_PRODUCTION && secret === DEFAULT_JWT_SECRET) {
+    throw new Error(
+      "JWT_SECRET is unset or still the default placeholder while NODE_ENV=production. " +
+        "Set a strong, unique JWT_SECRET before starting OpenFieldPro in production.",
+    );
+  }
+
   const app = Fastify({ logger: true });
   app.register(cors, { origin: true });
-  app.register(jwt, { secret: process.env.JWT_SECRET ?? "change-me-in-production" });
+  app.register(jwt, { secret });
+
+  // Central error + not-found handlers so a malformed id or any thrown error
+  // becomes a clean JSON response instead of a 500 that leaks internal detail
+  // (e.g. Postgres 22P02 "invalid input syntax for type uuid"). Errors are
+  // still logged server-side; only the client-facing body is sanitized.
+  app.setErrorHandler((err, req, reply) => {
+    const anyErr = err as { statusCode?: number; code?: string; validation?: unknown };
+    // A handler that explicitly set a 4xx status (e.g. our 401 throws) is honored.
+    const explicit = typeof anyErr.statusCode === "number" ? anyErr.statusCode : undefined;
+
+    // Postgres SQLSTATEs that mean "the client sent something malformed" → 400.
+    //   22P02 invalid text representation (bad uuid/int), 22003 numeric range,
+    //   22007/22008 bad datetime. These are user-input problems, not server bugs.
+    const badInputCodes = new Set(["22P02", "22003", "22007", "22008"]);
+    if (anyErr.validation || (anyErr.code && badInputCodes.has(anyErr.code))) {
+      req.log.warn({ err }, "bad request");
+      return reply.code(400).send({ error: "bad request" });
+    }
+
+    if (explicit && explicit >= 400 && explicit < 500) {
+      return reply.code(explicit).send({ error: (err as Error).message || "request failed" });
+    }
+
+    req.log.error({ err }, "unhandled error");
+    return reply.code(500).send({ error: "internal server error" });
+  });
+
+  app.setNotFoundHandler((_req, reply) => {
+    reply.code(404).send({ error: "not found" });
+  });
   app.register(healthRoutes);
   app.register(authRoutes, { prefix: "/api/auth" });
   app.register(orgSettingsRoutes, { prefix: "/api/org" });

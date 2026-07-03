@@ -13,6 +13,8 @@
     "db:push": "pnpm --filter @ofp/db push",
     "db:seed": "pnpm --filter @ofp/db seed",
     "test": "pnpm -r test",
+    "license:generate": "pnpm --filter @ofp/api license:generate",
+    "license:verify": "pnpm --filter @ofp/api license:verify",
     "infra:up": "podman compose -f infra/compose.yml up -d",
     "infra:down": "podman compose -f infra/compose.yml down"
   },

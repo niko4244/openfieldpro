@@ -1,4 +1,4 @@
-// Issue a Pro license key (maintainer tool — buyers never run this).
+// Issue a license key (maintainer tool — buyers never run this).
 //
 // First run generates an Ed25519 keypair: the PRIVATE key is written to
 // OFP_LICENSE_PRIVATE_KEY_FILE (default ~/.ofp/license-signing-key.pem,
@@ -6,12 +6,23 @@
 // it can be pasted into src/lib/license.ts (DEFAULT_PUBLIC_KEY_PEM).
 // Subsequent runs sign a key with the existing private key.
 //
-// Usage (from apps/api):
-//   npx tsx scripts/make-license-key.ts [--plan pro] [--exp 2027-12-31] [--note "customer@x"]
-import { generateKeyPairSync, createPrivateKey, sign as edSign } from "node:crypto";
+// Usage (repo root):
+//   pnpm license:generate --tier pro --name "Acme HVAC" --email owner@acme.com --expires 2027-07-01
+//   pnpm license:generate --tier founder --name "Early Supporter" --lifetime
+//   pnpm license:generate --tier business --name "BigCo" --expires 2027-07-01 --json
+//
+// Flags:
+//   --tier pro|founder|business   (alias: --plan; default pro)
+//   --name / --email              customer identity, embedded in the payload
+//   --expires YYYY-MM-DD          annual/subscription key (alias: --exp)
+//   --lifetime                    never expires (default for founder)
+//   --note "text"                 free-form note for your records
+//   --json                        print {key, payload} JSON for record-keeping
+import { generateKeyPairSync, createPrivateKey, sign as edSign, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { PLANS } from "@ofp/shared";
 
 const keyFile =
   process.env.OFP_LICENSE_PRIVATE_KEY_FILE ??
@@ -27,16 +38,45 @@ if (!existsSync(keyFile)) {
 }
 
 const args = process.argv.slice(2);
-const arg = (name: string): string | undefined => {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 ? args[i + 1] : undefined;
+const arg = (...names: string[]): string | undefined => {
+  for (const name of names) {
+    const i = args.indexOf(`--${name}`);
+    if (i >= 0) return args[i + 1];
+  }
+  return undefined;
 };
+const flag = (name: string): boolean => args.includes(`--${name}`);
+
+const tier = arg("tier", "plan") ?? "pro";
+if (!(PLANS as readonly string[]).includes(tier) || tier === "free") {
+  console.error(`--tier must be one of: pro, founder, business (got "${tier}")`);
+  process.exit(1);
+}
+
+const expiresRaw = arg("expires", "exp");
+const lifetime = flag("lifetime") || tier === "founder"; // founder is lifetime by definition
+if (expiresRaw && lifetime) {
+  console.error("--expires and --lifetime are mutually exclusive (founder keys are always lifetime)");
+  process.exit(1);
+}
+if (!expiresRaw && !lifetime) {
+  console.error(`annual ${tier} keys need --expires YYYY-MM-DD (or pass --lifetime explicitly)`);
+  process.exit(1);
+}
+const exp = expiresRaw ? new Date(expiresRaw) : undefined;
+if (exp && Number.isNaN(exp.getTime())) {
+  console.error(`--expires is not a date: "${expiresRaw}"`);
+  process.exit(1);
+}
 
 const payload = {
   product: "openfieldpro",
-  plan: arg("plan") ?? "pro",
+  plan: tier,
   iat: new Date().toISOString(),
-  ...(arg("exp") ? { exp: new Date(arg("exp")!).toISOString() } : {}),
+  id: randomUUID(),
+  ...(exp ? { exp: exp.toISOString() } : {}),
+  ...(arg("name") ? { name: arg("name") } : {}),
+  ...(arg("email") ? { email: arg("email") } : {}),
   ...(arg("note") ? { note: arg("note") } : {}),
 };
 
@@ -45,5 +85,9 @@ const payloadBytes = Buffer.from(JSON.stringify(payload), "utf8");
 const sig = edSign(null, payloadBytes, privateKey);
 const key = `OFP1.${payloadBytes.toString("base64url")}.${sig.toString("base64url")}`;
 
-console.log("License key:\n");
-console.log(key);
+if (flag("json")) {
+  console.log(JSON.stringify({ key, payload }, null, 2));
+} else {
+  console.log(`${tier}${exp ? ` (expires ${exp.toISOString().slice(0, 10)})` : " (lifetime)"} license key:\n`);
+  console.log(key);
+}

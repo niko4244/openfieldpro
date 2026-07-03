@@ -91,18 +91,24 @@ automated evaluation loop that scores the app against Housecall Pro feature-by-f
 
 ## License & pricing
 
-OpenFieldPro is **AGPL-3.0** ([LICENSE](LICENSE)): self-host the complete product free,
-forever, with unlimited jobs, customers, and technicians. Optional licenses support
-development — activation is a single offline key, no account, no phone-home:
+OpenFieldPro is **AGPL-3.0** ([LICENSE](LICENSE)). Self-host forever. No user limits.
+No job limits. No customer limits. No telemetry. No vendor lock-in. Hosting a
+*modified* version for others means publishing your changes under AGPL
+([docs/LICENSES.md](docs/LICENSES.md)). Optional licenses fund development —
+activation is a single offline-verified key: no account, no license server, no phone-home:
 
-| | Free | Pro | Business |
-|---|---|---|---|
-| Everything in the app | ✔ | ✔ | ✔ |
-| Sponsor line on dashboard | shown | removed | removed |
-| Your branding on invoices & emails | — | ✔ | ✔ |
-| Premium plugins (QuickBooks, Zapier) | — | — | ✔ |
+| | Free | Pro | Founder | Business |
+|---|---|---|---|---|
+| Everything in the app | ✔ | ✔ | ✔ | ✔ |
+| Sponsor line on dashboard | shown | removed | removed | removed |
+| Your branding on invoices & emails | — | ✔ | ✔ | ✔ |
+| Themes, advanced exports/analytics, industry & AI packs | — | ✔ | ✔ | ✔ |
+| Premium integrations (QuickBooks, Zapier) | — | — | — | ✔ |
+| Term | forever | annual | **lifetime** | annual |
 
-Details in [docs/MONETIZATION.md](docs/MONETIZATION.md).
+Upgrade only if you want premium plugins, polish, branding, integrations, AI packs,
+and official support. Details: [docs/MONETIZATION.md](docs/MONETIZATION.md) ·
+[docs/PRO_FEATURES.md](docs/PRO_FEATURES.md) · [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
 
 ## Deploy
 
@@ -125,4 +131,6 @@ and `STRIPE_*` if you want online card payments). Services: `api`, `web`, `worke
 
 ## License
 
-See [LICENSE]. Self-host freely.
+AGPL-3.0 — see [LICENSE](LICENSE). Self-host freely; see
+[docs/LICENSES.md](docs/LICENSES.md) for how the software license and the
+optional license keys relate.

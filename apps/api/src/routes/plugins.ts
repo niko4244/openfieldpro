@@ -9,9 +9,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
-import { db, plugins, pluginInstalls, apiTokens, pluginEvents, orgs } from "@ofp/db";
+import { db, plugins, pluginInstalls, apiTokens, pluginEvents } from "@ofp/db";
 import { planAtLeast, type Plan } from "@ofp/shared";
 import { resolveOrgId, requireRole } from "./org.js";
+import { orgEffectivePlan } from "../lib/entitlement.js";
 import { generateToken, generateWebhookSecret } from "../plugins/crypto.js";
 
 // Open-core seam: premium first-party plugins gate on the org's plan
@@ -24,10 +25,9 @@ const REQUIRED_PLAN: Record<string, Plan> = {
   zapier: "business",
 };
 
-async function orgPlan(orgId: string): Promise<string> {
-  const [row] = await db.select({ plan: orgs.plan }).from(orgs).where(eq(orgs.id, orgId));
-  return row?.plan ?? "free";
-}
+// Entitlement is re-verified from the stored license key on every check, so
+// a lapsed annual key downgrades plugin gates to 'free' with no phone-home.
+const orgPlan = orgEffectivePlan;
 
 const installBody = z.object({
   pluginId: z.string().uuid(),

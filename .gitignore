@@ -21,3 +21,7 @@ loop/current-chunk.md
 loop/state.json
 package-lock.json
 .backups/*.bundle
+
+# License signing keys are generated OUTSIDE the repo (~/.ofp/), but never
+# risk a stray private key ending up in git:
+*.pem

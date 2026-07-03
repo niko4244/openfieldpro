@@ -73,10 +73,15 @@ export const orgs = pgTable("orgs", {
   id: id(),
   name: text("name").notNull(),
   timezone: text("timezone").default("America/New_York").notNull(),
-  // Open-core entitlement: 'free' shows the sponsor slot; 'pro' (activated
-  // by an offline-signed license key, see apps/api/src/routes/org.ts)
-  // removes it and unlocks extended features. Mirrors drizzle/0017_org_plan.sql.
+  // Open-core entitlement: 'free' shows the sponsor slot; 'pro'/'founder'/
+  // 'business' (activated by an offline-signed license key, see
+  // apps/api/src/routes/org.ts) remove it and unlock extended features.
+  // Mirrors drizzle/0017_org_plan.sql.
   plan: text("plan").default("free").notNull(),
+  // The redeemed license key, kept so entitlement can be re-verified locally
+  // on every read: annual keys degrade to 'free' after `exp` with no license
+  // server and no data loss. Mirrors drizzle/0018_org_license_key.sql.
+  licenseKey: text("license_key"),
   createdAt: ts(),
 });
 
@@ -203,22 +208,42 @@ export const invoices = pgTable(
     updatedAt: updatedAt(),
     createdAt: ts(),
   },
-  (t) => ({ orgStatus: index("invoices_org_status_idx").on(t.orgId, t.status) }),
+  (t) => ({
+    orgStatus: index("invoices_org_status_idx").on(t.orgId, t.status),
+    // Human invoice numbers are unique per org — the create path retries on
+    // this constraint so a concurrent race can't reissue a number.
+    orgNumber: uniqueIndex("invoices_org_number_idx").on(t.orgId, t.number),
+  }),
 );
 
-export const payments = pgTable("payments", {
-  id: id(),
-  orgId: orgId(),
-  invoiceId: uuid("invoice_id")
-    .notNull()
-    .references(() => invoices.id, { onDelete: "cascade" }),
-  amount: integer("amount").notNull(), // cents
-  method: text("method").default("manual").notNull(), // manual | card | cash | check
-  reference: text("reference"),
-  paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
-  version: version(),
-  updatedAt: updatedAt(),
-});
+export const payments = pgTable(
+  "payments",
+  {
+    id: id(),
+    orgId: orgId(),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    amount: integer("amount").notNull(), // cents
+    method: text("method").default("manual").notNull(), // manual | card | cash | check
+    // For card payments this is the Stripe session/charge id; a unique index
+    // makes webhook redelivery idempotent (no double-counted revenue).
+    reference: text("reference"),
+    paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
+    version: version(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    // Partial unique index: card payments carry a Stripe session/charge id in
+    // `reference`, so this makes webhook redelivery idempotent (no
+    // double-counted revenue). Scoped to card + non-null so legitimate
+    // duplicate manual references (e.g. two checks numbered "1234") are
+    // unaffected. Mirrors 0020_payment_reference_uniq.sql.
+    reference: uniqueIndex("payments_card_reference_idx")
+      .on(t.reference)
+      .where(sql`${t.method} = 'card' AND ${t.reference} IS NOT NULL`),
+  }),
+);
 
 // Recurring job templates (e.g. quarterly maintenance). A worker materializes
 // the next concrete job from `nextRunAt`. interval is ISO-ish: days between runs.
@@ -291,6 +316,9 @@ export const appointments = pgTable(
     }),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    // Set once the worker sends the upcoming-appointment reminder, so a 60s
+    // poll loop doesn't re-notify every tick. Mirrors 0019_appt_reminded_at.sql.
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
     version: version(),
     updatedAt: updatedAt(),
     createdAt: ts(),

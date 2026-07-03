@@ -5,6 +5,11 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 
+// These routes use the `x-org-id` dev-auth fallback, which is gated to
+// NODE_ENV=development (see src/env.ts). Opt into dev mode before the server
+// module graph loads.
+process.env.NODE_ENV = "development";
+
 // ---------------------------------------------------------------------------
 // 1. Mock the uploads module BEFORE importing the server.
 //    mock.module intercepts the specifier as resolved from this test file.

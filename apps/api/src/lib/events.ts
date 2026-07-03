@@ -46,6 +46,7 @@ import {
 } from "@ofp/db";
 import { safeEmitEvent } from "../plugins/bus.js";
 import { previewTemplate } from "./templates.js";
+import { resolvePlan } from "./license.js";
 import { notify } from "./notify.js";
 import { formatMoney, type TemplateContext, type TemplateSubjectDTO } from "@ofp/shared";
 
@@ -201,10 +202,19 @@ export async function buildTemplateContext(env: EventEnvelope): Promise<Template
   const ctx: TemplateContext = {};
 
   const [org] = await db
-    .select({ name: orgs.name, timezone: orgs.timezone, plan: orgs.plan })
+    .select({
+      name: orgs.name,
+      timezone: orgs.timezone,
+      plan: orgs.plan,
+      licenseKey: orgs.licenseKey,
+    })
     .from(orgs)
     .where(eq(orgs.id, env.orgId));
-  if (org) ctx.org = org;
+  if (org) {
+    // Effective plan: a lapsed annual key re-brands emails as free, locally.
+    const plan = org.licenseKey ? resolvePlan(org.licenseKey).plan : org.plan;
+    ctx.org = { name: org.name, timezone: org.timezone, plan };
+  }
   const tz = org?.timezone ?? "America/New_York";
   const fmtWhen = (d: Date | null): string | null =>
     d ? d.toLocaleString("en-US", { timeZone: tz, dateStyle: "medium", timeStyle: "short" }) : null;

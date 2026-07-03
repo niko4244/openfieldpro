@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { db, jobs, users, techLocations, properties, appointments } from "@ofp/db";
+import { devAuthFallback } from "../env.js";
 import { resolveOrgId, requireRole } from "./org.js";
 import { freshnessTier } from "../dispatch.js";
 
@@ -157,6 +158,6 @@ async function callerRole(
   } catch {
     /* fall through */
   }
-  if (process.env.NODE_ENV === "production") return null;
-  return "dispatcher"; // dev fallback so the page is browseable
+  if (!devAuthFallback()) return null;
+  return "dispatcher"; // dev fallback (development only) so the page is browseable
 }

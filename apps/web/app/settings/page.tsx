@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { planLabel } from "@ofp/shared";
+import { api, friendlyError } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -308,9 +309,9 @@ function GeneralTab() {
       const updated = await api.redeemLicense(licenseKey.trim());
       setOrg(updated);
       setLicenseKey("");
-      setLicenseMsg("Pro activated — thank you for supporting OpenFieldPro!");
+      setLicenseMsg(`${planLabel(updated.plan)} activated — thank you for supporting OpenFieldPro!`);
     } catch (e) {
-      setLicenseMsg(`Activation failed: ${(e as Error).message}`);
+      setLicenseMsg(`Activation failed: ${friendlyError(e)}`);
     }
     setRedeeming(false);
   };
@@ -407,43 +408,79 @@ function GeneralTab() {
     {org && (
       <Card>
         <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Plan</CardTitle>
+          <CardTitle>Plan &amp; License</CardTitle>
           <span
             className={`text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
-              org.plan === "pro" ? "bg-accent/20 text-accent" : "bg-surface-300 text-fg-muted"
+              org.plan !== "free" ? "bg-accent/20 text-accent" : "bg-surface-300 text-fg-muted"
             }`}
           >
-            {org.plan}
+            {planLabel(org.plan)}
           </span>
         </CardHeader>
         <CardContent>
-          {org.plan !== "free" ? (
-            <p className="text-sm text-fg-muted">
-              {org.plan === "business"
-                ? "Business is active — premium integrations are unlocked, the sponsor slot is removed, and your documents are unbranded."
-                : "Pro is active — the sponsor slot is removed and your customer-facing documents are unbranded."}{" "}
-              Thank you for supporting open-source OpenFieldPro!
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-fg-muted">
-                OpenFieldPro is free and open source. A Pro license removes the sponsor slot
-                and unbrands your invoices and emails; Business adds premium integrations
-                like QuickBooks and Zapier. Activation is offline — no account needed.
-              </p>
-              <div className="flex gap-2">
-                <input
-                  value={licenseKey}
-                  onChange={(e) => setLicenseKey(e.target.value)}
-                  placeholder="OFP1.…"
-                  className="flex-1 h-9 rounded-md border border-border bg-surface-300 px-2.5 text-sm font-mono text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-                />
-                <Button onClick={redeem} disabled={redeeming || licenseKey.trim().length < 16}>
-                  {redeeming ? "Activating…" : "Activate"}
-                </Button>
+          <div className="space-y-3">
+            {org.plan !== "free" ? (
+              <div className="space-y-1">
+                <p className="text-sm text-fg-muted">
+                  {org.plan === "business"
+                    ? "Business is active — premium integrations are unlocked, the sponsor slot is removed, and your documents are unbranded."
+                    : org.plan === "founder"
+                      ? "Founder is active — lifetime Pro access. Every Pro feature is unlocked, forever. Thank you for backing OpenFieldPro early!"
+                      : "Pro is active — the sponsor slot is removed and your customer-facing documents are unbranded."}{" "}
+                  Thank you for supporting open-source OpenFieldPro!
+                </p>
+                {org.license && (
+                  <p className="text-xs text-fg-muted">
+                    {org.license.lifetime
+                      ? "License: Lifetime — never expires."
+                      : `License expires ${new Date(org.license.expiresAt!).toLocaleDateString()}.`}
+                    {org.license.customerName ? ` Licensed to ${org.license.customerName}.` : ""}
+                  </p>
+                )}
               </div>
+            ) : (
+              <div className="space-y-2">
+                {org.license?.invalidReason && (
+                  <p className="text-xs text-yellow">
+                    Your license key is no longer valid ({org.license.invalidReason}) — this
+                    install is back on the Free plan. Nothing was deleted; all features below
+                    are still fully usable. Renew and paste a new key to restore Pro.
+                  </p>
+                )}
+                <p className="text-sm text-fg-muted">
+                  OpenFieldPro is free and open source — the Free plan is the complete product
+                  with unlimited users, technicians, jobs, and customers, forever. A Pro or
+                  Founder license removes the sponsor slot and unbrands your invoices and
+                  emails; Business adds premium integrations like QuickBooks and Zapier.
+                </p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={licenseKey}
+                onChange={(e) => setLicenseKey(e.target.value)}
+                placeholder="OFP1.…"
+                aria-label="License key"
+                className="flex-1 h-9 rounded-md border border-border bg-surface-300 px-2.5 text-sm font-mono text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              />
+              <Button onClick={redeem} disabled={redeeming || licenseKey.trim().length < 16}>
+                {redeeming ? "Activating…" : org.plan !== "free" ? "Replace key" : "Activate"}
+              </Button>
             </div>
-          )}
+            <p className="text-[11px] text-fg-dim">
+              Keys are verified locally on your server (Ed25519 signature) — OpenFieldPro
+              never phones home, and no license server is involved. See{" "}
+              <a
+                href="https://github.com/niko4244/openfieldpro/blob/main/docs/MONETIZATION.md"
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent hover:underline"
+              >
+                how licensing works
+              </a>
+              .
+            </p>
+          </div>
           {licenseMsg && <p className="text-xs text-fg-muted pt-2">{licenseMsg}</p>}
         </CardContent>
       </Card>

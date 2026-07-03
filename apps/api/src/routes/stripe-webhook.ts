@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
 import { db, invoices, payments } from "@ofp/db";
 import { applyPayment } from "../invoicing.js";
+import { safeEmitActivity } from "../activities.js";
+import { safeEmitDomainEvent } from "../lib/events.js";
 
 // Encapsulated plugin: registers a RAW body parser scoped to just this route so
 // Stripe signature verification works, without changing JSON parsing elsewhere.
@@ -29,23 +31,70 @@ export async function stripeWebhookRoute(app: FastifyInstance) {
     }
 
     if (event.type === "checkout.session.completed") {
-      const session = event.data.object as { metadata?: { invoiceId?: string; orgId?: string }; amount_total?: number };
+      const session = event.data.object as {
+        id?: string;
+        metadata?: { invoiceId?: string; orgId?: string };
+        amount_total?: number;
+      };
       const invoiceId = session.metadata?.invoiceId;
       const orgId = session.metadata?.orgId;
-      if (invoiceId && orgId && session.amount_total) {
+      if (invoiceId && orgId && session.amount_total && session.amount_total > 0) {
         const [inv] = await db.select().from(invoices).where(eq(invoices.id, invoiceId));
-        if (inv) {
+        // Belt-and-braces: the metadata orgId must match the invoice's org.
+        if (inv && inv.orgId === orgId && inv.status !== "void") {
           const prior = await db.select().from(payments).where(eq(payments.invoiceId, invoiceId));
           const priorPaid = prior.reduce((a, p) => a + p.amount, 0);
           const result = applyPayment(inv.total, priorPaid, session.amount_total, inv.status);
-          await db.insert(payments).values({
-            orgId,
-            invoiceId,
-            amount: session.amount_total,
-            method: "card",
-            reference: (event.data.object as { id?: string }).id ?? null,
-          });
-          await db.update(invoices).set({ status: result.status }).where(eq(invoices.id, invoiceId));
+
+          // Idempotency: Stripe retries deliveries. The partial unique index
+          // payments_card_reference_idx (method='card', reference not null)
+          // turns a redelivered session into a 0-row no-op — no double-counted
+          // revenue, no status churn, and no 500 back to Stripe.
+          const inserted = await db
+            .insert(payments)
+            .values({
+              orgId: inv.orgId,
+              invoiceId,
+              amount: session.amount_total,
+              method: "card",
+              reference: session.id ?? event.id,
+            })
+            // Bare ON CONFLICT DO NOTHING: matches the partial unique index
+            // without restating its WHERE predicate as a conflict target.
+            .onConflictDoNothing()
+            .returning({ id: payments.id });
+
+          if (inserted.length > 0) {
+            await db.update(invoices).set({ status: result.status }).where(eq(invoices.id, invoiceId));
+            // Mirror the manual /pay path so automations and accounting/CRM
+            // plugins fire for online card payments too.
+            safeEmitActivity(
+              inv.orgId,
+              "payment.received",
+              `Received card payment of $${(session.amount_total / 100).toFixed(2)} on ${inv.number}`,
+              { jobId: inv.jobId },
+            );
+            void safeEmitDomainEvent({
+              orgId: inv.orgId,
+              key: "payment.received",
+              occurredAt: new Date().toISOString(),
+              payload: {
+                invoiceId,
+                number: inv.number,
+                amount: session.amount_total,
+                method: "card",
+                status: result.status,
+              },
+            });
+            if (result.status === "paid") {
+              void safeEmitDomainEvent({
+                orgId: inv.orgId,
+                key: "invoice.paid",
+                occurredAt: new Date().toISOString(),
+                payload: { invoiceId, number: inv.number, total: inv.total, jobId: inv.jobId },
+              });
+            }
+          }
         }
       }
     }

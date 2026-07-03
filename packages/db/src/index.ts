@@ -12,3 +12,12 @@ const client = postgres(url, { max: 10 });
 export const db = drizzle(client, { schema });
 export { schema };
 export * from "./schema.js";
+
+/**
+ * Close the connection pool. Call on graceful shutdown, or in tests so the
+ * process can exit instead of hanging on open sockets. Idempotent-ish:
+ * postgres-js tolerates a second end().
+ */
+export async function closeDb(): Promise<void> {
+  await client.end({ timeout: 5 });
+}

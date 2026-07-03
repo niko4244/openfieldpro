@@ -70,26 +70,35 @@ export async function invoiceRoutes(app: FastifyInstance) {
     // Next number = highest existing numeric suffix + 1. A count() here
     // reissued duplicate numbers as soon as any invoice was seeded or
     // deleted out of sequence. invoiceNumber(seq) renders INV-{1000+seq},
-    // so seq = (maxSuffix + 1) - 1000. ponytail: still racy under two
-    // concurrent creates. Ceiling: unique index on (org_id, number) + retry.
-    const [{ maxSuffix }] = await db
-      .select({
-        maxSuffix: sql<number>`coalesce(max((regexp_match(${invoices.number}, '(\\d+)$'))[1]::int), 1000)`,
-      })
-      .from(invoices)
-      .where(eq(invoices.orgId, orgId));
+    // so seq = (maxSuffix + 1) - 1000. Two concurrent creates can still
+    // compute the same number — the unique index invoices_org_number_idx
+    // rejects the loser and we recompute + retry a couple of times.
+    let row: typeof invoices.$inferSelect | undefined;
+    for (let attempt = 0; attempt < 3 && !row; attempt++) {
+      const [{ maxSuffix }] = await db
+        .select({
+          maxSuffix: sql<number>`coalesce(max((regexp_match(${invoices.number}, '(\\d+)$'))[1]::int), 1000)`,
+        })
+        .from(invoices)
+        .where(eq(invoices.orgId, orgId));
 
-    const [row] = await db
-      .insert(invoices)
-      .values({
-        orgId,
-        jobId: job.id,
-        number: invoiceNumber(maxSuffix + 1 - 1000),
-        status: "draft",
-        total: job.total,
-        dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
-      })
-      .returning();
+      const [inserted] = await db
+        .insert(invoices)
+        .values({
+          orgId,
+          jobId: job.id,
+          number: invoiceNumber(maxSuffix + 1 - 1000),
+          status: "draft",
+          total: job.total,
+          dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
+        })
+        .onConflictDoNothing()
+        .returning();
+      row = inserted;
+    }
+    if (!row) {
+      return reply.code(409).send({ error: "could not allocate an invoice number, please retry" });
+    }
     safeEmitActivity(orgId, "invoice.created", `Created invoice ${row.number}`, { jobId: job.id });
     void safeEmitDomainEvent({
       orgId,
@@ -158,27 +167,42 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const parsed = payBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
-    const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
-    if (!inv) return reply.code(404).send({ error: "not found" });
+    // Read-compute-write under a row lock: two simultaneous /pay calls on the
+    // same invoice previously both read the same priorPaid and both recorded
+    // full payments (silent overpayment). FOR UPDATE serializes them.
+    let outcome:
+      | { ok: true; inv: typeof invoices.$inferSelect; result: ReturnType<typeof applyPayment> }
+      | { ok: false; code: number; error: string };
+    outcome = await db.transaction(async (tx) => {
+      const [inv] = await tx
+        .select()
+        .from(invoices)
+        .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)))
+        .for("update");
+      if (!inv) return { ok: false as const, code: 404, error: "not found" };
 
-    const prior = await db.select().from(payments).where(eq(payments.invoiceId, id));
-    const priorPaid = prior.reduce((a, p) => a + p.amount, 0);
+      const prior = await tx.select().from(payments).where(eq(payments.invoiceId, id));
+      const priorPaid = prior.reduce((a, p) => a + p.amount, 0);
 
-    let result;
-    try {
-      result = applyPayment(inv.total, priorPaid, parsed.data.amount, inv.status);
-    } catch (e) {
-      return reply.code(400).send({ error: (e as Error).message });
-    }
+      let result;
+      try {
+        result = applyPayment(inv.total, priorPaid, parsed.data.amount, inv.status);
+      } catch (e) {
+        return { ok: false as const, code: 400, error: (e as Error).message };
+      }
 
-    await db.insert(payments).values({
-      orgId,
-      invoiceId: id,
-      amount: parsed.data.amount,
-      method: parsed.data.method,
-      reference: parsed.data.reference,
+      await tx.insert(payments).values({
+        orgId,
+        invoiceId: id,
+        amount: parsed.data.amount,
+        method: parsed.data.method,
+        reference: parsed.data.reference,
+      });
+      await tx.update(invoices).set({ status: result.status }).where(eq(invoices.id, id));
+      return { ok: true as const, inv, result };
     });
-    await db.update(invoices).set({ status: result.status }).where(eq(invoices.id, id));
+    if (!outcome.ok) return reply.code(outcome.code).send({ error: outcome.error });
+    const { inv, result } = outcome;
     safeEmitActivity(
       orgId,
       "payment.received",
@@ -221,6 +245,14 @@ export async function invoiceRoutes(app: FastifyInstance) {
     }
     const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
     if (!inv) return reply.code(404).send({ error: "not found" });
+    // Never hand a customer a checkout link for money that isn't owed.
+    if (inv.status === "void") return reply.code(400).send({ error: "invoice is void" });
+    if (inv.status === "paid") return reply.code(400).send({ error: "invoice is already paid" });
+
+    // Where the customer lands after paying: the WEB app's invoice page.
+    // OFP_WEB_URL is the explicit setting; NEXT_PUBLIC_API_URL only works as a
+    // fallback when both apps share one origin (the Caddy prod setup).
+    const webBase = process.env.OFP_WEB_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "";
 
     // Lazy import so the app runs without the stripe package installed.
     const Stripe = (await import("stripe")).default;
@@ -237,8 +269,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.NEXT_PUBLIC_API_URL ?? ""}/invoices/${id}?paid=1`,
-      cancel_url: `${process.env.NEXT_PUBLIC_API_URL ?? ""}/invoices/${id}`,
+      success_url: `${webBase}/invoices/${id}?paid=1`,
+      cancel_url: `${webBase}/invoices/${id}`,
       metadata: { invoiceId: id, orgId },
     });
     return { url: session.url };

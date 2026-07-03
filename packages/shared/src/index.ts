@@ -14,9 +14,21 @@ export type InvoiceStatus = (typeof INVOICE_STATUS)[number];
 
 /** Open-core plans, ranked. 'free' is the complete core product with a
  * sponsor slot; 'pro' removes the slot and unbrands customer-facing docs;
- * 'business' adds premium integrations. Activated by offline-signed keys. */
-export const PLANS = ["free", "pro", "business"] as const;
+ * 'founder' is lifetime Pro for early supporters (all Pro features, never
+ * expires); 'business' adds premium integrations. Activated by
+ * offline-signed keys. */
+export const PLANS = ["free", "pro", "founder", "business"] as const;
 export type Plan = (typeof PLANS)[number];
+
+/** Human label for a plan badge. */
+export function planLabel(plan: string | undefined | null): string {
+  switch (plan) {
+    case "pro": return "Pro";
+    case "founder": return "Founder";
+    case "business": return "Business";
+    default: return "Free";
+  }
+}
 
 /** true when `plan` grants at least `required` (free < pro < business).
  * Unknown/missing plans rank as free. */
@@ -284,3 +296,6 @@ export interface InventoryAdjustmentDTO {
 
 export * from "./template.js";
 export * from "./providers.js";
+export * from "./features.js";
+export * from "./themes.js";
+export * from "./packs.js";
