@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api } from "@/lib/server-api";
 import { formatMoney } from "@ofp/shared";
 import type { ActivityDTO, CustomerDTO, JobDTO } from "@ofp/shared";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -8,6 +8,8 @@ import { JobStatusBadge, InvoiceStatusBadge } from "@/components/status-badge";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { JobPhotos } from "./job-photos";
+
+export const dynamic = "force-dynamic";
 
 interface Appointment {
   id: string;
@@ -116,7 +118,7 @@ export default async function JobDetailPage({
                   <Button variant="secondary" size="sm">View customer</Button>
                 </Link>
               )}
-              <Link href="/schedule">
+              <Link href="/jobs?new=1">
                 <Button variant="default" size="sm">
                   <span className="text-base mr-1">⊕</span> New Job
                 </Button>
@@ -264,7 +266,7 @@ export default async function JobDetailPage({
               </CardHeader>
               <CardContent>
                 {jobAppointments.length === 0 ? (
-                  <Link href="/schedule">
+                  <Link href={`/schedule?jobId=${job.id}`}>
                     <Button variant="outline" size="sm" className="w-full">
                       Schedule this job
                     </Button>

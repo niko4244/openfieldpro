@@ -218,7 +218,7 @@ async function applyOne(
 
   // version-check first — so a malformed payload still surfaces the conflict.
   const { rows } = await x.execute(
-    sql`SELECT version FROM ${sql.identifier(op.table)} WHERE id = ${op.entityId} LIMIT 1`,
+    sql`SELECT version FROM ${sql.identifier(op.table)} WHERE id = ${op.entityId} AND org_id = ${orgId} LIMIT 1`,
   );
   const cur = rows[0];
   if (!cur) {
@@ -241,7 +241,7 @@ async function applyOne(
       .update(table)
       .set(parsed.data as Record<string, unknown>)
       .where(
-        and(eq(table.id, op.entityId), eq(table.version, op.baseVersion)),
+        and(eq(table.orgId, orgId), eq(table.id, op.entityId), eq(table.version, op.baseVersion)),
       )
       .returning({ v: table.version });
     if (!Array.isArray(returned) || returned.length === 0) {
@@ -251,7 +251,7 @@ async function applyOne(
       // accept it for the correctness guarantee. Ceiling: gate by txn-level
       // SELECT FOR UPDATE later to remove the second query.
       const { rows: rows2 } = await x.execute(
-        sql`SELECT version FROM ${sql.identifier(op.table)} WHERE id = ${op.entityId} LIMIT 1`,
+        sql`SELECT version FROM ${sql.identifier(op.table)} WHERE id = ${op.entityId} AND org_id = ${orgId} LIMIT 1`,
       );
       return conflict(op.opId, rows2[0]?.version ?? op.baseVersion);
     }
@@ -262,12 +262,12 @@ async function applyOne(
   const returned = await x
     .delete(table)
     .where(
-      and(eq(table.id, op.entityId), eq(table.version, op.baseVersion)),
+      and(eq(table.orgId, orgId), eq(table.id, op.entityId), eq(table.version, op.baseVersion)),
     )
     .returning({ v: table.version });
   if (!Array.isArray(returned) || returned.length === 0) {
     const { rows: rows2 } = await x.execute(
-      sql`SELECT version FROM ${sql.identifier(op.table)} WHERE id = ${op.entityId} LIMIT 1`,
+      sql`SELECT version FROM ${sql.identifier(op.table)} WHERE id = ${op.entityId} AND org_id = ${orgId} LIMIT 1`,
     );
     return conflict(op.opId, rows2[0]?.version ?? op.baseVersion);
   }

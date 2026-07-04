@@ -34,7 +34,6 @@ const REQUEST_Z = z.object({
     // ponytail: 500-op ceiling keeps a batch under ~1MB JSON and one TCP
     // round-trip for typical mobile flushes. Ceiling: real drop is at
     // ~1000 ops; raise to 1000 if mobile dashboards need larger batches.
-    .min(1)
     .max(500),
 });
 

@@ -60,7 +60,7 @@ export default function IntegrationsPage() {
   const [webhookDraft, setWebhookDraft] = useState<Record<string, string>>({});
 
   async function reload() {
-    const [c, e] = await Promise.all([api.plugins(), api.pluginEvents().catch(() => [])]);
+    const [c, e] = await Promise.all([api.plugins(), api.pluginEvents()]);
     setCatalog(c);
     setEvents(e as DeliveryEvent[]);
   }

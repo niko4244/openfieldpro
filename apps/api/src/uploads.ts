@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { writeFile, readFile, mkdir } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { eq, and } from "drizzle-orm";
-import { db, photos } from "@ofp/db";
+import { db, jobs, photos } from "@ofp/db";
 
 export interface PhotoRecord {
   id: string;
@@ -35,12 +35,18 @@ export async function savePhoto(
   contentType: string,
   fileName?: string,
 ): Promise<PhotoRecord> {
+  const [job] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(eq(jobs.orgId, orgId), eq(jobs.id, jobId)));
+  if (!job) throw Object.assign(new Error("job not found"), { statusCode: 404 });
+
   const ext = fileName ? extname(fileName) : "";
   const photoId = randomUUID();
   const objectKey = `ofp/${orgId}/${photoId}${ext}`;
 
   const dir = uploadDir();
-  await mkdir(dir, { recursive: true });
+  await mkdir(join(dir, "ofp", orgId), { recursive: true });
   await writeFile(join(dir, objectKey), fileBuffer);
 
   const [record] = await db

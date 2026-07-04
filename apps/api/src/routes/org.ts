@@ -7,15 +7,14 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, orgs } from "@ofp/db";
-import type { JwtClaims } from "../auth.js";
+import { verifyRequestJwt } from "../auth.js";
 import { devAuthFallback } from "../env.js";
 import { verifyLicenseKey, resolvePlan } from "../lib/license.js";
 
 export async function resolveOrgId(req: FastifyRequest): Promise<string> {
   // 1. Verified JWT (the real path once a client logs in).
   try {
-    await req.jwtVerify();
-    const claims = req.user as JwtClaims;
+    const claims = await verifyRequestJwt(req);
     if (claims?.orgId) return claims.orgId;
   } catch {
     /* no/invalid token — fall through to dev fallbacks */
@@ -50,8 +49,7 @@ export interface Identity {
  */
 export async function resolveIdentity(req: FastifyRequest): Promise<Identity> {
   try {
-    await req.jwtVerify();
-    const claims = req.user as JwtClaims;
+    const claims = await verifyRequestJwt(req);
     if (claims?.orgId) {
       return {
         orgId: claims.orgId,

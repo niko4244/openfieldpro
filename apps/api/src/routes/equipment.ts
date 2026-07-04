@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
-import { db, equipment } from "@ofp/db";
+import { db, customers, equipment } from "@ofp/db";
 import { resolveOrgId } from "./org.js";
 
 const createSchema = z.object({
@@ -10,8 +10,8 @@ const createSchema = z.object({
   make: z.string().optional(),
   model: z.string().optional(),
   serialNumber: z.string().optional(),
-  installDate: z.string().datetime().optional(),
-  warrantyExpiry: z.string().datetime().optional(),
+  installDate: z.string().optional(),
+  warrantyExpiry: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -21,10 +21,28 @@ const patchSchema = z.object({
   make: z.string().optional(),
   model: z.string().optional(),
   serialNumber: z.string().optional(),
-  installDate: z.string().datetime().optional(),
-  warrantyExpiry: z.string().datetime().optional(),
+  installDate: z.string().optional(),
+  warrantyExpiry: z.string().optional(),
   notes: z.string().optional(),
 });
+
+function parseInputDate(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? `${value}T12:00:00.000Z`
+    : value;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date;
+}
+
+async function customerExists(orgId: string, customerId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: customers.id })
+    .from(customers)
+    .where(and(eq(customers.orgId, orgId), eq(customers.id, customerId)));
+  return !!row;
+}
 
 export async function equipmentRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
@@ -55,13 +73,21 @@ export async function equipmentRoutes(app: FastifyInstance) {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { installDate, warrantyExpiry, ...rest } = parsed.data;
+    const parsedInstallDate = parseInputDate(installDate);
+    const parsedWarrantyExpiry = parseInputDate(warrantyExpiry);
+    if ((installDate && !parsedInstallDate) || (warrantyExpiry && !parsedWarrantyExpiry)) {
+      return reply.code(400).send({ error: "invalid equipment date" });
+    }
+    if (!(await customerExists(orgId, rest.customerId))) {
+      return reply.code(400).send({ error: "customer not found" });
+    }
     const [row] = await db
       .insert(equipment)
       .values({
         orgId,
         ...rest,
-        installDate: installDate ? new Date(installDate) : undefined,
-        warrantyExpiry: warrantyExpiry ? new Date(warrantyExpiry) : undefined,
+        installDate: parsedInstallDate,
+        warrantyExpiry: parsedWarrantyExpiry,
       })
       .returning();
     return reply.code(201).send(row);
@@ -73,15 +99,23 @@ export async function equipmentRoutes(app: FastifyInstance) {
     const parsed = patchSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { installDate, warrantyExpiry, ...rest } = parsed.data;
+    const parsedInstallDate = parseInputDate(installDate);
+    const parsedWarrantyExpiry = parseInputDate(warrantyExpiry);
+    if ((installDate && !parsedInstallDate) || (warrantyExpiry && !parsedWarrantyExpiry)) {
+      return reply.code(400).send({ error: "invalid equipment date" });
+    }
+    if (rest.customerId && !(await customerExists(orgId, rest.customerId))) {
+      return reply.code(400).send({ error: "customer not found" });
+    }
     const [row] = await db
       .update(equipment)
       .set({
         ...rest,
         ...(installDate !== undefined
-          ? { installDate: installDate ? new Date(installDate) : null }
+          ? { installDate: parsedInstallDate ?? null }
           : {}),
         ...(warrantyExpiry !== undefined
-          ? { warrantyExpiry: warrantyExpiry ? new Date(warrantyExpiry) : null }
+          ? { warrantyExpiry: parsedWarrantyExpiry ?? null }
           : {}),
       })
       .where(and(eq(equipment.orgId, orgId), eq(equipment.id, id)))

@@ -6,8 +6,11 @@
 //   with expo-secure-store once the workspace can take new deps (blocked by
 //   a pnpm store-version mismatch at time of writing).
 import type { JobDTO, Plan } from "@ofp/shared";
+import { Platform } from "react-native";
 
-const API = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
+export const API =
+  process.env.EXPO_PUBLIC_API_URL ??
+  (Platform.OS === "android" ? "http://10.0.2.2:3001" : "http://localhost:3001");
 
 let token: string | null = process.env.EXPO_PUBLIC_AUTH_TOKEN ?? null;
 

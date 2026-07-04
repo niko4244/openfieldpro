@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api } from "@/lib/server-api";
 import { formatMoney } from "@ofp/shared";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
@@ -7,6 +7,8 @@ import { JobStatusBadge } from "@/components/status-badge";
 import { EditCustomerDialog } from "./edit-dialog";
 import { CustomerEquipment } from "./customer-equipment";
 import { CustomerProperties } from "./customer-properties";
+
+export const dynamic = "force-dynamic";
 
 export default async function CustomerDetailPage({
   params,

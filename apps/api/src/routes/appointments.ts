@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, gte, lte, asc } from "drizzle-orm";
-import { db, appointments, jobs } from "@ofp/db";
+import { db, appointments, jobs, users } from "@ofp/db";
 import { resolveOrgId, requireRoleForWrites } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 import { safeEmitDomainEvent } from "../lib/events.js";
@@ -19,6 +19,14 @@ const patchBody = z.object({
   startsAt: z.string().datetime().optional(),
   endsAt: z.string().datetime().optional(),
 });
+
+async function userExists(orgId: string, userId: string): Promise<boolean> {
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.orgId, orgId), eq(users.id, userId)));
+  return !!user;
+}
 
 export async function appointmentRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireRoleForWrites("owner", "dispatcher"));
@@ -44,6 +52,9 @@ export async function appointmentRoutes(app: FastifyInstance) {
     if (new Date(endsAt) <= new Date(startsAt)) {
       return reply.code(400).send({ error: "endsAt must be after startsAt" });
     }
+    if (rest.technicianId && !(await userExists(orgId, rest.technicianId))) {
+      return reply.code(400).send({ error: "technician not found" });
+    }
 
     // Job must belong to this org (no cross-tenant scheduling).
     const [job] = await db
@@ -57,7 +68,7 @@ export async function appointmentRoutes(app: FastifyInstance) {
       .values({ orgId, ...rest, startsAt: new Date(startsAt), endsAt: new Date(endsAt) })
       .returning();
     // Moving a lead onto the calendar implies it's scheduled.
-    await db.update(jobs).set({ status: "scheduled" }).where(eq(jobs.id, rest.jobId));
+    await db.update(jobs).set({ status: "scheduled" }).where(and(eq(jobs.orgId, orgId), eq(jobs.id, rest.jobId)));
     safeEmitActivity(
       orgId,
       "appointment.scheduled",
@@ -92,12 +103,25 @@ export async function appointmentRoutes(app: FastifyInstance) {
     const parsed = patchBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { startsAt, endsAt, ...rest } = parsed.data;
+    const [current] = await db
+      .select({ startsAt: appointments.startsAt, endsAt: appointments.endsAt })
+      .from(appointments)
+      .where(and(eq(appointments.orgId, orgId), eq(appointments.id, id)));
+    if (!current) return reply.code(404).send({ error: "not found" });
+    if (rest.technicianId && !(await userExists(orgId, rest.technicianId))) {
+      return reply.code(400).send({ error: "technician not found" });
+    }
+    const finalStartsAt = startsAt ? new Date(startsAt) : current.startsAt;
+    const finalEndsAt = endsAt ? new Date(endsAt) : current.endsAt;
+    if (finalEndsAt <= finalStartsAt) {
+      return reply.code(400).send({ error: "endsAt must be after startsAt" });
+    }
     const [row] = await db
       .update(appointments)
       .set({
         ...rest,
-        ...(startsAt ? { startsAt: new Date(startsAt) } : {}),
-        ...(endsAt ? { endsAt: new Date(endsAt) } : {}),
+        ...(startsAt ? { startsAt: finalStartsAt } : {}),
+        ...(endsAt ? { endsAt: finalEndsAt } : {}),
       })
       .where(and(eq(appointments.orgId, orgId), eq(appointments.id, id)))
       .returning();

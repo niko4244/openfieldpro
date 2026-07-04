@@ -75,6 +75,13 @@ export async function catalogRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const parsed = patchItemSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    if (parsed.data.categoryId) {
+      const [cat] = await db
+        .select({ id: catalogCategories.id })
+        .from(catalogCategories)
+        .where(and(eq(catalogCategories.id, parsed.data.categoryId), eq(catalogCategories.orgId, orgId)));
+      if (!cat) return reply.code(400).send({ error: "category not found" });
+    }
     const [row] = await db
       .update(catalogItems)
       .set(parsed.data)

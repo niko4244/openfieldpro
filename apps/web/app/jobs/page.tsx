@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { formatMoney } from "@ofp/shared";
-import type { JobDTO, CustomerDTO } from "@ofp/shared";
+import type { JobDTO, CustomerDTO, PropertyDTO } from "@ofp/shared";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +15,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Pagination } from "@/components/pagination";
+import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from "@/components/ui/dialog";
 
 type SortField = "title" | "status" | "total" | "customer";
 type SortDir = "asc" | "desc";
@@ -29,6 +31,7 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
 ];
 
 export default function JobsPage() {
+  const searchParams = useSearchParams();
   const [jobs, setJobs] = useState<JobDTO[]>([]);
   const [customers, setCustomers] = useState<CustomerDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,8 +51,8 @@ export default function JobsPage() {
     async function load() {
       try {
         const [jb, cu] = await Promise.all([
-          api.jobs().catch(() => [] as JobDTO[]),
-          api.customers().catch(() => [] as CustomerDTO[]),
+          api.jobs(),
+          api.customers(),
         ]);
         if (!cancelled) {
           setJobs(jb);
@@ -64,6 +67,60 @@ export default function JobsPage() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  // ── Create-job dialog ──
+  const [showCreate, setShowCreate] = useState(false);
+  const [createTitle, setCreateTitle] = useState("");
+  const [createCustomerId, setCreateCustomerId] = useState("");
+  const [createPropertyId, setCreatePropertyId] = useState("");
+  const [createProperties, setCreateProperties] = useState<PropertyDTO[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get("new") === "1") setShowCreate(true);
+  }, [searchParams]);
+
+  // Load the chosen customer's properties for the optional Property select
+  useEffect(() => {
+    setCreatePropertyId("");
+    if (!createCustomerId) {
+      setCreateProperties([]);
+      return;
+    }
+    let cancelled = false;
+    api.customerProperties(createCustomerId)
+      .then((props) => { if (!cancelled) setCreateProperties(props); })
+      .catch(() => { if (!cancelled) setCreateProperties([]); });
+    return () => { cancelled = true; };
+  }, [createCustomerId]);
+
+  const resetCreateForm = () => {
+    setCreateTitle("");
+    setCreateCustomerId("");
+    setCreatePropertyId("");
+    setCreateErr(null);
+  };
+
+  const handleCreateJob = async () => {
+    if (!createTitle.trim() || !createCustomerId) return;
+    setCreating(true);
+    setCreateErr(null);
+    try {
+      const created = await api.createJob({
+        customerId: createCustomerId,
+        title: createTitle.trim(),
+        propertyId: createPropertyId || undefined,
+      });
+      setJobs((prev) => [created, ...prev]);
+      setShowCreate(false);
+      resetCreateForm();
+    } catch {
+      setCreateErr("Failed to create job");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   // ── Customer map for O(1) lookups ──
   const customerMap = useMemo(() => {
@@ -188,11 +245,9 @@ export default function JobsPage() {
             : undefined
         }
         actions={
-          <Link href="/schedule">
-            <Button variant="default" size="sm">
-              <span className="text-base mr-1">⊕</span> New Job
-            </Button>
-          </Link>
+          <Button variant="default" size="sm" onClick={() => setShowCreate(true)}>
+            <span className="text-base mr-1">⊕</span> New Job
+          </Button>
         }
       />
 
@@ -233,8 +288,13 @@ export default function JobsPage() {
         <Card>
           <EmptyState
             title="No jobs yet"
-            description="Create your first job from the Schedule page"
+            description="Create your first job to get started"
           />
+          <div className="flex justify-center pb-6">
+            <Button size="sm" onClick={() => setShowCreate(true)}>
+              <span className="text-base mr-1">⊕</span> New Job
+            </Button>
+          </div>
         </Card>
       ) : (
         <>
@@ -358,6 +418,83 @@ export default function JobsPage() {
         </>)}
 
         <Pagination skip={skip} take={take} total={filteredSorted.length} onSkipChange={setSkip} />
+
+      {/* ── Create job dialog ── */}
+      <Dialog
+        open={showCreate}
+        onOpenChange={(open) => {
+          if (!open) resetCreateForm();
+          setShowCreate(open);
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>New Job</DialogTitle>
+        </DialogHeader>
+        <DialogContent>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleCreateJob();
+            }}
+            className="flex flex-col gap-4"
+          >
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-fg-muted">Title *</label>
+              <Input
+                value={createTitle}
+                onChange={(e) => setCreateTitle(e.target.value)}
+                placeholder="Furnace tune-up"
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-fg-muted">Customer *</label>
+              <select
+                value={createCustomerId}
+                onChange={(e) => setCreateCustomerId(e.target.value)}
+                style={{ colorScheme: "dark" }}
+                className="h-10 rounded-lg border border-border bg-surface-300 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                required
+              >
+                <option value="">Select a customer…</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-fg-muted">Property (optional)</label>
+              <select
+                value={createPropertyId}
+                onChange={(e) => setCreatePropertyId(e.target.value)}
+                style={{ colorScheme: "dark" }}
+                className="h-10 rounded-lg border border-border bg-surface-300 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:opacity-50"
+                disabled={!createCustomerId || createProperties.length === 0}
+              >
+                <option value="">
+                  {!createCustomerId
+                    ? "Select a customer first"
+                    : createProperties.length === 0
+                      ? "No properties for this customer"
+                      : "No property"}
+                </option>
+                {createProperties.map((p) => (
+                  <option key={p.id} value={p.id}>{p.address}</option>
+                ))}
+              </select>
+            </div>
+            {createErr && <p className="text-xs text-red">{createErr}</p>}
+            <DialogFooter>
+              <Button type="button" variant="ghost" size="sm" disabled={creating} onClick={() => { setShowCreate(false); resetCreateForm(); }}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={!createTitle.trim() || !createCustomerId || creating}>
+                {creating ? "Creating..." : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

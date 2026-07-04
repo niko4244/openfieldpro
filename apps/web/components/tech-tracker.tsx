@@ -53,6 +53,7 @@ export function TechTracker({ initGranted = false }: TechTrackerProps) {
   const [lastPingAt, setLastPingAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const stateRef = useRef<PingState>({ lastSentAt: 0, lastSentPos: null });
+  const watcherRef = useRef<number | null>(null);
 
   // 1) Permission probe — best-effort. iOS Safari's Permissions API is
   //    inconsistent; we use it and fall back to "prompt" if not present.
@@ -98,12 +99,24 @@ export function TechTracker({ initGranted = false }: TechTrackerProps) {
 
   // 3) Watcher setup — only after a Start tap (so we don't prompt until
   //    the user actually intends to share).
+  const clearWatcher = () => {
+    if (
+      watcherRef.current !== null &&
+      typeof navigator !== "undefined" &&
+      navigator.geolocation
+    ) {
+      navigator.geolocation.clearWatch(watcherRef.current);
+      watcherRef.current = null;
+    }
+  };
+
   const startSharing = () => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setError("This browser doesn't expose geolocation.");
       setPermission("denied");
       return;
     }
+    if (watcherRef.current !== null) return clearWatcher;
     setError(null);
     setSharing(true);
     const watcher = navigator.geolocation.watchPosition(
@@ -146,9 +159,8 @@ export function TechTracker({ initGranted = false }: TechTrackerProps) {
         maximumAge: 60_000,
       },
     );
-    return () => {
-      navigator.geolocation.clearWatch(watcher);
-    };
+    watcherRef.current = watcher;
+    return clearWatcher;
   };
 
   // Auto-start if already granted.
@@ -162,9 +174,12 @@ export function TechTracker({ initGranted = false }: TechTrackerProps) {
   }, [permission]);
 
   const stopSharing = () => {
+    clearWatcher();
     setSharing(false);
     void api.setSharingStatus(false).catch(() => {});
   };
+
+  useEffect(() => () => clearWatcher(), []);
 
   return (
     <div className="space-y-5">

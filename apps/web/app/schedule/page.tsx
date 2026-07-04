@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import type { JobDTO } from "@ofp/shared";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ type ViewMode = "day" | "week" | "month";
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function SchedulePage() {
+  const searchParams = useSearchParams();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [jobs, setJobs] = useState<JobDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,8 +45,8 @@ export default function SchedulePage() {
     async function load() {
       try {
         const [ap, jb] = await Promise.all([
-          api.appointments().catch(() => [] as Appointment[]),
-          api.jobs().catch(() => [] as JobDTO[]),
+          api.appointments(),
+          api.jobs(),
         ]);
         if (!cancelled) {
           setAppointments(ap);
@@ -172,6 +174,13 @@ export default function SchedulePage() {
   const [createTechnician, setCreateTechnician] = useState("");
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    const jobId = searchParams.get("jobId");
+    if (!jobId) return;
+    setCreateJobId(jobId);
+    setShowCreate(true);
+  }, [searchParams]);
 
   const handleCreateAppointment = async () => {
     if (!createJobId || !createStartsAt || !createEndsAt) return;

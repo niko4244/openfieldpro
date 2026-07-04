@@ -128,9 +128,9 @@ export default function EstimatesPage() {
     async function load() {
       try {
         const [est, jb, cust] = await Promise.all([
-          api.estimates().catch(() => [] as Estimate[]),
-          api.jobs().catch(() => [] as JobDTO[]),
-          api.customers().catch(() => [] as CustomerDTO[]),
+          api.estimates(),
+          api.jobs(),
+          api.customers(),
         ]);
         if (!cancelled) {
           setEstimates(est);

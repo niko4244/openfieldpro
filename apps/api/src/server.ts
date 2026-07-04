@@ -51,7 +51,7 @@ export function buildServer() {
   }
 
   const app = Fastify({ logger: true });
-  app.register(cors, { origin: true });
+  app.register(cors, { origin: true, credentials: true });
   app.register(jwt, { secret });
 
   // Central error + not-found handlers so a malformed id or any thrown error

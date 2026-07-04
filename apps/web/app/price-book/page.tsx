@@ -58,8 +58,8 @@ export default function PriceBookPage() {
     async function load() {
       try {
         const [cats, its] = await Promise.all([
-          api.catalogCategories().catch(() => [] as Category[]),
-          api.catalogItems().catch(() => [] as CatalogItem[]),
+          api.catalogCategories(),
+          api.catalogItems(),
         ]);
         setCategories(cats);
         setItems(its);

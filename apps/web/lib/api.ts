@@ -37,11 +37,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     ...(init?.headers as Record<string, string>),
   };
-  // ponytail: reads token from localStorage on the client; RSCs don't have
-  // access to it, so they run unauthenticated against the demo seed.
-  // Ceiling: multi-org with real auth per user. Upgrade: switch to
-  // httpOnly cookie set by the login endpoint, or pass the token via a
-  // server-side session cookie.
+  // Back-compat for existing sessions. New logins also receive an httpOnly
+  // cookie, which browser fetches send via credentials below.
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("ofp_token");
     if (token) headers["authorization"] = `Bearer ${token}`;
@@ -49,6 +46,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const res = await fetch(`${BASE}${path}`, {
     ...init,
+    credentials: "include",
     headers: { "content-type": "application/json", ...headers },
   });
   if (!res.ok) {
@@ -394,6 +392,7 @@ export const api = {
     const token = typeof window !== "undefined" ? localStorage.getItem("ofp_token") : null;
     const res = await fetch(`${BASE}/api/photos/upload/${jobId}`, {
       method: "POST",
+      credentials: "include",
       headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) },
       body: fd,
     });

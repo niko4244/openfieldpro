@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, orgs, users } from "@ofp/db";
-import { hashPassword, verifyPassword } from "../auth.js";
+import { hashPassword, setAuthCookie, verifyPassword, verifyRequestJwt } from "../auth.js";
 import { probeStub } from "../probe-stub.js";
 
 const registerBody = z.object({
@@ -26,6 +26,9 @@ export async function authRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { orgName, name, email, password } = parsed.data;
 
+    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+    if (existing) return reply.code(409).send({ error: "email already in use" });
+
     const [org] = await db.insert(orgs).values({ name: orgName }).returning();
     const [user] = await db
       .insert(users)
@@ -45,6 +48,7 @@ export async function authRoutes(app: FastifyInstance) {
       email,
       role: user.role,
     });
+    setAuthCookie(reply, token);
     return reply.code(201).send({ token, user: { id: user.id, name, email, role: user.role }, orgId: org.id });
   });
 
@@ -67,14 +71,14 @@ export async function authRoutes(app: FastifyInstance) {
       email: user.email,
       role: user.role,
     });
+    setAuthCookie(reply, token);
     return { token, user: { id: user.id, name: user.name, email, role: user.role }, orgId: user.orgId };
   });
 
   // Whoami — verifies the token and echoes the claims.
   app.get("/me", async (req, reply) => {
     try {
-      await req.jwtVerify();
-      return req.user;
+      return await verifyRequestJwt(req);
     } catch {
       return reply.code(401).send({ error: "unauthorized" });
     }

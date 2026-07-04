@@ -36,8 +36,8 @@ export default function PipelinePage() {
     async function load() {
       try {
         const [jb, cust] = await Promise.all([
-          api.jobs().catch(() => [] as JobDTO[]),
-          api.customers().catch(() => [] as CustomerDTO[]),
+          api.jobs(),
+          api.customers(),
         ]);
         if (!cancelled) {
           setJobs(jb);
@@ -107,7 +107,7 @@ export default function PipelinePage() {
         title="Pipeline"
         description={`${jobs.length} job${jobs.length !== 1 ? "s" : ""} across 5 stages`}
         actions={
-          <Link href="/schedule">
+          <Link href="/jobs?new=1">
             <Button size="sm">⊕ New Job</Button>
           </Link>
         }

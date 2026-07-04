@@ -286,12 +286,12 @@ export default function InvoiceDetailPage() {
       setNotice(status === "sent" ? "Invoice marked as sent." : "Invoice voided.");
     });
 
-  const sendInvoice = () =>
+  const markInvoiceSent = () =>
     runAction("send", async () => {
       if (!invoice) return;
       await api.patchInvoice(invoice.id, { status: "sent", syncTotal: true });
       await refreshInvoice();
-      setNotice(`${sendChannel === "email" ? "Email" : "Text"} invoice staged for ${sendTo || "customer"} and marked sent.`);
+      setNotice("Invoice marked as sent. Delivery fields are preview-only until a delivery provider is configured.");
     });
 
   const markPaid = () =>
@@ -456,8 +456,8 @@ export default function InvoiceDetailPage() {
         }
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => void sendInvoice()} disabled={busyAction === "send" || invoice.status === "void"}>
-              {busyAction === "send" ? "Sending..." : "Send invoice"}
+            <Button size="sm" onClick={() => void markInvoiceSent()} disabled={busyAction === "send" || invoice.status === "void"}>
+              {busyAction === "send" ? "Marking..." : "Mark sent"}
             </Button>
             {remaining > 0 && invoice.status !== "void" && (
               <Button size="sm" variant="secondary" onClick={openPayment}>
@@ -652,8 +652,8 @@ export default function InvoiceDetailPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Send and customer view</CardTitle>
-              <CardDescription>Stage the message, delivery channel, payment options, and visible invoice details.</CardDescription>
+              <CardTitle>Customer preview</CardTitle>
+              <CardDescription>Preview the message, payment options, and visible invoice details before sending outside the app.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

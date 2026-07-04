@@ -58,9 +58,9 @@ export default function ReviewsPage() {
     async function load() {
       try {
         const [rev, jb, cust] = await Promise.all([
-          api.reviews().catch(() => ({ reviews: [], average: 0, count: 0 } as ReviewList)),
-          api.jobs().catch(() => [] as JobDTO[]),
-          api.customers().catch(() => [] as CustomerDTO[]),
+          api.reviews(),
+          api.jobs(),
+          api.customers(),
         ]);
         if (!cancelled) {
           setData(rev);

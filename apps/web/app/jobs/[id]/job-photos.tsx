@@ -14,6 +14,7 @@ export function JobPhotos({ jobId }: { jobId: string }) {
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,11 +36,13 @@ export function JobPhotos({ jobId }: { jobId: string }) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setError(null);
     try {
       const photo = await api.uploadJobPhoto(jobId, file);
       setPhotos((prev) => [...prev, photo]);
-    } catch {
-      // ponytail: silent failure — no toast system yet
+      e.target.value = "";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Photo upload failed");
     } finally {
       setUploading(false);
     }
@@ -97,6 +100,7 @@ export function JobPhotos({ jobId }: { jobId: string }) {
       <span className="text-xs text-fg-dim ml-3">
         {photos.length} photo{photos.length !== 1 ? "s" : ""}
       </span>
+      {error && <p className="mt-2 text-xs text-red">{error}</p>}
     </div>
   );
 }

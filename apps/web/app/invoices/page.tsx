@@ -180,9 +180,9 @@ export default function InvoicesPage() {
     async function load() {
       try {
         const [iv, jb, cu] = await Promise.all([
-          api.invoices().catch(() => [] as Invoice[]),
-          api.jobs().catch(() => [] as JobDTO[]),
-          api.customers().catch(() => [] as CustomerDTO[]),
+          api.invoices(),
+          api.jobs(),
+          api.customers(),
         ]);
         if (!cancelled) {
           setInvoices(iv);
@@ -447,14 +447,14 @@ export default function InvoicesPage() {
                       </div>
 
                       <div className="rounded-lg bg-surface-200 p-4">
-                        <p className="text-xs font-semibold text-fg-muted mb-2">Send and payment options</p>
+                        <p className="text-xs font-semibold text-fg-muted mb-2">Preview and payment options</p>
                         <div className="space-y-2">
                           <label className="flex min-h-10 items-center justify-between gap-3 text-sm text-fg">
-                            Email invoice
+                            Preview email delivery
                             <input type="checkbox" checked={createSendEmail} onChange={(e) => setCreateSendEmail(e.target.checked)} />
                           </label>
                           <label className="flex min-h-10 items-center justify-between gap-3 text-sm text-fg">
-                            Text invoice
+                            Preview text delivery
                             <input type="checkbox" checked={createSendText} onChange={(e) => setCreateSendText(e.target.checked)} />
                           </label>
                           <label className="flex min-h-10 items-center justify-between gap-3 text-sm text-fg">
@@ -509,7 +509,7 @@ export default function InvoicesPage() {
                       )}
                     </div>
                     <div className="mt-4 space-y-2 text-xs text-fg-muted">
-                      <p>Delivery: {[createSendEmail ? "email" : null, createSendText ? "text" : null].filter(Boolean).join(" + ") || "not selected"}</p>
+                      <p>Delivery preview: {[createSendEmail ? "email" : null, createSendText ? "text" : null].filter(Boolean).join(" + ") || "not selected"}</p>
                       <p>Payment: {[createAllowCard ? "card" : null, createAllowCashCheck ? "cash/check" : null].filter(Boolean).join(" + ") || "offline only"}</p>
                       <p>Due: {createDueAt || "No due date"}</p>
                     </div>

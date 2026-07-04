@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api } from "@/lib/server-api";
 import { formatRelativeTime } from "@/lib/utils";
 import { formatMoney } from "@ofp/shared";
 import type { ActivityDTO, ReportSummaryDTO } from "@ofp/shared";
@@ -85,7 +85,7 @@ export default async function DashboardOverview() {
                 <span className="text-base mr-1">+</span> New Customer
               </Button>
             </Link>
-            <Link href="/schedule">
+            <Link href="/jobs?new=1">
               <Button variant="default" size="sm">
                 <span className="text-base mr-1">⊕</span> New Job
               </Button>

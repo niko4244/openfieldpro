@@ -46,8 +46,8 @@ export default function CustomersPage() {
     async function load() {
       try {
         const [cr, ar] = await Promise.all([
-          api.customers().catch(() => [] as CustomerDTO[]),
-          api.activities().catch(() => [] as ActivityDTO[]),
+          api.customers(),
+          api.activities(),
         ]);
         if (!cancelled) {
           setCustomers(cr);

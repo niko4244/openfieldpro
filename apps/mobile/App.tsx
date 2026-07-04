@@ -21,6 +21,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { SponsorBanner } from "./components/SponsorBanner";
 import { SyncService } from "./src/sync";
 import {
+  API,
   api,
   getToken,
   hasToken,
@@ -29,8 +30,6 @@ import {
   type InvoiceDTO,
   type SessionUser,
 } from "./src/api";
-
-const API = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export default function App() {
   const [authed, setAuthed] = useState(hasToken());
@@ -73,10 +72,10 @@ function Dashboard({ user, onLogout }: { user: SessionUser | null; onLogout: () 
     async function load() {
       try {
         const [jr, ar, ir, org] = await Promise.all([
-          api.jobs().catch(() => []),
-          api.appointments().catch(() => []),
-          api.invoices().catch(() => []),
-          api.org().catch(() => null),
+          api.jobs(),
+          api.appointments(),
+          api.invoices(),
+          api.org(),
         ]);
         if (!cancelled) {
           setJobs(jr);

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
-import { db, jobs, properties } from "@ofp/db";
+import { db, customers, jobs, properties, users } from "@ofp/db";
 import { JOB_STATUS } from "@ofp/shared";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
@@ -29,6 +29,22 @@ const patchBody = z.object({
 });
 
 /** Property must exist in this org and belong to this customer. */
+async function customerExists(orgId: string, customerId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: customers.id })
+    .from(customers)
+    .where(and(eq(customers.orgId, orgId), eq(customers.id, customerId)));
+  return !!row;
+}
+
+async function userExists(orgId: string, userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.orgId, orgId), eq(users.id, userId)));
+  return !!row;
+}
+
 async function propertyMatchesCustomer(
   orgId: string,
   propertyId: string,
@@ -62,11 +78,25 @@ export async function jobRoutes(app: FastifyInstance) {
       .offset(s);
   });
 
+  app.get("/:id", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+    const [row] = await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.orgId, orgId), eq(jobs.id, id)));
+    if (!row) return reply.code(404).send({ error: "not found" });
+    return row;
+  });
+
   app.post("/", async (req, reply) => {
     const orgId = await resolveOrgId(req);
     const parsed = createBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { scheduledAt, ...rest } = parsed.data;
+    if (!(await customerExists(orgId, rest.customerId))) {
+      return reply.code(400).send({ error: "customer not found" });
+    }
     if (
       rest.propertyId &&
       !(await propertyMatchesCustomer(orgId, rest.propertyId, rest.customerId))
@@ -95,6 +125,9 @@ export async function jobRoutes(app: FastifyInstance) {
     const parsed = patchBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { scheduledAt, ...rest } = parsed.data;
+    if (rest.assignedTo && !(await userExists(orgId, rest.assignedTo))) {
+      return reply.code(400).send({ error: "assigned user not found" });
+    }
     if (rest.propertyId) {
       const [job] = await db
         .select({ customerId: jobs.customerId })
