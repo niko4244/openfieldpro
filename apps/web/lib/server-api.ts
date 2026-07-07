@@ -62,14 +62,48 @@ function validateEnvelope<T>(parsed: unknown): T {
   return parsed as T;
 }
 
+/**
+ * Unmangle the API's 4xx/5xx body for `ApiError.friendlyMessage`.
+ * Closes audit-findings table item #13.
+ *
+ * Accepts:
+ *   - `{ error: "string" }`            -> inner string
+ *   - `{ error: ["a", "b", "c"] }`     -> joined with "; "
+ *   - anything else (number, null, wrong shape, non-JSON) -> raw text
+ */
+function extractErrorMessage(text: string): string {
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object") {
+      const e = (parsed as { error?: unknown }).error;
+      if (typeof e === "string") return e;
+      if (Array.isArray(e) && e.every((x) => typeof x === "string")) {
+        return (e as string[]).join("; ");
+      }
+    }
+  } catch {
+    // body wasn't JSON; fall through
+  }
+  return text;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // SSR-side auth enforcement. The API has its own middleware; this
   // fail-fast means a missing token never leaves the server. The
   // `api` object exposed from this module only wraps authenticated
   // routes today (jobs, customers, appointments, invoices, etc.);
   // public routes are exposed through a different module.
-  const jar = await cookies();
-  const token = jar.get("ofp_token")?.value;
+  //
+  // `cookies()` can throw outside a request scope (test harnesses,
+  // edge cases in server actions, etc.). Map that to a clean 500
+  // so the boundary doesn't leak the underlying Next.js error.
+  let token: string | undefined;
+  try {
+    const jar = await cookies();
+    token = jar.get("ofp_token")?.value;
+  } catch {
+    throw new ApiError(500, "auth state unavailable");
+  }
   if (!token) throw new ApiError(401, "authorization required");
 
   const headers: Record<string, string> = {
@@ -87,24 +121,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const text = await res.text();
 
   if (!res.ok) {
-    // Unmangle the API's `{ error: msg }` body so the page sees a
-    // clean string via `ApiError.friendlyMessage`, instead of a raw
-    // `400: {"error":"license expired"}` string in a React error
-    // boundary. Closes audit-findings table item #13.
-    let errorMsg = text;
-    try {
-      const parsed = JSON.parse(text);
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        typeof (parsed as { error?: unknown }).error === "string"
-      ) {
-        errorMsg = (parsed as { error: string }).error;
-      }
-    } catch {
-      // body wasn't JSON; fall through with the raw text
-    }
-    throw new ApiError(res.status, errorMsg);
+    throw new ApiError(res.status, extractErrorMessage(text));
   }
 
   if (!text) return undefined as T;
