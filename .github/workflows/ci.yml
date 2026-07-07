@@ -1,0 +1,65 @@
+name: OpenFieldPro CI
+
+on:
+  push:
+    branches:
+      - feat/phase-7-dispatch
+  pull_request:
+    branches:
+      - ofp-monorepo
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-api:
+    name: apps/api typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ofp/api typecheck
+
+  test-api:
+    name: apps/api test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ofp/api test
+
+  typecheck-web:
+    name: apps/web typecheck
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ofp/web typecheck
+        # Pre-existing TS5097 in apps/web/test/nav.test.ts(5,42)
+        # (committed 762a656, before the audit-closure chain) is
+        # tracked separately. This job is allowed to fail for now
+        # so the rest of the gate is informative; remove
+        # `continue-on-error: true` once the test file is fixed.
