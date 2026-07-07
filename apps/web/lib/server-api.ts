@@ -38,28 +38,78 @@ interface LineItemDTO {
   createdAt: string;
 }
 
+/**
+ * Envelope check on a 2xx response. Without a per-endpoint schema
+ * (zod isn't a dep in apps/web) the strongest claim we can make
+ * cheaply is: refuse primitive payloads when T is meant to be an
+ * object/array. The `as T` cast below remains weak at the per-field
+ * level — that is a follow-up once zod lands in apps/web. The cast
+ * we close here is the catastrophic one: returning a string or
+ * number where a DTO was expected, which would crash the page
+ * with `Object.values is not a function` or `array.map is not a
+ * function`.
+ */
+function validateEnvelope<T>(parsed: unknown): T {
+  if (parsed === undefined) return undefined as T;
+  if (parsed === null) {
+    throw new Error("Invalid response envelope: null body");
+  }
+  if (typeof parsed !== "object") {
+    throw new Error(
+      `Invalid response envelope: expected object/array, got ${typeof parsed}`,
+    );
+  }
+  return parsed as T;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // SSR-side auth enforcement. The API has its own middleware; this
+  // fail-fast means a missing token never leaves the server. The
+  // `api` object exposed from this module only wraps authenticated
+  // routes today (jobs, customers, appointments, invoices, etc.);
+  // public routes are exposed through a different module.
   const jar = await cookies();
   const token = jar.get("ofp_token")?.value;
+  if (!token) throw new ApiError(401, "authorization required");
+
   const headers: Record<string, string> = {
     ...(init?.headers as Record<string, string>),
+    authorization: `Bearer ${token}`,
+    cookie: `ofp_token=${encodeURIComponent(token)}`,
   };
-  if (token) {
-    headers.authorization = `Bearer ${token}`;
-    headers.cookie = `ofp_token=${encodeURIComponent(token)}`;
-  }
 
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     cache: "no-store",
     headers: { "content-type": "application/json", ...headers },
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new ApiError(res.status, body);
-  }
+
   const text = await res.text();
-  return text ? (JSON.parse(text) as T) : (undefined as T);
+
+  if (!res.ok) {
+    // Unmangle the API's `{ error: msg }` body so the page sees a
+    // clean string via `ApiError.friendlyMessage`, instead of a raw
+    // `400: {"error":"license expired"}` string in a React error
+    // boundary. Closes audit-findings table item #13.
+    let errorMsg = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof (parsed as { error?: unknown }).error === "string"
+      ) {
+        errorMsg = (parsed as { error: string }).error;
+      }
+    } catch {
+      // body wasn't JSON; fall through with the raw text
+    }
+    throw new ApiError(res.status, errorMsg);
+  }
+
+  if (!text) return undefined as T;
+  const parsed = JSON.parse(text);
+  return validateEnvelope<T>(parsed);
 }
 
 export const api = {
