@@ -58,16 +58,37 @@ function multipartBody(boundary: string, filename: string, contentType: string, 
   ].join("\r\n");
 }
 
+// Drain a stream into a Buffer. Mirrors what the real savePhoto does
+// during streaming, so the mock records `fileSize` reflect what the route
+// would actually have written.
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 // ---------------------------------------------------------------------------
 // 3. Tests
 // ---------------------------------------------------------------------------
 
 test("POST /upload/:jobId — upload creates a photo record", async () => {
-  mockSavePhoto.mock.mockImplementation(async (_orgId: string, _jobId: string, _buf: Buffer, _ct: string, fn?: string) => ({
-    ...fakePhoto,
-    fileName: fn ?? null,
-    fileSize: _buf.length,
-  }));
+  mockSavePhoto.mock.mockImplementation(
+    async (
+      _orgId: string,
+      _jobId: string,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      input: { stream: NodeJS.ReadableStream; filenameHint?: string | null },
+    ) => {
+      const buf = await streamToBuffer(input.stream);
+      return {
+        ...fakePhoto,
+        fileName: input.filenameHint ?? null,
+        fileSize: buf.length,
+      };
+    },
+  );
 
   const app = buildServer();
   const boundary = "----TestBoundary98765";
@@ -91,14 +112,15 @@ test("POST /upload/:jobId — upload creates a photo record", async () => {
   assert.equal(data.fileName, "photo.jpg");
   assert.ok(data.fileSize);
 
-  // Verify the mock was called with expected args
+  // Verify the mock was called with the new SavePhotoInput shape, not
+  // raw bytes + caller-supplied Content-Type.
   const call = mockSavePhoto.mock.calls[0];
   assert.ok(call);
   assert.equal(call.arguments[0], "org-1"); // orgId
   assert.equal(call.arguments[1], "job-1"); // jobId
-  assert.ok(call.arguments[2] instanceof Buffer); // buffer
-  assert.equal(call.arguments[3], "image/jpeg"); // contentType
-  assert.equal(call.arguments[4], "photo.jpg"); // fileName
+  assert.ok(call.arguments[2]); // third arg is now an object
+  assert.equal(call.arguments[2].filenameHint, "photo.jpg");
+  assert.ok(call.arguments[2].stream);
 
   await app.close();
 });
