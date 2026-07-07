@@ -77,7 +77,7 @@ function extractErrorMessage(text: string): string {
     if (parsed && typeof parsed === "object") {
       const e = (parsed as { error?: unknown }).error;
       if (typeof e === "string") return e;
-      if (Array.isArray(e) && e.every((x) => typeof x === "string")) {
+      if (Array.isArray(e) && e.length > 0 && e.every((x) => typeof x === "string")) {
         return (e as string[]).join("; ");
       }
     }
@@ -95,13 +95,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // public routes are exposed through a different module.
   //
   // `cookies()` can throw outside a request scope (test harnesses,
-  // edge cases in server actions, etc.). Map that to a clean 500
-  // so the boundary doesn't leak the underlying Next.js error.
+  // server actions, edge cases). Map that to a clean 500 so the
+  // boundary doesn't leak the underlying Next.js error. The bare
+  // `catch` also logs the raw error server-side so the failure mode
+  // is debuggable.
   let token: string | undefined;
   try {
     const jar = await cookies();
     token = jar.get("ofp_token")?.value;
-  } catch {
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[server-api] cookies() read failed:", err);
     throw new ApiError(500, "auth state unavailable");
   }
   if (!token) throw new ApiError(401, "authorization required");
