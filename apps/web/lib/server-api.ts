@@ -16,6 +16,12 @@ export interface SessionUserDTO {
   role: "owner" | "dispatcher" | "technician";
 }
 
+export interface JobResponseDTO extends JobDTO {
+  description?: string | null;
+  laborCostCents?: number;
+  financialsRestricted?: boolean;
+}
+
 interface Appointment {
   id: string;
   jobId: string;
@@ -41,6 +47,7 @@ interface LineItem {
   quantity: number;
   unitPrice: number;
   unitCost: number;
+  financialsRestricted?: boolean;
   createdAt: string;
 }
 
@@ -74,8 +81,8 @@ export async function serverRequest<T>(path: string, init?: RequestInit): Promis
 
 export const serverApi = {
   me: () => serverRequest<SessionUserDTO>("/api/auth/me"),
-  jobs: () => serverRequest<JobDTO[]>("/api/jobs"),
-  job: (id: string) => serverRequest<JobDTO>(`/api/jobs/${id}`),
+  jobs: () => serverRequest<JobResponseDTO[]>("/api/jobs"),
+  job: (id: string) => serverRequest<JobResponseDTO>(`/api/jobs/${id}`),
   customers: () => serverRequest<CustomerDTO[]>("/api/customers"),
   appointments: () => serverRequest<Appointment[]>("/api/appointments"),
   invoices: () => serverRequest<Invoice[]>("/api/invoices"),
