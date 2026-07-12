@@ -50,8 +50,12 @@ export async function catalogRoutes(app: FastifyInstance) {
     const query = req.query as { search?: string; categoryId?: string; active?: string };
     const conditions = [eq(catalogItems.orgId, orgId)];
     if (query.categoryId) conditions.push(eq(catalogItems.categoryId, query.categoryId));
-    if (query.active === "true") conditions.push(eq(catalogItems.active, true));
-    if (query.active === "false") conditions.push(eq(catalogItems.active, false));
+    if (claims.role === "technician") {
+      conditions.push(eq(catalogItems.active, true));
+    } else {
+      if (query.active === "true") conditions.push(eq(catalogItems.active, true));
+      if (query.active === "false") conditions.push(eq(catalogItems.active, false));
+    }
     if (query.search?.trim()) conditions.push(ilike(catalogItems.name, `%${query.search.trim()}%`));
     const rows = await db
       .select()
