@@ -9,6 +9,13 @@ import type {
 
 const BASE = process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
+export interface SessionUserDTO {
+  id: string;
+  name: string;
+  email: string;
+  role: "owner" | "dispatcher" | "technician";
+}
+
 interface Appointment {
   id: string;
   jobId: string;
@@ -66,6 +73,7 @@ export async function serverRequest<T>(path: string, init?: RequestInit): Promis
 }
 
 export const serverApi = {
+  me: () => serverRequest<SessionUserDTO>("/api/auth/me"),
   jobs: () => serverRequest<JobDTO[]>("/api/jobs"),
   job: (id: string) => serverRequest<JobDTO>(`/api/jobs/${id}`),
   customers: () => serverRequest<CustomerDTO[]>("/api/customers"),
