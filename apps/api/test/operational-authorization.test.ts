@@ -6,13 +6,17 @@ import {
   technicianJobPatchAllowed,
 } from "../src/operational-authorization.js";
 
-test("owner-only and office write routes are classified explicitly", () => {
+test("owner-only and office routes are classified explicitly", () => {
   assert.deepEqual(requiredRolesForRequest("PATCH", "/api/users/user-1"), ["owner"]);
   assert.deepEqual(requiredRolesForRequest("PATCH", "/api/org/me"), ["owner"]);
+  assert.deepEqual(requiredRolesForRequest("GET", "/api/plugins"), ["owner"]);
   assert.deepEqual(requiredRolesForRequest("POST", "/api/invoices"), ["owner", "dispatcher"]);
   assert.deepEqual(requiredRolesForRequest("POST", "/api/appointments"), ["owner", "dispatcher"]);
   assert.deepEqual(requiredRolesForRequest("POST", "/api/jobs"), ["owner", "dispatcher"]);
-  assert.equal(requiredRolesForRequest("GET", "/api/invoices"), null);
+  assert.deepEqual(requiredRolesForRequest("GET", "/api/invoices"), ["owner", "dispatcher"]);
+  assert.deepEqual(requiredRolesForRequest("GET", "/api/reports/summary"), ["owner", "dispatcher"]);
+  assert.deepEqual(requiredRolesForRequest("GET", "/api/users?take=20"), ["owner", "dispatcher"]);
+  assert.equal(requiredRolesForRequest("GET", "/api/jobs"), null);
   assert.equal(requiredRolesForRequest("PATCH", "/api/jobs/job-1"), null);
 });
 
