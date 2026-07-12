@@ -227,7 +227,7 @@ test("technician field board never requests invoices or exposes office navigatio
   await expect(page.getByText("Start assigned work, complete the visit, and hand the result back to the office without exposing billing controls.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Start Washer not draining" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Complete Refrigerator warm" })).toBeVisible();
-  await expect(page.getByText("Completed handoff", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Completed handoff" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Invoices & Payments" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "New Job" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Dispatch Board" })).toHaveCount(0);
