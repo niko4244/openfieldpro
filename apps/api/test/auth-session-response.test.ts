@@ -27,11 +27,13 @@ test("native authentication response includes the bearer token", () => {
   assert.deepEqual(nativeAuthResponse(identity), identity);
 });
 
-test("native login rejects browser origin and fetch metadata", () => {
-  assert.equal(nativeLoginRequestAllowed(undefined, undefined), true);
-  assert.equal(nativeLoginRequestAllowed(null, null), true);
-  assert.equal(nativeLoginRequestAllowed("https://app.example", undefined), false);
-  assert.equal(nativeLoginRequestAllowed("null", undefined), false);
-  assert.equal(nativeLoginRequestAllowed(undefined, "same-origin"), false);
-  assert.equal(nativeLoginRequestAllowed(undefined, "cross-site"), false);
+test("native login requires its client marker and rejects browser metadata", () => {
+  assert.equal(nativeLoginRequestAllowed(undefined, undefined, "native"), true);
+  assert.equal(nativeLoginRequestAllowed(null, null, "native"), true);
+  assert.equal(nativeLoginRequestAllowed(undefined, undefined, undefined), false);
+  assert.equal(nativeLoginRequestAllowed(undefined, undefined, "browser"), false);
+  assert.equal(nativeLoginRequestAllowed("https://app.example", undefined, "native"), false);
+  assert.equal(nativeLoginRequestAllowed("null", undefined, "native"), false);
+  assert.equal(nativeLoginRequestAllowed(undefined, "same-origin", "native"), false);
+  assert.equal(nativeLoginRequestAllowed(undefined, "cross-site", "native"), false);
 });
