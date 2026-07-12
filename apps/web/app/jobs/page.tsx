@@ -9,7 +9,7 @@ function resultError(result: PromiseSettledResult<unknown>) {
 
 export default async function JobsPage() {
   const [userResult, jobsResult, customersResult] = await Promise.allSettled([
-    serverApi.currentUser(),
+    serverApi.me(),
     serverApi.jobs(),
     serverApi.customers(),
   ]);
