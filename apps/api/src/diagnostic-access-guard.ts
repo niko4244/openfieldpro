@@ -117,10 +117,13 @@ export async function diagnosticAccessGuard(request: FastifyRequest, reply: Fast
   if (kind === "session-list") {
     if (!isTechnician(claims)) return;
     const query = request.query as { jobId?: unknown } | undefined;
-    if (typeof query?.jobId !== "string") {
-      await reply.code(400).send({
-        error: "technician diagnostic session lists must specify an assigned jobId",
-      });
+    if (query?.jobId === undefined) {
+      // The response guard filters an unscoped list to sessions belonging to the
+      // technician's assigned jobs. This preserves the native app's bulk load.
+      return;
+    }
+    if (typeof query.jobId !== "string") {
+      await reply.code(400).send({ error: "jobId must be a string" });
       return;
     }
     if (!(await getAccessibleJob(orgId, claims, query.jobId))) {
