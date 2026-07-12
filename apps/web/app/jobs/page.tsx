@@ -1,5 +1,5 @@
-import type { CustomerDTO, JobDTO } from "@ofp/shared";
-import { serverApi } from "@/lib/server-api";
+import type { CustomerDTO } from "@ofp/shared";
+import { serverApi, type JobResponseDTO } from "@/lib/server-api";
 import { JobsList, type JobListItem } from "./jobs-list";
 
 function resultError(result: PromiseSettledResult<unknown>) {
@@ -16,7 +16,7 @@ export default async function JobsPage() {
 
   const user = userResult.status === "fulfilled" ? userResult.value : null;
   const role = user?.role ?? null;
-  const jobs: JobDTO[] = jobsResult.status === "fulfilled" ? jobsResult.value : [];
+  const jobs: JobResponseDTO[] = jobsResult.status === "fulfilled" ? jobsResult.value : [];
   const customers: CustomerDTO[] =
     customersResult.status === "fulfilled" ? customersResult.value : [];
 
@@ -24,7 +24,6 @@ export default async function JobsPage() {
     id: job.id,
     customerId: job.customerId,
     title: job.title,
-    description: job.description,
     status: job.status,
     scheduledAt: job.scheduledAt,
     createdAt: job.createdAt,
