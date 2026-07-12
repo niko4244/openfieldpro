@@ -2,7 +2,6 @@ name: OpenFieldPro release CI
 
 on:
   pull_request:
-    branches: [ofp-monorepo]
   push:
     branches: [ofp-monorepo]
 
@@ -159,6 +158,8 @@ jobs:
         run: corepack enable && corepack prepare pnpm@9.0.0 --activate
       - name: Install verified workspace
         run: pnpm install:verified
+      - name: Run mobile authentication and isolation tests
+        run: pnpm --filter @ofp/mobile test
       - name: Type-check technician app
         run: |
           set +e
