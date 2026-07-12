@@ -57,7 +57,7 @@ test("dispatchers retain office routes but not owner administration", () => {
   }
 });
 
-test("technicians may open assigned field routes and diagnostic records only", () => {
+test("technicians may open assigned field routes and UUID diagnostic sessions only", () => {
   for (const pathname of [
     "/",
     "/jobs",
@@ -81,6 +81,8 @@ test("technicians may open assigned field routes and diagnostic records only", (
     "/schedule",
     "/pipeline",
     "/diagnostics",
+    "/diagnostics/quality",
+    "/diagnostics/not-a-session-id",
     `/diagnostics/${sessionId}/estimate-handoff`,
     "/diagnostic-library",
     "/coverage",
