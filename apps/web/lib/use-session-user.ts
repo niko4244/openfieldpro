@@ -10,14 +10,13 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { currentUser, logout } from "@/lib/api";
+import {
+  browserCurrentUser,
+  browserLogout,
+  type BrowserSessionUser,
+} from "@/lib/browser-auth";
 
-export interface SessionUser {
-  id: string;
-  name: string;
-  email: string;
-  role: "owner" | "dispatcher" | "technician";
-}
+export type SessionUser = BrowserSessionUser;
 
 interface SessionContextValue {
   user: SessionUser | null;
@@ -36,9 +35,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    currentUser()
+    browserCurrentUser()
       .then((nextUser) => {
-        if (active) setUser(nextUser as SessionUser);
+        if (active) setUser(nextUser);
       })
       .catch(() => {
         if (active) setUser(null);
@@ -54,7 +53,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     setSigningOut(true);
     try {
-      await logout();
+      await browserLogout();
     } finally {
       setUser(null);
       router.replace("/login");
