@@ -84,6 +84,7 @@ export const serverApi = {
   jobs: () => serverRequest<JobResponseDTO[]>("/api/jobs"),
   job: (id: string) => serverRequest<JobResponseDTO>(`/api/jobs/${id}`),
   customers: () => serverRequest<CustomerDTO[]>("/api/customers"),
+  customer: (id: string) => serverRequest<CustomerDTO>(`/api/customers/${id}`),
   appointments: () => serverRequest<Appointment[]>("/api/appointments"),
   invoices: () => serverRequest<Invoice[]>("/api/invoices"),
   activities: (query?: { jobId?: string; customerId?: string }) => {
