@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   activityVisibleToRole,
   customerResponseForRole,
+  manualActivityAllowed,
 } from "../src/field-record-redaction.js";
 
 const customer = {
@@ -52,4 +53,64 @@ test("technician activity timelines exclude billing and office workflow summarie
 test("office roles retain the complete activity timeline", () => {
   assert.equal(activityVisibleToRole("payment.received", "owner"), true);
   assert.equal(activityVisibleToRole("invoice.created", "dispatcher"), true);
+});
+
+test("manual activity creation cannot spoof system events", () => {
+  for (const role of ["owner", "dispatcher", "technician"] as const) {
+    assert.equal(
+      manualActivityAllowed(role, {
+        kind: "payment.received",
+        jobId: "job-1",
+      }),
+      false,
+    );
+    assert.equal(
+      manualActivityAllowed(role, {
+        kind: "invoice.created",
+        jobId: "job-1",
+      }),
+      false,
+    );
+  }
+});
+
+test("technicians may add only technician notes tied to assigned jobs", () => {
+  assert.equal(
+    manualActivityAllowed("technician", {
+      kind: "technician.note",
+      jobId: "job-1",
+    }),
+    true,
+  );
+  assert.equal(
+    manualActivityAllowed("technician", {
+      kind: "technician.note",
+      customerId: "customer-1",
+    }),
+    false,
+  );
+  assert.equal(
+    manualActivityAllowed("technician", {
+      kind: "job.note",
+      jobId: "job-1",
+    }),
+    false,
+  );
+});
+
+test("office users may add explicit customer and job notes", () => {
+  assert.equal(
+    manualActivityAllowed("owner", {
+      kind: "customer.note",
+      customerId: "customer-1",
+    }),
+    true,
+  );
+  assert.equal(
+    manualActivityAllowed("dispatcher", {
+      kind: "job.note",
+      jobId: "job-1",
+    }),
+    true,
+  );
 });
