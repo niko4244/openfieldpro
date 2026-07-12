@@ -18,6 +18,10 @@ const TECHNICIAN_EXACT_ROUTES = new Set([
   "/access-denied",
 ]);
 
+const UUID_PATH_SEGMENT =
+  "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}";
+const DIAGNOSTIC_SESSION_ROUTE = new RegExp(`^/diagnostics/${UUID_PATH_SEGMENT}$`);
+
 function exactOrChild(pathname: string, prefix: string) {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
@@ -45,7 +49,7 @@ export function isTechnicianRoute(pathname: string) {
   if (pathname === "/customers" || isSingleChild(pathname, "/customers")) return true;
 
   if (pathname === "/diagnostics/new") return true;
-  if (isSingleChild(pathname, "/diagnostics")) return true;
+  if (DIAGNOSTIC_SESSION_ROUTE.test(pathname)) return true;
 
   return false;
 }
