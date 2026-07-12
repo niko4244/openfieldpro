@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { currentUser, logout } from "@/lib/api";
 
@@ -8,10 +16,19 @@ export interface SessionUser {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: "owner" | "dispatcher" | "technician";
 }
 
-export function useSessionUser() {
+interface SessionContextValue {
+  user: SessionUser | null;
+  loading: boolean;
+  signingOut: boolean;
+  signOut: () => Promise<void>;
+}
+
+const SessionContext = createContext<SessionContextValue | null>(null);
+
+export function SessionProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,7 +38,7 @@ export function useSessionUser() {
     let active = true;
     currentUser()
       .then((nextUser) => {
-        if (active) setUser(nextUser);
+        if (active) setUser(nextUser as SessionUser);
       })
       .catch(() => {
         if (active) setUser(null);
@@ -46,5 +63,18 @@ export function useSessionUser() {
     }
   }, [router]);
 
-  return { user, loading, signingOut, signOut };
+  const value = useMemo(
+    () => ({ user, loading, signingOut, signOut }),
+    [user, loading, signingOut, signOut],
+  );
+
+  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+}
+
+export function useSessionUser() {
+  const context = useContext(SessionContext);
+  if (!context) {
+    throw new Error("useSessionUser must be used inside SessionProvider");
+  }
+  return context;
 }
