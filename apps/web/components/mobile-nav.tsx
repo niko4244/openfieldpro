@@ -4,15 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { NAV_SECTIONS, activeNavHref } from "@/lib/nav";
+import { activeNavHref, navSectionsForRole } from "@/lib/nav";
 import { useTheme } from "@/components/theme-provider";
 import { useSessionUser } from "@/lib/use-session-user";
 
 export function MobileNav() {
   const pathname = usePathname();
-  const currentNavHref = activeNavHref(pathname);
   const { theme, toggle } = useTheme();
   const { user, loading, signingOut, signOut } = useSessionUser();
+  const navSections = navSectionsForRole(user?.role);
+  const currentNavHref = activeNavHref(pathname, navSections);
   const [open, setOpen] = useState(false);
 
   useEffect(() => setOpen(false), [pathname]);
@@ -76,34 +77,40 @@ export function MobileNav() {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-3">
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.label} className="mb-5 last:mb-0">
-              <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-fg-dim">{section.label}</p>
-              <div className="flex flex-col gap-1">
-                {section.links.map(({ href, label, icon }) => {
-                  const active = currentNavHref === href;
-                  return (
-                    <Link
-                      key={href}
-                      href={href}
-                      onClick={() => setOpen(false)}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-3 text-sm no-underline transition-all duration-150",
-                        active
-                          ? "bg-accent font-medium text-white"
-                          : "text-fg-muted hover:bg-surface-300 hover:text-fg",
-                      )}
-                    >
-                      <span className="w-5 text-center text-base">{icon}</span>
-                      {label}
-                    </Link>
-                  );
-                })}
+        <nav className="flex-1 overflow-y-auto p-3" aria-label="Primary navigation">
+          {loading ? (
+            <div className="px-3 py-3 text-xs text-fg-dim">Loading workspace…</div>
+          ) : navSections.length > 0 ? (
+            navSections.map((section) => (
+              <div key={section.label} className="mb-5 last:mb-0">
+                <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-fg-dim">{section.label}</p>
+                <div className="flex flex-col gap-1">
+                  {section.links.map(({ href, label, icon }) => {
+                    const active = currentNavHref === href;
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        onClick={() => setOpen(false)}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-3 text-sm no-underline transition-all duration-150",
+                          active
+                            ? "bg-accent font-medium text-white"
+                            : "text-fg-muted hover:bg-surface-300 hover:text-fg",
+                        )}
+                      >
+                        <span className="w-5 text-center text-base">{icon}</span>
+                        {label}
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          ) : (
+            <div className="px-3 py-3 text-xs text-fg-dim">Sign in to open your workspace.</div>
+          )}
         </nav>
 
         <div className="shrink-0 border-t border-border p-3">
