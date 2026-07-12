@@ -22,6 +22,12 @@ function exactOrChild(pathname: string, prefix: string) {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
+function isSingleChild(pathname: string, prefix: string) {
+  if (!pathname.startsWith(`${prefix}/`)) return false;
+  const child = pathname.slice(prefix.length + 1);
+  return child.length > 0 && !child.includes("/");
+}
+
 export function isPublicRoute(pathname: string) {
   return PUBLIC_ROUTE_PREFIXES.some((prefix) => exactOrChild(pathname, prefix));
 }
@@ -34,14 +40,26 @@ export function isTechnicianRoute(pathname: string) {
   if (TECHNICIAN_EXACT_ROUTES.has(pathname)) return true;
 
   if (pathname === "/jobs") return true;
-  if (pathname.startsWith("/jobs/") && pathname !== "/jobs/new") return true;
+  if (isSingleChild(pathname, "/jobs") && pathname !== "/jobs/new") return true;
 
-  if (pathname === "/customers" || pathname.startsWith("/customers/")) return true;
+  if (pathname === "/customers" || isSingleChild(pathname, "/customers")) return true;
 
   if (pathname === "/diagnostics/new") return true;
-  if (/^\/diagnostics\/[0-9a-fA-F-]{36}$/.test(pathname)) return true;
+  if (isSingleChild(pathname, "/diagnostics")) return true;
 
   return false;
+}
+
+export function safeWorkspaceReturnPath(value?: string | null) {
+  if (!value) return "/";
+  try {
+    const base = "https://openfieldpro.local";
+    const parsed = new URL(value, base);
+    if (parsed.origin !== base) return "/";
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return "/";
+  }
 }
 
 export type RouteAccessDecision =
