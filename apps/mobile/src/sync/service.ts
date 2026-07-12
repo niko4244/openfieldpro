@@ -1,9 +1,13 @@
 import * as SQLite from "expo-sqlite";
+import {
+  NativeRequestError,
+  nativeRequest,
+  scopedDatabaseName,
+  type NativeSession,
+} from "../auth";
 
-export interface SyncServiceOptions {
+export interface SyncServiceOptions extends NativeSession {
   apiUrl: string;
-  orgId: string;
-  token: string;
 }
 
 export type OfflineOpKind =
@@ -64,55 +68,56 @@ export class SyncService {
 
   constructor(private opts: SyncServiceOptions) {}
 
-  private headers(): Record<string, string> {
+  private session(): NativeSession {
     return {
-      "Content-Type": "application/json",
-      ...(this.opts.token ? { Authorization: `Bearer ${this.opts.token}` } : {}),
-      ...(this.opts.orgId ? { "x-org-id": this.opts.orgId } : {}),
+      token: this.opts.token,
+      orgId: this.opts.orgId,
+      user: this.opts.user,
     };
   }
 
   private async database(): Promise<SQLite.SQLiteDatabase> {
     if (!this.databasePromise) {
-      this.databasePromise = SQLite.openDatabaseAsync("openfieldpro-field.db").then(
-        async (database) => {
-          await database.execAsync(`
-            PRAGMA journal_mode = WAL;
-            CREATE TABLE IF NOT EXISTS field_packages (
-              job_id TEXT PRIMARY KEY NOT NULL,
-              payload_json TEXT NOT NULL,
-              workflow_version TEXT,
-              support_state TEXT NOT NULL,
-              download_ready INTEGER NOT NULL DEFAULT 0,
-              cached_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS diagnostic_outbox (
-              op_id TEXT PRIMARY KEY NOT NULL,
-              kind TEXT NOT NULL,
-              payload_json TEXT NOT NULL,
-              attempts INTEGER NOT NULL DEFAULT 0,
-              last_error TEXT,
-              created_at TEXT NOT NULL
-            );
-          `);
-          return database;
-        },
-      );
+      const databaseName = scopedDatabaseName(this.opts.orgId, this.opts.user.id);
+      this.databasePromise = SQLite.openDatabaseAsync(databaseName).then(async (database) => {
+        await database.execAsync(`
+          PRAGMA journal_mode = WAL;
+          CREATE TABLE IF NOT EXISTS field_packages (
+            job_id TEXT PRIMARY KEY NOT NULL,
+            payload_json TEXT NOT NULL,
+            workflow_version TEXT,
+            support_state TEXT NOT NULL,
+            download_ready INTEGER NOT NULL DEFAULT 0,
+            cached_at TEXT NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS diagnostic_outbox (
+            op_id TEXT PRIMARY KEY NOT NULL,
+            kind TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at TEXT NOT NULL
+          );
+        `);
+        return database;
+      });
     }
     return this.databasePromise;
   }
 
-  async downloadPackage(jobId: string): Promise<FieldPackage> {
-    const response = await fetch(
-      `${this.opts.apiUrl}/api/diagnostics/field-package/${jobId}`,
-      { headers: this.headers() },
-    );
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`field package failed: ${response.status} ${body}`);
-    }
+  async close(): Promise<void> {
+    if (!this.databasePromise) return;
+    const database = await this.databasePromise;
+    this.databasePromise = null;
+    await database.closeAsync();
+  }
 
-    const fieldPackage = (await response.json()) as FieldPackage;
+  async downloadPackage(jobId: string): Promise<FieldPackage> {
+    const fieldPackage = await nativeRequest<FieldPackage>(
+      this.opts.apiUrl,
+      this.session(),
+      `/api/diagnostics/field-package/${encodeURIComponent(jobId)}`,
+    );
     const database = await this.database();
     const workflowVersion =
       fieldPackage.session && typeof fieldPackage.session.workflowVersion === "number"
@@ -259,21 +264,17 @@ export class SyncService {
       }
     });
 
-    const response = await fetch(`${this.opts.apiUrl}/api/diagnostics/offline-batch`, {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify({ ops: operations }),
-    });
-    if (!response.ok) throw new Error(`diagnostic outbox flush failed: ${response.status}`);
-
-    const body = (await response.json()) as {
+    const body = await nativeRequest<{
       results: Array<{
         opId: string;
         ok: boolean;
         conflict?: { currentVersion: number };
         error?: string;
       }>;
-    };
+    }>(this.opts.apiUrl, this.session(), "/api/diagnostics/offline-batch", {
+      method: "POST",
+      body: JSON.stringify({ ops: operations }),
+    });
 
     let flushed = 0;
     let failed = 0;
@@ -303,31 +304,31 @@ export class SyncService {
     return { flushed, failed };
   }
 
-  /**
-   * Synchronize field work as coherent job/appliance/diagnostic packages.
-   * This replaces the former empty generic sync request, which could not
-   * populate a durable local mirror.
-   */
+  /** Synchronize coherent job/appliance/diagnostic packages for this user only. */
   async pull(): Promise<FieldSyncResult> {
     const queuedBeforeFlush = await this.queuedCount();
-    const flush = await this.flushOutbox().catch(() => ({ flushed: 0, failed: queuedBeforeFlush }));
-
-    const [appointmentsResponse, sessionsResponse] = await Promise.all([
-      fetch(`${this.opts.apiUrl}/api/appointments`, { headers: this.headers() }),
-      fetch(`${this.opts.apiUrl}/api/diagnostics/sessions`, { headers: this.headers() }),
-    ]);
-    if (!appointmentsResponse.ok) {
-      throw new Error(`appointment package discovery failed: ${appointmentsResponse.status}`);
+    let flush = { flushed: 0, failed: queuedBeforeFlush };
+    try {
+      flush = await this.flushOutbox();
+    } catch (error) {
+      if (error instanceof NativeRequestError && error.terminalAuthenticationFailure) throw error;
     }
 
-    const appointments = (await appointmentsResponse.json()) as Array<{
-      jobId: string;
-      startsAt: string;
-      endsAt: string;
-    }>;
-    const sessions = sessionsResponse.ok
-      ? ((await sessionsResponse.json()) as Array<{ session: { jobId: string; status: string } }>)
-      : [];
+    const [appointments, sessions] = await Promise.all([
+      nativeRequest<Array<{ jobId: string; startsAt: string; endsAt: string }>>(
+        this.opts.apiUrl,
+        this.session(),
+        "/api/appointments",
+      ),
+      nativeRequest<Array<{ session: { jobId: string; status: string } }>>(
+        this.opts.apiUrl,
+        this.session(),
+        "/api/diagnostics/sessions",
+      ).catch((error) => {
+        if (error instanceof NativeRequestError && error.terminalAuthenticationFailure) throw error;
+        return [];
+      }),
+    ]);
 
     const now = Date.now();
     const horizon = now + 7 * 24 * 60 * 60 * 1000;
@@ -349,7 +350,8 @@ export class SyncService {
       try {
         await this.downloadPackage(jobId);
         downloaded += 1;
-      } catch {
+      } catch (error) {
+        if (error instanceof NativeRequestError && error.terminalAuthenticationFailure) throw error;
         failed += 1;
       }
     }
