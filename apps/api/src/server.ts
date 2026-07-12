@@ -31,6 +31,7 @@ import { diagnosticRoutes } from "./routes/diagnostics.js";
 import { diagnosticOfflineRoutes } from "./routes/diagnostic-offline.js";
 import { diagnosticOutputRoutes } from "./routes/diagnostic-outputs.js";
 import { diagnosticAuthoringGuard } from "./diagnostic-authoring-guard.js";
+import { diagnosticAccessGuard } from "./diagnostic-access-guard.js";
 import { operationalAuthorizationGuard } from "./operational-authorization.js";
 import { resolveCorsOrigin, resolveJwtSecret } from "./runtime-security.js";
 import { applyApiSecurityHeaders } from "./security-headers.js";
@@ -53,6 +54,7 @@ export function buildServer() {
     return payload;
   });
   app.addHook("preHandler", operationalAuthorizationGuard);
+  app.addHook("preHandler", diagnosticAccessGuard);
   app.addHook("preHandler", diagnosticAuthoringGuard);
   app.register(healthRoutes);
   app.register(authRoutes, { prefix: "/api/auth" });
