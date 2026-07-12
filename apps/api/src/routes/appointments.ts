@@ -5,6 +5,7 @@ import { db, appointments, jobs, users } from "@ofp/db";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 import { resolveAppointmentWindow } from "./appointment-validation.js";
+import { verifiedClaims } from "../operational-authorization.js";
 
 const createBody = z.object({
   jobId: z.string().uuid(),
@@ -88,10 +89,16 @@ function conflictResponse(conflict: {
 
 export async function appointmentRoutes(app: FastifyInstance) {
   // List, optionally within [from, to] for a calendar view.
-  app.get("/", async (req) => {
+  app.get("/", async (req, reply) => {
     const orgId = await resolveOrgId(req);
+    const claims = await verifiedClaims(req, reply);
+    if (!claims || reply.sent) return;
+
     const { from, to } = req.query as { from?: string; to?: string };
     const conds = [eq(appointments.orgId, orgId)];
+    if (claims.role === "technician") {
+      conds.push(eq(appointments.technicianId, claims.userId));
+    }
     if (from) conds.push(gte(appointments.startsAt, new Date(from)));
     if (to) conds.push(lte(appointments.startsAt, new Date(to)));
     return db
