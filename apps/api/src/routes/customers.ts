@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { db, customers } from "@ofp/db";
 import { resolveOrgId } from "./org.js";
+import { verifiedClaims } from "../operational-authorization.js";
+import { assignedCustomerIds, getAccessibleCustomer } from "../field-access.js";
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -19,15 +21,23 @@ const patchBody = z.object({
 });
 
 export async function customerRoutes(app: FastifyInstance) {
-  app.get("/", async (req) => {
+  app.get("/", async (req, reply) => {
     const orgId = await resolveOrgId(req);
+    const claims = await verifiedClaims(req, reply);
+    if (!claims || reply.sent) return;
+
     const { skip, take } = req.query as { skip?: string; take?: string };
     const s = skip ? parseInt(skip, 10) : 0;
     const t = take ? parseInt(take, 10) : 50;
+    const visibleCustomerIds = await assignedCustomerIds(orgId, claims);
+    if (visibleCustomerIds && visibleCustomerIds.length === 0) return [];
+
+    const conditions = [eq(customers.orgId, orgId)];
+    if (visibleCustomerIds) conditions.push(inArray(customers.id, visibleCustomerIds));
     return db
       .select()
       .from(customers)
-      .where(eq(customers.orgId, orgId))
+      .where(and(...conditions))
       .orderBy(desc(customers.createdAt))
       .limit(t)
       .offset(s);
@@ -35,7 +45,12 @@ export async function customerRoutes(app: FastifyInstance) {
 
   app.get("/:id", async (req, reply) => {
     const orgId = await resolveOrgId(req);
+    const claims = await verifiedClaims(req, reply);
+    if (!claims || reply.sent) return;
     const { id } = req.params as { id: string };
+    if (!(await getAccessibleCustomer(orgId, claims, id))) {
+      return reply.code(404).send({ error: "not found" });
+    }
     const [row] = await db
       .select()
       .from(customers)
