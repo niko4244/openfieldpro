@@ -91,6 +91,7 @@ export function MobileNav() {
                       <Link
                         key={href}
                         href={href}
+                        prefetch={false}
                         onClick={() => setOpen(false)}
                         aria-current={active ? "page" : undefined}
                         className={cn(
@@ -151,7 +152,12 @@ export function MobileNav() {
               </button>
             </div>
           ) : (
-            <Link href="/login" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm text-fg-muted no-underline hover:bg-surface-300 hover:text-fg">
+            <Link
+              href="/login"
+              prefetch={false}
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm text-fg-muted no-underline hover:bg-surface-300 hover:text-fg"
+            >
               <span className="w-5 text-center text-base">↪</span>
               Sign in
             </Link>
