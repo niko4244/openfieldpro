@@ -26,10 +26,10 @@ A production native client must:
 
 1. Prompt for the individual team member's email and password.
 2. Send credentials only to the configured HTTPS API origin.
-3. Store the returned token and organization ID using the platform secure credential store.
+3. Store a persistent token only in the platform secure credential store.
 4. Keep tokens out of Expo public environment variables, source control, logs, analytics, crash reports, SQLite, AsyncStorage, screenshots, and clipboard data.
 5. Attach the token only as an `Authorization: Bearer` header to the configured API origin.
-6. Delete the secure token on sign-out, account disablement, an unrecoverable 401/403 response, or organization removal.
+6. Delete the token on sign-out, account disablement, an unrecoverable 401/403 response, or organization removal.
 7. Preserve downloaded field packages separately from authentication credentials and apply the organization's offline-data retention policy.
 8. Reauthenticate after token expiry; the current API does not issue refresh tokens.
 
@@ -43,29 +43,44 @@ EXPO_PUBLIC_AUTH_TOKEN=<shared JWT>
 
 Expo public environment values are compiled into the client application and are not secret storage. A shared build-time credential also prevents individual revocation and audit attribution.
 
-## Current release blocker
+## Phase-one implementation
 
-The existing technician app still reads `EXPO_PUBLIC_AUTH_TOKEN`. Until the native client is migrated to secure per-user login and the deterministic lockfile is regenerated and verified, all production release tags remain **no-go**.
+The `mobile-per-user-auth` branch removes the compiled shared credential without adding a dependency or changing the deterministic lockfile:
 
-The migration requires:
+- each user signs in with an individual account;
+- the bearer token is held only in React memory;
+- API requests are constrained to the configured HTTPS origin;
+- authorization, organization, and native-client headers cannot be overridden by callers;
+- terminal 401/403 responses return the app to sign-in;
+- offline packages and queued writes use a database named from the authenticated organization and user IDs;
+- refresh, interval, and startup synchronization are serialized;
+- sign-out waits for active synchronization before SQLite closes;
+- release safety fails if `EXPO_PUBLIC_AUTH_TOKEN` returns to mobile application code.
 
-- `expo-secure-store` compatible with Expo SDK 52;
-- a login and sign-out state in the technician application;
-- secure token restore on startup;
-- invalid-token cleanup;
-- device tests on iOS and Android;
-- offline restart and queued-write tests;
-- committed `pnpm-lock.yaml` and `pnpm-lock.expected.sha256` generated together;
-- a release-safety check that rejects `EXPO_PUBLIC_AUTH_TOKEN` in application code and deployment examples.
+This is a security improvement over the shared build-time JWT, but it is not the complete production target.
+
+## Remaining release blockers
+
+All production release tags remain **no-go** until these items are complete:
+
+- add the Expo SDK 52 compatible secure credential-store dependency from the existing reviewed lockfile;
+- persist and restore the individual session securely;
+- prove an authorized user can reopen their own retained packages after an offline app restart;
+- define and test migration or quarantine of the legacy shared `openfieldpro-field.db` database without losing queued work;
+- verify sign-in, restart, expiration, sign-out, and offline behavior on iOS and Android;
+- regenerate and review `pnpm-lock.yaml` and `pnpm-lock.expected.sha256` together for any dependency change.
+
+Until secure persistence lands, force-quitting the application clears the token and requires online sign-in before the user-scoped cache can be reopened. The app must not weaken that boundary by selecting cached customer data from an unverified email alone.
 
 ## Acceptance evidence
 
-Attach all of the following to the migration pull request:
+Attach all of the following to the completed migration pull request:
 
 - API tests proving browser login never returns a token;
 - API tests proving native login requires the native client protocol and rejects browser metadata;
+- mobile authentication, header-locking, user-isolation, and single-flight tests;
 - mobile type-check output;
 - iOS and Android login, restart, sign-out, token-expiry, and offline evidence;
 - secret scan showing no compiled/shared token configuration;
 - deterministic lockfile digest;
-- screenshots of mobile login, authenticated Today, offline mode, and signed-out state.
+- screenshots of mobile login, authenticated Today, offline mode, session-expired, and signed-out states.
