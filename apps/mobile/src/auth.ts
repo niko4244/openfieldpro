@@ -14,14 +14,13 @@ export interface NativeSession {
 }
 
 export class NativeRequestError extends Error {
+  readonly status: number;
   readonly terminalAuthenticationFailure: boolean;
 
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
+  constructor(status: number, message: string) {
     super(message);
     this.name = "NativeRequestError";
+    this.status = status;
     this.terminalAuthenticationFailure = status === 401 || status === 403;
   }
 }
@@ -64,13 +63,12 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 function sessionHeaders(session: NativeSession, init?: RequestInit) {
-  return {
-    ...(init?.body ? { "content-type": "application/json" } : {}),
-    authorization: `Bearer ${session.token}`,
-    "x-org-id": session.orgId,
-    "x-openfieldpro-client": "native",
-    ...(init?.headers as Record<string, string> | undefined),
-  };
+  const headers = new Headers(init?.headers);
+  if (init?.body && !headers.has("content-type")) headers.set("content-type", "application/json");
+  headers.set("authorization", `Bearer ${session.token}`);
+  headers.set("x-org-id", session.orgId);
+  headers.set("x-openfieldpro-client", "native");
+  return headers;
 }
 
 export async function nativeLogin(
