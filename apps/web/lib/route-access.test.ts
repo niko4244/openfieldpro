@@ -4,6 +4,7 @@ import {
   isPublicRoute,
   isTechnicianRoute,
   routeAccessDecision,
+  safeWorkspaceReturnPath,
 } from "./route-access";
 
 const sessionId = "123e4567-e89b-12d3-a456-426614174000";
@@ -74,10 +75,13 @@ test("technicians may open assigned field routes and diagnostic records only", (
 
   for (const pathname of [
     "/jobs/new",
+    "/jobs/job-assigned/admin",
+    "/customers/customer-assigned/billing",
     "/dispatch",
     "/schedule",
     "/pipeline",
     "/diagnostics",
+    `/diagnostics/${sessionId}/estimate-handoff`,
     "/diagnostic-library",
     "/coverage",
     "/estimates",
@@ -90,6 +94,15 @@ test("technicians may open assigned field routes and diagnostic records only", (
   ]) {
     assert.equal(routeAccessDecision(pathname, "technician"), "forbidden", pathname);
   }
+});
+
+test("sign-in return paths are same-origin and fail closed", () => {
+  assert.equal(safeWorkspaceReturnPath("/jobs/job-1?tab=activity"), "/jobs/job-1?tab=activity");
+  assert.equal(safeWorkspaceReturnPath("https://evil.example/steal"), "/");
+  assert.equal(safeWorkspaceReturnPath("//evil.example/steal"), "/");
+  assert.equal(safeWorkspaceReturnPath("/\\evil.example/steal"), "/");
+  assert.equal(safeWorkspaceReturnPath("javascript:alert(1)"), "/");
+  assert.equal(safeWorkspaceReturnPath(null), "/");
 });
 
 test("unknown roles fail closed while authenticated users may view access denied", () => {
