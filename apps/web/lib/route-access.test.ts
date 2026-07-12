@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  isPublicAssetPath,
   isPublicRoute,
   isTechnicianRoute,
   routeAccessDecision,
@@ -22,8 +23,49 @@ test("public surfaces remain available without a workspace session", () => {
   }
 });
 
+test("future nested portal and login routes fail closed by default", () => {
+  for (const pathname of [
+    "/login/reset",
+    "/portal/customer-token/admin",
+    "/portal/customer-token/invoices",
+  ]) {
+    assert.equal(isPublicRoute(pathname), false, pathname);
+    assert.equal(routeAccessDecision(pathname, null), "authentication-required", pathname);
+  }
+});
+
+test("only explicit public metadata files bypass workspace authorization", () => {
+  for (const pathname of [
+    "/favicon.ico",
+    "/robots.txt",
+    "/sitemap.xml",
+    "/manifest.webmanifest",
+    "/icon.png",
+    "/apple-icon.png",
+    "/opengraph-image.png",
+    "/twitter-image.png",
+  ]) {
+    assert.equal(isPublicAssetPath(pathname), true, pathname);
+  }
+  for (const pathname of [
+    "/invoices/invoice-1.pdf",
+    "/jobs/job-1.json",
+    "/customers/customer-1.csv",
+    "/settings/team.js",
+  ]) {
+    assert.equal(isPublicAssetPath(pathname), false, pathname);
+  }
+});
+
 test("private surfaces require authentication", () => {
-  for (const pathname of ["/", "/jobs", "/customers", "/invoices", "/settings"]) {
+  for (const pathname of [
+    "/",
+    "/jobs",
+    "/customers",
+    "/invoices",
+    "/invoices/invoice-1.pdf",
+    "/settings",
+  ]) {
     assert.equal(routeAccessDecision(pathname, null), "authentication-required", pathname);
   }
 });
@@ -88,6 +130,7 @@ test("technicians may open assigned field routes and UUID diagnostic sessions on
     "/coverage",
     "/estimates",
     "/invoices",
+    "/invoices/invoice-1.pdf",
     "/service-plans",
     "/documents",
     "/reports",
