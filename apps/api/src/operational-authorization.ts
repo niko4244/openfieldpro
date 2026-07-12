@@ -41,6 +41,14 @@ function pathMatches(path: string, prefix: string) {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
+function isLineItemMutation(method: string, path: string) {
+  if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) return false;
+  return (
+    /^\/api\/jobs\/[^/]+\/line-items(?:\/[^/]+)?$/.test(path) ||
+    /^\/api\/line-items\/[^/]+$/.test(path)
+  );
+}
+
 export function requiredRolesForRequest(method: string, rawUrl: string): UserRole[] | null {
   const normalizedMethod = method.toUpperCase();
   const path = rawUrl.split("?")[0] ?? rawUrl;
@@ -60,6 +68,9 @@ export function requiredRolesForRequest(method: string, rawUrl: string): UserRol
     return null;
   }
 
+  if (isLineItemMutation(normalizedMethod, path)) {
+    return ["owner", "dispatcher"];
+  }
   if (OWNER_ONLY_WRITE_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
     return ["owner"];
   }
@@ -120,8 +131,12 @@ export function technicianJobPatchAllowed(payload: Record<string, unknown>) {
   );
 }
 
-const CANONICAL_API_ONLY_SYNC_TABLES = new Set(["invoices", "payments", "estimates"]);
-const TECHNICIAN_SYNC_TABLES = new Set(["jobs", "line_items"]);
+const CANONICAL_API_ONLY_SYNC_TABLES = new Set([
+  "invoices",
+  "payments",
+  "estimates",
+  "line_items",
+]);
 
 export function roleCanSyncOperation(
   role: UserRole,
@@ -129,9 +144,6 @@ export function roleCanSyncOperation(
 ) {
   if (CANONICAL_API_ONLY_SYNC_TABLES.has(operation.table)) return false;
   if (role === "owner" || role === "dispatcher") return true;
-  if (!TECHNICIAN_SYNC_TABLES.has(operation.table)) return false;
-  if (operation.table === "jobs") {
-    return operation.type === "update" && technicianJobPatchAllowed(operation.payload);
-  }
-  return operation.table === "line_items" && ["create", "update", "delete"].includes(operation.type);
+  if (operation.table !== "jobs") return false;
+  return operation.type === "update" && technicianJobPatchAllowed(operation.payload);
 }
