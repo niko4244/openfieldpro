@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { login } from "@/lib/api";
+import { browserLogin } from "@/lib/browser-auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +25,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
+      await browserLogin(email, password);
       router.replace(redirectTo);
       router.refresh();
     } catch {
