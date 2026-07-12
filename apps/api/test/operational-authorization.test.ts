@@ -20,6 +20,12 @@ test("owner-only and office routes are classified explicitly", () => {
   assert.equal(requiredRolesForRequest("PATCH", "/api/jobs/job-1"), null);
 });
 
+test("CORS preflight is never blocked by route authorization", () => {
+  assert.equal(requiredRolesForRequest("OPTIONS", "/api/plugins/installs"), null);
+  assert.equal(requiredRolesForRequest("OPTIONS", "/api/invoices"), null);
+  assert.equal(requiredRolesForRequest("OPTIONS", "/api/users/user-1"), null);
+});
+
 test("technician job patches are status-only and limited to field transitions", () => {
   assert.equal(technicianJobPatchAllowed({ status: "in_progress" }), true);
   assert.equal(technicianJobPatchAllowed({ status: "completed" }), true);
