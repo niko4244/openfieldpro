@@ -8,7 +8,7 @@ import { useSessionUser } from "@/lib/use-session-user";
 
 export function CommandPalette() {
   const { user } = useSessionUser();
-  const canSearchInvoices = user?.role !== "technician";
+  const canSearchInvoices = user?.role === "owner" || user?.role === "dispatcher";
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Awaited<ReturnType<typeof api.search>> | null>(null);
