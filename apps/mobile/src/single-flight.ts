@@ -7,11 +7,12 @@ export class SingleFlight {
     if (this.current) return this.current;
 
     const execution = Promise.resolve().then(operation);
-    this.current = execution.finally(() => {
-      if (this.current === execution || this.current === wrapped) this.current = null;
+    let tracked!: Promise<void>;
+    tracked = execution.finally(() => {
+      if (this.current === tracked) this.current = null;
     });
-    const wrapped = this.current;
-    return wrapped;
+    this.current = tracked;
+    return tracked;
   }
 
   async close(): Promise<void> {
