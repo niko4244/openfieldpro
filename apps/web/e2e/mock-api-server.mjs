@@ -127,6 +127,50 @@ const lineItems = {
   ],
 };
 
+const catalogCategories = [
+  { id: "category-laundry", name: "Laundry", description: "Washer and dryer service" },
+  { id: "category-cooling", name: "Refrigeration", description: "Cooling service" },
+];
+
+const catalogItems = [
+  {
+    id: "catalog-drain-pump",
+    orgId: "org-1",
+    categoryId: "category-laundry",
+    name: "Drain pump replacement",
+    description: "Replace an accessible washer drain pump after diagnosis.",
+    priceCents: 24900,
+    costCents: 7800,
+    taxable: true,
+    active: true,
+    createdAt: "2026-07-01T12:00:00.000Z",
+  },
+  {
+    id: "catalog-diagnostic",
+    orgId: "org-1",
+    categoryId: "category-laundry",
+    name: "Appliance diagnostic",
+    description: "On-site diagnosis and written findings.",
+    priceCents: 8900,
+    costCents: 1800,
+    taxable: false,
+    active: true,
+    createdAt: "2026-07-01T12:05:00.000Z",
+  },
+  {
+    id: "catalog-sealed-system",
+    orgId: "org-1",
+    categoryId: "category-cooling",
+    name: "Sealed-system evaluation",
+    description: "Pressure, temperature, and compressor-current evaluation.",
+    priceCents: 15900,
+    costCents: 3200,
+    taxable: false,
+    active: true,
+    createdAt: "2026-07-01T12:10:00.000Z",
+  },
+];
+
 let requests = [];
 
 function roleFromRequest(request) {
@@ -148,6 +192,11 @@ function fieldJob(job) {
 function fieldLineItem(item) {
   const { unitPrice: _unitPrice, unitCost: _unitCost, ...rest } = item;
   return { ...rest, financialsRestricted: true };
+}
+
+function fieldCatalogItem(item) {
+  const { costCents: _costCents, ...rest } = item;
+  return { ...rest, costRestricted: true };
 }
 
 function send(response, status, body) {
@@ -217,6 +266,19 @@ const server = http.createServer((request, response) => {
     ]);
   }
   if (url.pathname === "/api/diagnostics/sessions") return send(response, 200, []);
+  if (url.pathname === "/api/catalog/categories") return send(response, 200, catalogCategories);
+  if (url.pathname === "/api/catalog/items" && request.method === "GET") {
+    return send(
+      response,
+      200,
+      role === "technician" ? catalogItems.map(fieldCatalogItem) : catalogItems,
+    );
+  }
+  if (url.pathname.startsWith("/api/catalog/") && request.method !== "GET") {
+    return role === "technician"
+      ? send(response, 403, { error: "insufficient role for this operation" })
+      : send(response, 200, { ok: true });
+  }
   if (url.pathname === "/api/notifications/unread-count") return send(response, 200, { count: 0 });
   if (url.pathname === "/api/notifications") return send(response, 200, []);
 
