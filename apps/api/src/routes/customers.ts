@@ -3,8 +3,12 @@ import { z } from "zod";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { db, customers } from "@ofp/db";
 import { resolveOrgId } from "./org.js";
-import { verifiedClaims } from "../operational-authorization.js";
+import {
+  verifiedClaims,
+  type UserRole,
+} from "../operational-authorization.js";
 import { assignedCustomerIds, getAccessibleCustomer } from "../field-access.js";
+import { customerResponseForRole } from "../field-record-redaction.js";
 
 const createBody = z.object({
   name: z.string().min(1),
@@ -34,13 +38,14 @@ export async function customerRoutes(app: FastifyInstance) {
 
     const conditions = [eq(customers.orgId, orgId)];
     if (visibleCustomerIds) conditions.push(inArray(customers.id, visibleCustomerIds));
-    return db
+    const rows = await db
       .select()
       .from(customers)
       .where(and(...conditions))
       .orderBy(desc(customers.createdAt))
       .limit(t)
       .offset(s);
+    return rows.map((row) => customerResponseForRole(row, claims.role as UserRole));
   });
 
   app.get("/:id", async (req, reply) => {
@@ -56,7 +61,7 @@ export async function customerRoutes(app: FastifyInstance) {
       .from(customers)
       .where(and(eq(customers.orgId, orgId), eq(customers.id, id)));
     if (!row) return reply.code(404).send({ error: "not found" });
-    return row;
+    return customerResponseForRole(row, claims.role as UserRole);
   });
 
   app.post("/", async (req, reply) => {
