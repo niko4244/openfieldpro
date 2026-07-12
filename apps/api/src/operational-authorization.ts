@@ -3,10 +3,23 @@ import type { JwtClaims } from "./auth.js";
 
 export type UserRole = "owner" | "dispatcher" | "technician";
 
+const OWNER_ONLY_PREFIXES = [
+  "/api/plugins",
+];
+
 const OWNER_ONLY_WRITE_PREFIXES = [
   "/api/users",
   "/api/org",
-  "/api/plugins",
+];
+
+const OFFICE_READ_PREFIXES = [
+  "/api/users",
+  "/api/estimates",
+  "/api/invoices",
+  "/api/reports",
+  "/api/recurring",
+  "/api/reviews",
+  "/api/service-plans",
 ];
 
 const OFFICE_WRITE_PREFIXES = [
@@ -20,17 +33,33 @@ const OFFICE_WRITE_PREFIXES = [
   "/api/reviews",
 ];
 
+function pathMatches(path: string, prefix: string) {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
 export function requiredRolesForRequest(method: string, rawUrl: string): UserRole[] | null {
-  if (["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) return null;
+  const normalizedMethod = method.toUpperCase();
   const path = rawUrl.split("?")[0] ?? rawUrl;
 
-  if (OWNER_ONLY_WRITE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
+  if (OWNER_ONLY_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
     return ["owner"];
   }
-  if (OFFICE_WRITE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
+
+  if (["GET", "HEAD"].includes(normalizedMethod)) {
+    if (OFFICE_READ_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
+      return ["owner", "dispatcher"];
+    }
+    return null;
+  }
+  if (normalizedMethod === "OPTIONS") return null;
+
+  if (OWNER_ONLY_WRITE_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
+    return ["owner"];
+  }
+  if (OFFICE_WRITE_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
     return ["owner", "dispatcher"];
   }
-  if (path === "/api/jobs" && method.toUpperCase() === "POST") {
+  if (path === "/api/jobs" && normalizedMethod === "POST") {
     return ["owner", "dispatcher"];
   }
 
