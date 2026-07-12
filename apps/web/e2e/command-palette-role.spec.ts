@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 const artifactDir = path.resolve("artifacts");
 
@@ -59,12 +59,14 @@ async function mockOverBroadSearch(page: Page) {
   });
 }
 
-async function openSearch(page: Page) {
+async function openSearch(page: Page): Promise<Locator> {
   await page.keyboard.press("Control+K");
-  const input = page.getByRole("searchbox");
-  await expect(input).toBeVisible();
+  const palette = page.getByTestId("command-palette");
+  await expect(palette).toBeVisible();
+  const input = palette.getByRole("searchbox");
   await input.fill("washer");
-  await expect(page.getByText("Washer not draining")).toBeVisible();
+  await expect(palette.getByText("Washer not draining")).toBeVisible();
+  return palette;
 }
 
 test.beforeAll(async () => {
@@ -78,12 +80,12 @@ test("technician command palette discards invoice rows from an over-broad respon
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/jobs");
 
-  await openSearch(page);
+  const palette = await openSearch(page);
 
-  await expect(page.getByPlaceholder("Search assigned jobs and customers...")).toBeVisible();
-  await expect(page.getByText("Taylor Morgan")).toBeVisible();
-  await expect(page.getByText("INV-1042")).toHaveCount(0);
-  await expect(page.getByText("Invoices", { exact: true })).toHaveCount(0);
+  await expect(palette.getByPlaceholder("Search assigned jobs and customers...")).toBeVisible();
+  await expect(palette.getByText("Taylor Morgan")).toBeVisible();
+  await expect(palette.getByText("INV-1042")).toHaveCount(0);
+  await expect(palette.getByText("Invoices", { exact: true })).toHaveCount(0);
 
   await page.screenshot({
     path: path.join(artifactDir, "technician-command-palette-desktop.png"),
@@ -99,11 +101,11 @@ test("owner command palette retains invoice search", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/jobs");
 
-  await openSearch(page);
+  const palette = await openSearch(page);
 
-  await expect(page.getByPlaceholder("Search jobs, customers, invoices...")).toBeVisible();
-  await expect(page.getByText("INV-1042")).toBeVisible();
-  await expect(page.getByText("Invoices", { exact: true })).toBeVisible();
+  await expect(palette.getByPlaceholder("Search jobs, customers, invoices...")).toBeVisible();
+  await expect(palette.getByText("INV-1042")).toBeVisible();
+  await expect(palette.getByText("Invoices", { exact: true })).toBeVisible();
 
   await page.screenshot({
     path: path.join(artifactDir, "owner-command-palette-desktop.png"),
