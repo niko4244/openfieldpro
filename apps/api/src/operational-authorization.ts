@@ -20,6 +20,10 @@ const OFFICE_READ_PREFIXES = [
   "/api/recurring",
   "/api/reviews",
   "/api/service-plans",
+  "/api/diagnostics/overview",
+  "/api/diagnostics/coverage",
+  "/api/diagnostics/workflows",
+  "/api/diagnostics/corrections",
 ];
 
 const OFFICE_WRITE_PREFIXES = [
