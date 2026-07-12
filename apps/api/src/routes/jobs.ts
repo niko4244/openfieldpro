@@ -6,6 +6,7 @@ import { JOB_STATUS } from "@ofp/shared";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 import { safeEmitEvent } from "../plugins/bus.js";
+import { jobResponseForRole } from "../field-financials.js";
 import {
   technicianJobPatchAllowed,
   verifiedClaims,
@@ -29,17 +30,6 @@ export const jobPatchBody = z.object({
   total: z.number().int().nonnegative().optional(),
   laborCostCents: z.number().int().nonnegative().optional(),
 });
-
-type JobFinancialFields = {
-  total: number;
-  laborCostCents: number;
-};
-
-export function jobResponseForRole<T extends JobFinancialFields>(row: T, role: UserRole) {
-  if (role !== "technician") return row;
-  const { total: _total, laborCostCents: _laborCostCents, ...fieldJob } = row;
-  return { ...fieldJob, financialsRestricted: true as const };
-}
 
 function validTechnicianTransition(current: string, next: unknown) {
   return (
