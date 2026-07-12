@@ -6,7 +6,11 @@ import { JOB_STATUS } from "@ofp/shared";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 import { safeEmitEvent } from "../plugins/bus.js";
-import { technicianJobPatchAllowed, verifiedClaims } from "../operational-authorization.js";
+import {
+  technicianJobPatchAllowed,
+  verifiedClaims,
+  type UserRole,
+} from "../operational-authorization.js";
 
 const createBody = z.object({
   customerId: z.string().uuid(),
@@ -25,6 +29,17 @@ export const jobPatchBody = z.object({
   total: z.number().int().nonnegative().optional(),
   laborCostCents: z.number().int().nonnegative().optional(),
 });
+
+type JobFinancialFields = {
+  total: number;
+  laborCostCents: number;
+};
+
+export function jobResponseForRole<T extends JobFinancialFields>(row: T, role: UserRole) {
+  if (role !== "technician") return row;
+  const { total: _total, laborCostCents: _laborCostCents, ...fieldJob } = row;
+  return { ...fieldJob, financialsRestricted: true as const };
+}
 
 function validTechnicianTransition(current: string, next: unknown) {
   return (
@@ -45,7 +60,14 @@ export async function jobRoutes(app: FastifyInstance) {
     const scope = claims.role === "technician"
       ? and(eq(jobs.orgId, orgId), eq(jobs.assignedTo, claims.userId))
       : eq(jobs.orgId, orgId);
-    return db.select().from(jobs).where(scope).orderBy(desc(jobs.createdAt)).limit(t).offset(s);
+    const rows = await db
+      .select()
+      .from(jobs)
+      .where(scope)
+      .orderBy(desc(jobs.createdAt))
+      .limit(t)
+      .offset(s);
+    return rows.map((row) => jobResponseForRole(row, claims.role as UserRole));
   });
 
   app.get("/:id", async (req, reply) => {
@@ -58,7 +80,7 @@ export async function jobRoutes(app: FastifyInstance) {
       : and(eq(jobs.orgId, orgId), eq(jobs.id, id));
     const [row] = await db.select().from(jobs).where(scope).limit(1);
     if (!row) return reply.code(404).send({ error: "not found" });
-    return row;
+    return jobResponseForRole(row, claims.role as UserRole);
   });
 
   app.post("/", async (req, reply) => {
@@ -78,7 +100,12 @@ export async function jobRoutes(app: FastifyInstance) {
       customerId: row.customerId,
       jobId: row.id,
     });
-    void safeEmitEvent(orgId, "job.created", { id: row.id, title: row.title, customerId: row.customerId, status: row.status });
+    void safeEmitEvent(orgId, "job.created", {
+      id: row.id,
+      title: row.title,
+      customerId: row.customerId,
+      status: row.status,
+    });
     return reply.code(201).send(row);
   });
 
@@ -141,6 +168,6 @@ export async function jobRoutes(app: FastifyInstance) {
       });
     }
 
-    return row;
+    return jobResponseForRole(row, claims.role as UserRole);
   });
 }
