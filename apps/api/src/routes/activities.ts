@@ -9,7 +9,10 @@ import {
   type UserRole,
 } from "../operational-authorization.js";
 import { getAccessibleCustomer, getAccessibleJob } from "../field-access.js";
-import { activityVisibleToRole } from "../field-record-redaction.js";
+import {
+  activityVisibleToRole,
+  manualActivityAllowed,
+} from "../field-record-redaction.js";
 
 const queryParams = z
   .object({
@@ -90,7 +93,19 @@ export async function activityRoutes(app: FastifyInstance) {
     const access = await validateActivityTarget(orgId, claims, parsed.data);
     if (!access.ok) return reply.code(404).send({ error: access.error });
 
-    await safeEmitActivity(orgId, parsed.data.kind, parsed.data.summary, {
+    const role = claims.role as UserRole;
+    if (!manualActivityAllowed(role, parsed.data)) {
+      return reply.code(403).send({
+        error: role === "technician"
+          ? "technicians may only add technician.note activity to assigned jobs"
+          : "manual activity kind is not permitted",
+      });
+    }
+
+    const summary = role === "technician"
+      ? `Technician note: ${parsed.data.summary}`
+      : parsed.data.summary;
+    await safeEmitActivity(orgId, parsed.data.kind, summary, {
       customerId: parsed.data.customerId,
       jobId: parsed.data.jobId,
     });
