@@ -25,11 +25,19 @@ test("owner-only and office routes are classified explicitly", () => {
   assert.equal(requiredRolesForRequest("PATCH", "/api/jobs/job-1"), null);
 });
 
+test("line-item mutations are office-only while assigned reads remain field-accessible", () => {
+  assert.equal(requiredRolesForRequest("GET", "/api/jobs/job-1/line-items"), null);
+  assert.deepEqual(requiredRolesForRequest("POST", "/api/jobs/job-1/line-items"), ["owner", "dispatcher"]);
+  assert.deepEqual(requiredRolesForRequest("PATCH", "/api/jobs/job-1/line-items/item-1"), ["owner", "dispatcher"]);
+  assert.deepEqual(requiredRolesForRequest("DELETE", "/api/line-items/item-1"), ["owner", "dispatcher"]);
+});
+
 test("CORS preflight is never blocked by route authorization", () => {
   assert.equal(requiredRolesForRequest("OPTIONS", "/api/plugins/installs"), null);
   assert.equal(requiredRolesForRequest("OPTIONS", "/api/invoices"), null);
   assert.equal(requiredRolesForRequest("OPTIONS", "/api/users/user-1"), null);
   assert.equal(requiredRolesForRequest("OPTIONS", "/api/diagnostics/workflows"), null);
+  assert.equal(requiredRolesForRequest("OPTIONS", "/api/jobs/job-1/line-items"), null);
 });
 
 test("technician job patches are status-only and limited to field transitions", () => {
@@ -40,9 +48,9 @@ test("technician job patches are status-only and limited to field transitions", 
   assert.equal(technicianJobPatchAllowed({ assignedTo: "other" }), false);
 });
 
-test("offline financial writes cannot bypass canonical invoice and payment APIs", () => {
+test("offline financial writes cannot bypass canonical APIs", () => {
   for (const role of ["owner", "dispatcher", "technician"] as const) {
-    for (const table of ["invoices", "payments", "estimates"]) {
+    for (const table of ["invoices", "payments", "estimates", "line_items"]) {
       assert.equal(
         roleCanSyncOperation(role, { table, type: "create", payload: {} }),
         false,
@@ -51,7 +59,7 @@ test("offline financial writes cannot bypass canonical invoice and payment APIs"
   }
 });
 
-test("technicians can only sync assigned field-shaped operations", () => {
+test("technicians can only sync assigned status transitions", () => {
   assert.equal(
     roleCanSyncOperation("technician", {
       table: "jobs",
@@ -74,7 +82,7 @@ test("technicians can only sync assigned field-shaped operations", () => {
       type: "create",
       payload: { jobId: "job" },
     }),
-    true,
+    false,
   );
   assert.equal(
     roleCanSyncOperation("technician", {
