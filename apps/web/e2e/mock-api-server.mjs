@@ -127,6 +127,65 @@ const lineItems = {
   ],
 };
 
+const equipment = [
+  {
+    id: "equipment-1",
+    orgId: "org-1",
+    customerId: "customer-1",
+    type: "appliance",
+    make: "Whirlpool",
+    model: "WTW5057LW",
+    serialNumber: "CX1200456",
+    installDate: "2024-03-15T00:00:00.000Z",
+    warrantyExpiry: "2027-03-15T00:00:00.000Z",
+    notes: "Laundry room, left side of basement.",
+    createdAt: "2026-07-09T12:00:00.000Z",
+  },
+];
+
+const servicePlans = [
+  {
+    id: "plan-1",
+    orgId: "org-1",
+    name: "Home Appliance Care",
+    description: "Two preventive visits per year.",
+    includedVisitsPerTerm: 2,
+    termMonths: 12,
+    priceCents: 19900,
+    priorityScheduling: true,
+    benefits: ["Priority scheduling"],
+    active: true,
+    createdAt: "2026-07-01T12:00:00.000Z",
+  },
+];
+
+const servicePlanEnrollments = [
+  {
+    id: "enrollment-1",
+    orgId: "org-1",
+    customerId: "customer-1",
+    servicePlanId: "plan-1",
+    status: "active",
+    startsAt: "2026-01-01T00:00:00.000Z",
+    renewsAt: "2027-01-01T00:00:00.000Z",
+    renewalReminderAt: "2026-12-02T00:00:00.000Z",
+    visitsIncluded: 2,
+    visitsCompleted: 1,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+];
+
+const servicePlanVisits = [
+  {
+    id: "visit-1",
+    orgId: "org-1",
+    customerServicePlanId: "enrollment-1",
+    title: "Annual washer inspection",
+    status: "completed",
+    createdAt: "2026-04-01T00:00:00.000Z",
+  },
+];
+
 const catalogCategories = [
   { id: "category-laundry", name: "Laundry", description: "Washer and dryer service" },
   { id: "category-cooling", name: "Refrigeration", description: "Cooling service" },
@@ -247,7 +306,25 @@ const server = http.createServer((request, response) => {
     const rows = lineItems[id] ?? [];
     return send(response, 200, role === "technician" ? rows.map(fieldLineItem) : rows);
   }
-  if (url.pathname === "/api/customers") return send(response, 200, customers);
+
+  if (url.pathname === "/api/customers" && request.method === "GET") {
+    return send(response, 200, customers);
+  }
+  if (url.pathname === "/api/customers" && request.method === "POST") {
+    return role === "technician"
+      ? send(response, 403, { error: "insufficient role for this operation" })
+      : send(response, 201, customers[0]);
+  }
+  if (/^\/api\/customers\/[^/]+$/.test(url.pathname)) {
+    const id = pathParts(url.pathname)[2];
+    const customer = customers.find((item) => item.id === id);
+    if (!customer) return send(response, 404, { error: "not found" });
+    if (request.method === "PATCH" && role === "technician") {
+      return send(response, 403, { error: "insufficient role for this operation" });
+    }
+    return send(response, 200, customer);
+  }
+
   if (url.pathname === "/api/appointments") return send(response, 200, appointments);
   if (url.pathname === "/api/invoices") {
     return role === "technician"
@@ -258,21 +335,53 @@ const server = http.createServer((request, response) => {
     return send(response, 200, [
       {
         id: "activity-1",
-        jobId: url.searchParams.get("jobId"),
+        customerId: url.searchParams.get("customerId") ?? "customer-1",
+        jobId: url.searchParams.get("jobId") ?? "job-scheduled",
         kind: "job.status_changed",
         summary: "Job assigned to Alex Rivera",
         createdAt: "2026-07-11T12:15:00.000Z",
       },
     ]);
   }
+
+  if (url.pathname === "/api/equipment" && request.method === "GET") {
+    const customerId = url.searchParams.get("customerId");
+    return send(response, 200, customerId ? equipment.filter((item) => item.customerId === customerId) : equipment);
+  }
+  if (url.pathname === "/api/equipment" && request.method === "POST") {
+    return send(response, 201, equipment[0]);
+  }
+  if (/^\/api\/equipment\/[^/]+$/.test(url.pathname) && request.method === "DELETE") {
+    return role === "technician"
+      ? send(response, 403, { error: "equipment deletion requires office access" })
+      : send(response, 204, {});
+  }
+
+  if (url.pathname === "/api/service-plans") {
+    return role === "technician"
+      ? send(response, 403, { error: "insufficient role for this operation" })
+      : send(response, 200, servicePlans);
+  }
+  if (url.pathname === "/api/service-plans/enrollments" && request.method === "GET") {
+    return role === "technician"
+      ? send(response, 403, { error: "insufficient role for this operation" })
+      : send(response, 200, servicePlanEnrollments);
+  }
+  if (url.pathname === "/api/service-plans/enrollments" && request.method === "POST") {
+    return role === "technician"
+      ? send(response, 403, { error: "insufficient role for this operation" })
+      : send(response, 201, servicePlanEnrollments[0]);
+  }
+  if (url.pathname === "/api/service-plans/visits") {
+    return role === "technician"
+      ? send(response, 403, { error: "insufficient role for this operation" })
+      : send(response, 200, servicePlanVisits);
+  }
+
   if (url.pathname === "/api/diagnostics/sessions") return send(response, 200, []);
   if (url.pathname === "/api/catalog/categories") return send(response, 200, catalogCategories);
   if (url.pathname === "/api/catalog/items" && request.method === "GET") {
-    return send(
-      response,
-      200,
-      role === "technician" ? catalogItems.map(fieldCatalogItem) : catalogItems,
-    );
+    return send(response, 200, role === "technician" ? catalogItems.map(fieldCatalogItem) : catalogItems);
   }
   if (url.pathname.startsWith("/api/catalog/") && request.method !== "GET") {
     return role === "technician"
