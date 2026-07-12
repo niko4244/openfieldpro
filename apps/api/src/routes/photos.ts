@@ -3,6 +3,8 @@ import multipart from "@fastify/multipart";
 import { resolveOrgId } from "./org.js";
 import { savePhoto, getPhotoFile, listJobPhotos } from "../uploads.js";
 import { createFixedWindowRateLimit, requestIpKey } from "../rate-limit.js";
+import { verifiedClaims } from "../operational-authorization.js";
+import { getAccessibleJob, getAccessiblePhoto } from "../field-access.js";
 
 interface PhotoParams {
   jobId: string;
@@ -44,7 +46,12 @@ export async function photoRoutes(app: FastifyInstance) {
     { preHandler: uploadRateLimit },
     async (req: FastifyRequest<{ Params: PhotoParams }>, reply: FastifyReply) => {
       const orgId = await resolveOrgId(req);
+      const claims = await verifiedClaims(req, reply);
+      if (!claims || reply.sent) return;
       const { jobId } = req.params;
+      if (!(await getAccessibleJob(orgId, claims, jobId))) {
+        return reply.code(404).send({ error: "job not found" });
+      }
 
       try {
         const file = await req.file();
@@ -73,7 +80,12 @@ export async function photoRoutes(app: FastifyInstance) {
     "/:photoId/file",
     async (req: FastifyRequest<{ Params: PhotoIdParams }>, reply: FastifyReply) => {
       const orgId = await resolveOrgId(req);
+      const claims = await verifiedClaims(req, reply);
+      if (!claims || reply.sent) return;
       const { photoId } = req.params;
+      if (!(await getAccessiblePhoto(orgId, claims, photoId))) {
+        return reply.code(404).send({ error: "photo not found" });
+      }
 
       try {
         const result = await getPhotoFile(photoId, orgId);
@@ -95,7 +107,12 @@ export async function photoRoutes(app: FastifyInstance) {
     "/job/:jobId",
     async (req: FastifyRequest<{ Params: PhotoParams }>, reply: FastifyReply) => {
       const orgId = await resolveOrgId(req);
+      const claims = await verifiedClaims(req, reply);
+      if (!claims || reply.sent) return;
       const { jobId } = req.params;
+      if (!(await getAccessibleJob(orgId, claims, jobId))) {
+        return reply.code(404).send({ error: "job not found" });
+      }
       return listJobPhotos(jobId, orgId);
     },
   );
