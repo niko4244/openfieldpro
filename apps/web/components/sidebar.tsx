@@ -18,7 +18,7 @@ export function Sidebar() {
   return (
     <aside className="fixed bottom-0 left-0 top-0 z-40 hidden w-64 flex-col border-r border-border bg-surface-50 md:flex">
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-5">
-        <Link href="/" className="flex items-center gap-2.5 no-underline">
+        <Link href="/" prefetch={false} className="flex items-center gap-2.5 no-underline">
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent text-xs font-black text-white">OF</span>
           <div>
             <span className="block text-sm font-semibold text-fg">OpenFieldPro</span>
@@ -44,6 +44,7 @@ export function Sidebar() {
                     <Link
                       key={href}
                       href={href}
+                      prefetch={false}
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm no-underline transition-all duration-150",
@@ -103,6 +104,7 @@ export function Sidebar() {
         ) : (
           <Link
             href="/login"
+            prefetch={false}
             className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-fg-muted no-underline transition-all duration-150 hover:bg-surface-300 hover:text-fg"
           >
             <span className="w-5 text-center text-base">↪</span>
