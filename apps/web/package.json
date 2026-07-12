@@ -7,7 +7,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "test:unit": "tsx --test lib/dispatch-conflicts.test.ts lib/dispatch-api.test.ts lib/nav.test.ts lib/customer-role.test.ts",
+    "test:unit": "tsx --test lib/dispatch-conflicts.test.ts lib/dispatch-api.test.ts lib/nav.test.ts lib/customer-role.test.ts lib/route-access.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
