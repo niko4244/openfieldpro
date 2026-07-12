@@ -105,7 +105,7 @@ export function CommandPalette() {
     <>
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)} />
       <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
-        <Card className="w-full max-w-lg mx-4 overflow-hidden">
+        <Card data-testid="command-palette" className="w-full max-w-lg mx-4 overflow-hidden">
           <div className="p-3 border-b border-border">
             <Input
               ref={inputRef}
