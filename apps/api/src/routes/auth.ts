@@ -140,8 +140,16 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post("/native-login", { preHandler: loginRateLimit }, async (req, reply) => {
     reply.header("Cache-Control", "no-store");
-    if (!nativeLoginRequestAllowed(req.headers.origin, req.headers["sec-fetch-site"])) {
-      return reply.code(403).send({ error: "native login does not accept browser-origin requests" });
+    if (
+      !nativeLoginRequestAllowed(
+        req.headers.origin,
+        req.headers["sec-fetch-site"],
+        req.headers["x-openfieldpro-client"],
+      )
+    ) {
+      return reply.code(403).send({
+        error: "native login requires the native client protocol and rejects browser-origin requests",
+      });
     }
 
     const parsed = loginBody.safeParse(req.body);
