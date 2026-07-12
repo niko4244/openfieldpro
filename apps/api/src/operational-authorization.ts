@@ -41,6 +41,10 @@ export function requiredRolesForRequest(method: string, rawUrl: string): UserRol
   const normalizedMethod = method.toUpperCase();
   const path = rawUrl.split("?")[0] ?? rawUrl;
 
+  // CORS preflight must be answered before authentication or authorization.
+  // The subsequent real request still receives the full role check.
+  if (normalizedMethod === "OPTIONS") return null;
+
   if (OWNER_ONLY_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
     return ["owner"];
   }
@@ -51,7 +55,6 @@ export function requiredRolesForRequest(method: string, rawUrl: string): UserRol
     }
     return null;
   }
-  if (normalizedMethod === "OPTIONS") return null;
 
   if (OWNER_ONLY_WRITE_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
     return ["owner"];
