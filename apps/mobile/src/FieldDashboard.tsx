@@ -14,6 +14,7 @@ import {
   nativeRequest,
   type NativeSession,
 } from "./auth";
+import { SingleFlight } from "./single-flight";
 import { SyncService, type FieldPackage } from "./sync";
 
 interface Appointment {
@@ -109,10 +110,13 @@ export function FieldDashboard({
   useEffect(() => {
     let active = true;
     const service = new SyncService({ apiUrl, ...session });
+    const flight = new SingleFlight();
 
     const applyPackages = async (packages: FieldPackage[]) => {
+      if (!active || packages.length === 0) return false;
+      const queued = await service.queuedCount();
       if (!active) return false;
-      if (!packages.length) return false;
+
       setJobs(packages.map((item) => item.job as unknown as JobDTO));
       setAppointments(
         packages.flatMap((item) => {
@@ -126,7 +130,7 @@ export function FieldDashboard({
           return diagnostic ? [diagnostic] : [];
         }),
       );
-      setQueuedWrites(await service.queuedCount());
+      setQueuedWrites(queued);
       setOffline(true);
       return true;
     };
@@ -147,13 +151,15 @@ export function FieldDashboard({
         nativeRequest<Appointment[]>(apiUrl, session, "/api/appointments"),
         diagnosticsRequest,
       ]);
+      const queued = await service.queuedCount();
       if (!active) return;
+
       setJobs(jobRows);
       setAppointments(appointmentRows);
       setDiagnostics(diagnosticRows);
+      setQueuedWrites(queued);
       setOffline(false);
       setError(null);
-      setQueuedWrites(await service.queuedCount());
     };
 
     const handleFailure = async (caught: unknown) => {
@@ -172,7 +178,7 @@ export function FieldDashboard({
       );
     };
 
-    const synchronize = async () => {
+    const synchronizeOnce = async () => {
       try {
         if (active) setError(null);
         const result = await service.pull();
@@ -190,6 +196,7 @@ export function FieldDashboard({
       }
     };
 
+    const synchronize = () => flight.run(synchronizeOnce);
     refreshRef.current = synchronize;
     void synchronize();
     const interval = setInterval(() => void synchronize(), 30_000);
@@ -198,7 +205,7 @@ export function FieldDashboard({
       active = false;
       clearInterval(interval);
       refreshRef.current = async () => undefined;
-      void service.close();
+      void flight.close().then(() => service.close()).catch(() => undefined);
     };
   }, [apiUrl, onSessionExpired, session]);
 
@@ -274,9 +281,7 @@ export function FieldDashboard({
           <View style={styles.identityRow}>
             <View style={styles.flexOne}>
               <Text style={styles.headerTitle}>Today</Text>
-              <Text style={styles.identityText}>
-                {session.user.name} · {humanize(session.user.role)}
-              </Text>
+              <Text style={styles.identityText}>{session.user.name} · {humanize(session.user.role)}</Text>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -319,9 +324,7 @@ export function FieldDashboard({
                 </View>
                 <View style={styles.flexOne}>
                   <Text style={styles.cardTitle}>{nextJob?.title ?? "Assigned service job"}</Text>
-                  <Text style={styles.cardMeta}>
-                    {nextJob?.status ? humanize(nextJob.status) : "scheduled"}
-                  </Text>
+                  <Text style={styles.cardMeta}>{nextJob?.status ? humanize(nextJob.status) : "scheduled"}</Text>
                 </View>
               </View>
 
@@ -334,22 +337,10 @@ export function FieldDashboard({
                           .filter(Boolean)
                           .join(" ") || nextDiagnostic.equipment.type}
                       </Text>
-                      <Text style={styles.cardMeta}>
-                        {nextDiagnostic.workflow?.name ?? "Coverage required"}
-                      </Text>
+                      <Text style={styles.cardMeta}>{nextDiagnostic.workflow?.name ?? "Coverage required"}</Text>
                     </View>
-                    <View
-                      style={[
-                        styles.statusPill,
-                        { borderColor: statusColor(nextDiagnostic.session.status) },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusText,
-                          { color: statusColor(nextDiagnostic.session.status) },
-                        ]}
-                      >
+                    <View style={[styles.statusPill, { borderColor: statusColor(nextDiagnostic.session.status) }]}>
+                      <Text style={[styles.statusText, { color: statusColor(nextDiagnostic.session.status) }]}>
                         {humanize(nextDiagnostic.session.status)}
                       </Text>
                     </View>
@@ -395,12 +386,9 @@ export function FieldDashboard({
                 <View style={styles.rowBetween}>
                   <View style={styles.flexOne}>
                     <Text style={styles.listTitle}>
-                      {[item.equipment.make, item.equipment.model].filter(Boolean).join(" ") ||
-                        item.equipment.type}
+                      {[item.equipment.make, item.equipment.model].filter(Boolean).join(" ") || item.equipment.type}
                     </Text>
-                    <Text style={styles.cardMeta}>
-                      {item.workflow?.name ?? "Unsupported / unresolved"}
-                    </Text>
+                    <Text style={styles.cardMeta}>{item.workflow?.name ?? "Unsupported / unresolved"}</Text>
                   </View>
                   <Text style={[styles.smallStatus, { color: statusColor(item.session.status) }]}>
                     {humanize(item.session.status)}
@@ -425,10 +413,7 @@ export function FieldDashboard({
             return (
               <View key={appointment.id} style={styles.routeCard}>
                 <Text style={styles.routeTime}>
-                  {new Date(appointment.startsAt).toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
+                  {new Date(appointment.startsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                 </Text>
                 <View style={styles.flexOne}>
                   <Text style={styles.listTitle}>{job?.title ?? "Service job"}</Text>
