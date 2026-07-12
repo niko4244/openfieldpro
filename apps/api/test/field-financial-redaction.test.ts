@@ -6,7 +6,11 @@ import {
   jobResponseForRole,
   lineItemResponseForRole,
 } from "../src/field-financials.js";
-import { isDiagnosticFieldPackageRequest } from "../src/field-financial-response-guard.js";
+import {
+  filterDiagnosticSessionsForAssignedJobs,
+  isDiagnosticFieldPackageRequest,
+  isDiagnosticSessionListRequest,
+} from "../src/field-financial-response-guard.js";
 
 const job = {
   id: "job-1",
@@ -82,7 +86,20 @@ test("downloaded technician field packages cannot reintroduce job financials", (
   assert.equal(response.job.financialsRestricted, true);
 });
 
-test("field-package response hook targets only exact GET package routes", () => {
+test("technician diagnostic bulk lists retain only sessions for assigned jobs", () => {
+  const payload = [
+    { session: { id: "session-1", jobId: "job-1" } },
+    { session: { id: "session-2", jobId: "job-2" } },
+    { session: { id: "session-3", jobId: "job-3" } },
+  ];
+  assert.deepEqual(filterDiagnosticSessionsForAssignedJobs(payload, ["job-1", "job-3"]), [
+    payload[0],
+    payload[2],
+  ]);
+  assert.deepEqual(filterDiagnosticSessionsForAssignedJobs(payload, []), []);
+});
+
+test("financial and assignment response hooks target exact GET routes", () => {
   assert.equal(
     isDiagnosticFieldPackageRequest("GET", "/api/diagnostics/field-package/job-1?fresh=true"),
     true,
@@ -92,4 +109,9 @@ test("field-package response hook targets only exact GET package routes", () => 
     false,
   );
   assert.equal(isDiagnosticFieldPackageRequest("GET", "/api/diagnostics/sessions"), false);
+  assert.equal(
+    isDiagnosticSessionListRequest("GET", "/api/diagnostics/sessions?status=testing"),
+    true,
+  );
+  assert.equal(isDiagnosticSessionListRequest("POST", "/api/diagnostics/sessions"), false);
 });
