@@ -16,6 +16,11 @@ test("owner-only and office routes are classified explicitly", () => {
   assert.deepEqual(requiredRolesForRequest("GET", "/api/invoices"), ["owner", "dispatcher"]);
   assert.deepEqual(requiredRolesForRequest("GET", "/api/reports/summary"), ["owner", "dispatcher"]);
   assert.deepEqual(requiredRolesForRequest("GET", "/api/users?take=20"), ["owner", "dispatcher"]);
+  assert.deepEqual(requiredRolesForRequest("GET", "/api/diagnostics/overview"), ["owner", "dispatcher"]);
+  assert.deepEqual(requiredRolesForRequest("GET", "/api/diagnostics/workflows"), ["owner", "dispatcher"]);
+  assert.deepEqual(requiredRolesForRequest("GET", "/api/diagnostics/corrections"), ["owner", "dispatcher"]);
+  assert.equal(requiredRolesForRequest("POST", "/api/diagnostics/corrections"), null);
+  assert.equal(requiredRolesForRequest("GET", "/api/diagnostics/sessions?jobId=job-1"), null);
   assert.equal(requiredRolesForRequest("GET", "/api/jobs"), null);
   assert.equal(requiredRolesForRequest("PATCH", "/api/jobs/job-1"), null);
 });
@@ -24,6 +29,7 @@ test("CORS preflight is never blocked by route authorization", () => {
   assert.equal(requiredRolesForRequest("OPTIONS", "/api/plugins/installs"), null);
   assert.equal(requiredRolesForRequest("OPTIONS", "/api/invoices"), null);
   assert.equal(requiredRolesForRequest("OPTIONS", "/api/users/user-1"), null);
+  assert.equal(requiredRolesForRequest("OPTIONS", "/api/diagnostics/workflows"), null);
 });
 
 test("technician job patches are status-only and limited to field transitions", () => {
