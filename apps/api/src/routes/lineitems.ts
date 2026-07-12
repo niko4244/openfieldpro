@@ -5,6 +5,7 @@ import { db, lineItems, jobs } from "@ofp/db";
 import { sumLines, jobCost, jobMargin } from "../totals.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
+import { lineItemResponseForRole } from "../field-financials.js";
 import {
   verifiedClaims,
   type UserRole,
@@ -16,17 +17,6 @@ const createBody = z.object({
   unitPrice: z.number().int().nonnegative(),
   unitCost: z.number().int().nonnegative().default(0),
 });
-
-type LineItemFinancialFields = {
-  unitPrice: number;
-  unitCost: number;
-};
-
-export function lineItemResponseForRole<T extends LineItemFinancialFields>(row: T, role: UserRole) {
-  if (role !== "technician") return row;
-  const { unitPrice: _unitPrice, unitCost: _unitCost, ...fieldItem } = row;
-  return { ...fieldItem, financialsRestricted: true as const };
-}
 
 async function recomputeJobTotals(orgId: string, jobId: string) {
   const [job] = await db
