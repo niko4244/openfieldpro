@@ -22,9 +22,13 @@ export function nativeAuthResponse(identity: AuthenticatedIdentity) {
   return identity;
 }
 
-export function nativeLoginRequestAllowed(origin: unknown) {
-  // Browser fetch/XHR POST requests carry Origin. The native endpoint is kept
-  // outside the browser credential surface so an injected web script cannot
-  // exchange a password for a readable bearer token.
-  return origin === undefined || origin === null || origin === "";
+export function nativeLoginRequestAllowed(
+  origin: unknown,
+  secFetchSite: unknown,
+) {
+  // Browser fetch/XHR requests carry Origin and/or Sec-Fetch-Site. The native
+  // endpoint remains outside the browser credential surface so an injected web
+  // script cannot exchange a password for a readable bearer token.
+  return (origin === undefined || origin === null) &&
+    (secFetchSite === undefined || secFetchSite === null);
 }
