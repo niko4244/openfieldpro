@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { and, desc, eq, ilike } from "drizzle-orm";
 import { db, catalogCategories, catalogItems } from "@ofp/db";
+import { catalogItemResponseForRole } from "../field-financials.js";
+import { verifiedClaims, type UserRole } from "../operational-authorization.js";
 import { resolveOrgId } from "./org.js";
 
 const categoryBody = z.object({
@@ -22,8 +24,10 @@ const itemBody = z.object({
 const patchItemBody = itemBody.partial();
 
 export async function catalogRoutes(app: FastifyInstance) {
-  app.get("/categories", async (req) => {
+  app.get("/categories", async (req, reply) => {
     const orgId = await resolveOrgId(req);
+    const claims = await verifiedClaims(req, reply);
+    if (!claims || reply.sent) return;
     return db
       .select()
       .from(catalogCategories)
@@ -39,19 +43,22 @@ export async function catalogRoutes(app: FastifyInstance) {
     return reply.code(201).send(row);
   });
 
-  app.get("/items", async (req) => {
+  app.get("/items", async (req, reply) => {
     const orgId = await resolveOrgId(req);
+    const claims = await verifiedClaims(req, reply);
+    if (!claims || reply.sent) return;
     const query = req.query as { search?: string; categoryId?: string; active?: string };
     const conditions = [eq(catalogItems.orgId, orgId)];
     if (query.categoryId) conditions.push(eq(catalogItems.categoryId, query.categoryId));
     if (query.active === "true") conditions.push(eq(catalogItems.active, true));
     if (query.active === "false") conditions.push(eq(catalogItems.active, false));
     if (query.search?.trim()) conditions.push(ilike(catalogItems.name, `%${query.search.trim()}%`));
-    return db
+    const rows = await db
       .select()
       .from(catalogItems)
       .where(and(...conditions))
       .orderBy(desc(catalogItems.createdAt));
+    return rows.map((row) => catalogItemResponseForRole(row, claims.role as UserRole));
   });
 
   app.post("/items", async (req, reply) => {
