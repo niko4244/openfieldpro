@@ -25,10 +25,12 @@ export function nativeAuthResponse(identity: AuthenticatedIdentity) {
 export function nativeLoginRequestAllowed(
   origin: unknown,
   secFetchSite: unknown,
+  client: unknown,
 ) {
-  // Browser fetch/XHR requests carry Origin and/or Sec-Fetch-Site. The native
-  // endpoint remains outside the browser credential surface so an injected web
-  // script cannot exchange a password for a readable bearer token.
+  // Browser fetch/XHR requests carry Origin and/or Sec-Fetch-Site. Requiring an
+  // explicit native client marker also prevents generic API clients from using
+  // the bearer-token exchange accidentally.
   return (origin === undefined || origin === null) &&
-    (secFetchSite === undefined || secFetchSite === null);
+    (secFetchSite === undefined || secFetchSite === null) &&
+    client === "native";
 }
