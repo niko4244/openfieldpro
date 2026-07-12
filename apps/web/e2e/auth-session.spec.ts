@@ -3,20 +3,27 @@ import path from "node:path";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const artifactDir = path.resolve("artifacts");
-const owner = {
+
+interface SessionUser {
+  id: string;
+  name: string;
+  email: string;
+  role: "owner" | "technician";
+}
+
+const owner: SessionUser = {
   id: "owner-1",
   name: "Morgan Owner",
   email: "owner@example.test",
   role: "owner",
 };
-const technician = {
+
+const technician: SessionUser = {
   id: "tech-1",
   name: "Alex Rivera",
   email: "alex@example.test",
   role: "technician",
 };
-
-type SessionUser = typeof owner;
 
 async function fulfillJson(
   route: Route,
@@ -41,6 +48,10 @@ function collectRuntimeErrors(page: Page) {
   return errors;
 }
 
+function sessionCookieValue(user: SessionUser) {
+  return user.role === "technician" ? "technician-session" : "owner-session";
+}
+
 async function mockSessionApi(page: Page, sessionUser: SessionUser = owner) {
   await page.route("http://127.0.0.1:3001/api/**", async (route) => {
     const request = route.request();
@@ -49,10 +60,10 @@ async function mockSessionApi(page: Page, sessionUser: SessionUser = owner) {
     if (pathname === "/api/auth/login" && request.method() === "POST") {
       return fulfillJson(
         route,
-        { token: "header.payload.signature", user: sessionUser, orgId: "org-1" },
+        { token: sessionCookieValue(sessionUser), user: sessionUser, orgId: "org-1" },
         200,
         {
-          "set-cookie": "ofp_session=header.payload.signature; Path=/; HttpOnly; SameSite=Lax",
+          "set-cookie": `ofp_session=${sessionCookieValue(sessionUser)}; Path=/; HttpOnly; SameSite=Lax`,
         },
       );
     }
@@ -76,48 +87,53 @@ async function mockSessionApi(page: Page, sessionUser: SessionUser = owner) {
       ]);
     }
     if (pathname === "/api/jobs") {
-      return fulfillJson(route, [
+      const rows = [
         {
           id: "job-scheduled",
           customerId: "customer-1",
           title: "Washer not draining",
           status: "scheduled",
-          total: 18900,
-          laborCostCents: 0,
           scheduledAt: "2026-07-11T14:00:00.000Z",
           createdAt: "2026-07-11T12:00:00.000Z",
+          ...(sessionUser.role === "owner"
+            ? { total: 18900, laborCostCents: 0 }
+            : { financialsRestricted: true }),
         },
         {
           id: "job-active",
           customerId: "customer-1",
           title: "Refrigerator warm",
           status: "in_progress",
-          total: 22900,
-          laborCostCents: 0,
           scheduledAt: "2026-07-11T16:00:00.000Z",
           createdAt: "2026-07-11T12:00:00.000Z",
+          ...(sessionUser.role === "owner"
+            ? { total: 22900, laborCostCents: 0 }
+            : { financialsRestricted: true }),
         },
         {
           id: "job-completed",
           customerId: "customer-1",
           title: "Dryer no heat",
           status: "completed",
-          total: 31900,
-          laborCostCents: 0,
           scheduledAt: "2026-07-11T18:00:00.000Z",
           createdAt: "2026-07-11T12:00:00.000Z",
+          ...(sessionUser.role === "owner"
+            ? { total: 31900, laborCostCents: 0 }
+            : { financialsRestricted: true }),
         },
-      ]);
+      ];
+      return fulfillJson(route, rows);
     }
-    if (pathname === "/api/invoices") return fulfillJson(route, []);
+    if (pathname === "/api/invoices") {
+      return sessionUser.role === "technician"
+        ? fulfillJson(route, { error: "insufficient role for this operation" }, 403)
+        : fulfillJson(route, []);
+    }
     if (pathname === "/api/users") {
       return fulfillJson(route, [
         {
-          id: sessionUser.id,
+          ...sessionUser,
           orgId: "org-1",
-          email: sessionUser.email,
-          name: sessionUser.name,
-          role: sessionUser.role,
           active: true,
           createdAt: "2026-07-11T12:00:00.000Z",
         },
@@ -128,17 +144,29 @@ async function mockSessionApi(page: Page, sessionUser: SessionUser = owner) {
   });
 }
 
-async function addSessionCookie(page: Page) {
+async function addSessionCookie(page: Page, sessionUser: SessionUser = owner) {
   await page.context().addCookies([
     {
       name: "ofp_session",
-      value: "header.payload.signature",
+      value: sessionCookieValue(sessionUser),
       domain: "127.0.0.1",
       path: "/",
       httpOnly: true,
       sameSite: "Lax",
     },
   ]);
+}
+
+async function resetServerRequests(page: Page) {
+  const response = await page.request.post("http://127.0.0.1:3001/__reset");
+  expect(response.ok()).toBe(true);
+}
+
+async function serverRequestPaths(page: Page) {
+  const response = await page.request.get("http://127.0.0.1:3001/__requests");
+  expect(response.ok()).toBe(true);
+  const body = await response.json() as { requests: Array<{ path: string }> };
+  return body.requests.map((request) => request.path);
 }
 
 test.beforeAll(async () => {
@@ -219,7 +247,7 @@ test("technician field board never requests invoices or exposes office navigatio
     }
   });
   await mockSessionApi(page, technician);
-  await addSessionCookie(page);
+  await addSessionCookie(page, technician);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/closeout");
 
@@ -255,6 +283,72 @@ test("technician field board never requests invoices or exposes office navigatio
   expect(overflow).toBeLessThanOrEqual(1);
   await page.screenshot({
     path: path.join(artifactDir, "technician-navigation-mobile.png"),
+    fullPage: true,
+  });
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("technician jobs list is assignment-only and contains no financial UI", async ({ page }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  await resetServerRequests(page);
+  await mockSessionApi(page, technician);
+  await addSessionCookie(page, technician);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/jobs");
+
+  await expect(page.getByRole("heading", { name: "Assigned jobs" })).toBeVisible();
+  await expect(page.getByText("Washer not draining")).toBeVisible();
+  await expect(page.getByText("Refrigerator warm")).toBeVisible();
+  await expect(page.getByRole("link", { name: /New job/i })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: /Total/ })).toHaveCount(0);
+  await expect(page.getByTestId("technician-jobs-list")).not.toContainText("$");
+
+  const requestPaths = await serverRequestPaths(page);
+  expect(requestPaths).toContain("/api/jobs");
+  expect(requestPaths).toContain("/api/customers");
+  expect(requestPaths).not.toContain("/api/invoices");
+
+  await page.screenshot({
+    path: path.join(artifactDir, "technician-jobs-desktop.png"),
+    fullPage: true,
+  });
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("technician job detail omits invoice requests, pricing, and scheduling controls", async ({ page }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  await resetServerRequests(page);
+  await mockSessionApi(page, technician);
+  await addSessionCookie(page, technician);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/jobs/job-scheduled");
+
+  await expect(page.getByRole("heading", { name: "Washer not draining" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Parts and work recorded" })).toBeVisible();
+  await expect(page.getByText("Drain pump")).toBeVisible();
+  await expect(page.getByText("Pricing and cost information are handled by the office after field handoff.")).toBeVisible();
+  await expect(page.getByText("Current total")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Invoices" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Schedule this job" })).toHaveCount(0);
+  await expect(page.getByTestId("technician-job-detail")).not.toContainText("$");
+
+  const requestPaths = await serverRequestPaths(page);
+  expect(requestPaths).toContain("/api/jobs/job-scheduled");
+  expect(requestPaths).toContain("/api/jobs/job-scheduled/line-items");
+  expect(requestPaths).not.toContain("/api/invoices");
+
+  await page.screenshot({
+    path: path.join(artifactDir, "technician-job-detail-desktop.png"),
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.screenshot({
+    path: path.join(artifactDir, "technician-job-detail-mobile.png"),
     fullPage: true,
   });
   expect(runtimeErrors).toEqual([]);
