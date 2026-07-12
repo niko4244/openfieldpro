@@ -21,3 +21,18 @@ export function activityVisibleToRole(kind: string, role: UserRole) {
   if (role !== "technician") return true;
   return !OFFICE_ACTIVITY_PREFIXES.some((prefix) => kind.startsWith(prefix));
 }
+
+const MANUAL_ACTIVITY_KINDS = new Set([
+  "customer.note",
+  "job.note",
+  "technician.note",
+]);
+
+export function manualActivityAllowed(
+  role: UserRole,
+  activity: { kind: string; customerId?: string; jobId?: string },
+) {
+  if (!MANUAL_ACTIVITY_KINDS.has(activity.kind)) return false;
+  if (role !== "technician") return true;
+  return activity.kind === "technician.note" && Boolean(activity.jobId);
+}
