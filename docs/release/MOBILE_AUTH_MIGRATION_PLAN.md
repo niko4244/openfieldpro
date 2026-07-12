@@ -1,21 +1,39 @@
 # Secure mobile authentication migration plan
 
-This work is intentionally separated from PR #7's browser/API authorization changes because it requires a reviewed native dependency and deterministic lockfile update.
+This work is separated from PR #7's browser/API authorization changes and implemented in two reviewable phases.
 
-## Scope
+## Phase one — remove the shared credential
 
-- Remove every use of `EXPO_PUBLIC_AUTH_TOKEN` and `EXPO_PUBLIC_ORG_ID` as credentials.
-- Add Expo SecureStore at the Expo SDK 52 compatible version.
-- Add per-user email/password login through `/api/auth/native-login` with `X-OpenFieldPro-Client: native`.
-- Persist token, public user identity, and organization ID in platform secure storage.
-- Restore the session on startup without exposing credentials in logs or UI.
-- Delete credentials on sign-out and terminal 401/403 responses.
-- Preserve cached field packages and queued diagnostic operations according to offline retention policy.
-- Add explicit handling for expired sessions while offline.
+The `mobile-per-user-auth` branch must:
+
+- remove every use of `EXPO_PUBLIC_AUTH_TOKEN` and `EXPO_PUBLIC_ORG_ID` as credentials;
+- add per-user email/password login through `/api/auth/native-login` with `X-OpenFieldPro-Client: native`;
+- keep the token only in app memory;
+- constrain authenticated requests to the configured HTTPS API origin;
+- force sign-in after terminal 401/403 responses;
+- isolate SQLite packages and queued operations by organization ID and user ID;
+- serialize startup, interval, and pull-to-refresh synchronization;
+- wait for active synchronization before closing SQLite;
+- add dependency-free mobile auth/isolation tests;
+- make release safety reject any future compiled shared token.
+
+Phase one deliberately requires sign-in after every app restart. It must not expose cached customer data based only on an entered email address.
+
+## Phase two — secure persistence and offline restart
+
+The production target must:
+
+- add Expo SecureStore at the Expo SDK 52 compatible version;
+- persist the token, public user identity, and organization ID in platform secure storage;
+- restore the session on startup without exposing credentials in logs or UI;
+- delete credentials on sign-out and terminal 401/403 responses;
+- preserve cached field packages and queued diagnostic operations according to offline retention policy;
+- define migration or quarantine of the legacy shared `openfieldpro-field.db` database;
+- add explicit handling for expired sessions while offline.
 
 ## Dependency procedure
 
-1. Start from the current committed `pnpm-lock.yaml`.
+1. Start from the current committed `pnpm-lock.yaml`; do not generate a fresh lock from empty state.
 2. Add `expo-secure-store` to `apps/mobile/package.json` using the Expo SDK 52 compatible range.
 3. Run:
 
@@ -28,7 +46,7 @@ sha256sum pnpm-lock.yaml
 5. Update `pnpm-lock.expected.sha256` to the reviewed digest.
 6. Run `pnpm install:verified` from a clean checkout.
 
-Do not generate a fresh lockfile from empty state: that can resolve unrelated package upgrades and is not an acceptable security migration.
+A lockfile regeneration that changes unrelated dependencies must be rejected.
 
 ## Required test matrix
 
@@ -40,17 +58,29 @@ Do not generate a fresh lockfile from empty state: that can resolve unrelated pa
 - Invalid, inactive, and wrong-password users receive generic 401 responses.
 - Rate limiting applies independently by IP/email.
 
-### Mobile
+### Mobile phase one
+
+- Native login normalizes email and sends the native client marker.
+- Authenticated requests remain on the configured origin.
+- Callers cannot override authorization, organization, or native-client headers.
+- Production endpoints require HTTPS.
+- Terminal authorization failures are distinguishable from transient network failures.
+- Database names are deterministic and unique per organization/user.
+- Concurrent refreshes share one synchronization execution.
+- Shutdown waits for active synchronization and suppresses future work.
+
+### Mobile phase two and device validation
 
 - First login on iOS and Android.
 - Credential restoration after full app termination.
 - Sign-out deletes secure credentials.
 - Expired/invalid token forces sign-in when online.
-- Offline restart shows only retained field packages and clearly indicates authentication cannot be renewed offline.
+- Offline restart shows only the authenticated user's retained field packages.
 - Reconnection authenticates before flushing queued writes.
 - Organization/user change cannot expose the previous user's cached work.
+- Legacy shared-cache migration does not lose queued operations.
 - Screenshots, logs, crash reports, SQLite, and AsyncStorage contain no JWT.
 
 ## Release gate
 
-The production mobile app is no-go until this plan is complete. PR #7 may introduce the server protocol and cookie-only browser response, but it must not claim that native authentication is complete while the app still compiles a shared public token.
+Phase one may merge as a security correction after its full CI passes, because it removes the compiled shared JWT. Production mobile release remains **no-go** until phase two, device validation, deterministic dependency verification, and legacy-cache handling are complete.
