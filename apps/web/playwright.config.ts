@@ -22,13 +22,22 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: "pnpm start",
-    url: "http://127.0.0.1:3000/dispatch",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    env: {
-      NEXT_PUBLIC_API_URL: "http://127.0.0.1:3001",
+  webServer: [
+    {
+      command: "node e2e/mock-api-server.mjs",
+      url: "http://127.0.0.1:3001/health",
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
     },
-  },
+    {
+      command: "pnpm start",
+      url: "http://127.0.0.1:3000/dispatch",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      env: {
+        NEXT_PUBLIC_API_URL: "http://127.0.0.1:3001",
+        INTERNAL_API_URL: "http://127.0.0.1:3001",
+      },
+    },
+  ],
 });
