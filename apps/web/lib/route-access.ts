@@ -1,10 +1,15 @@
 export type WorkspaceRole = "owner" | "dispatcher" | "technician";
 
-const PUBLIC_ROUTE_PREFIXES = [
-  "/login",
-  "/welcome",
-  "/portal",
-] as const;
+const PUBLIC_METADATA_PATHS = new Set([
+  "/favicon.ico",
+  "/robots.txt",
+  "/sitemap.xml",
+  "/manifest.webmanifest",
+  "/icon.png",
+  "/apple-icon.png",
+  "/opengraph-image.png",
+  "/twitter-image.png",
+]);
 
 const OWNER_ONLY_ROUTE_PREFIXES = [
   "/integrations",
@@ -32,8 +37,16 @@ function isSingleChild(pathname: string, prefix: string) {
   return child.length > 0 && !child.includes("/");
 }
 
+export function isPublicAssetPath(pathname: string) {
+  return PUBLIC_METADATA_PATHS.has(pathname);
+}
+
 export function isPublicRoute(pathname: string) {
-  return PUBLIC_ROUTE_PREFIXES.some((prefix) => exactOrChild(pathname, prefix));
+  if (pathname === "/login") return true;
+  if (exactOrChild(pathname, "/welcome")) return true;
+  // Customer portal links are intentionally limited to one opaque token segment.
+  if (pathname === "/portal" || isSingleChild(pathname, "/portal")) return true;
+  return false;
 }
 
 export function isOwnerOnlyRoute(pathname: string) {
