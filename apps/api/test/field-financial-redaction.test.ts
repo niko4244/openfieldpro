@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { jobResponseForRole } from "../src/routes/jobs.js";
-import { lineItemResponseForRole } from "../src/routes/lineitems.js";
+import {
+  catalogItemResponseForRole,
+  diagnosticPackageResponseForRole,
+  jobResponseForRole,
+  lineItemResponseForRole,
+} from "../src/field-financials.js";
+import { isDiagnosticFieldPackageRequest } from "../src/field-financial-response-guard.js";
 
 const job = {
   id: "job-1",
@@ -16,6 +21,13 @@ const lineItem = {
   quantity: 1,
   unitPrice: 18900,
   unitCost: 7200,
+};
+
+const catalogItem = {
+  id: "catalog-1",
+  name: "Drain pump replacement",
+  priceCents: 18900,
+  costCents: 7200,
 };
 
 test("technician job responses omit financial fields instead of zeroing them", () => {
@@ -43,4 +55,41 @@ test("technician line-item responses retain field context but omit pricing", () 
 test("office line-item responses preserve pricing", () => {
   assert.deepEqual(lineItemResponseForRole(lineItem, "owner"), lineItem);
   assert.deepEqual(lineItemResponseForRole(lineItem, "dispatcher"), lineItem);
+});
+
+test("technician catalog reads preserve selling price but omit internal cost", () => {
+  const response = catalogItemResponseForRole(catalogItem, "technician");
+  assert.equal(response.priceCents, catalogItem.priceCents);
+  assert.equal("costCents" in response, false);
+  assert.equal(response.costRestricted, true);
+});
+
+test("office catalog reads preserve selling price and internal cost", () => {
+  assert.deepEqual(catalogItemResponseForRole(catalogItem, "owner"), catalogItem);
+  assert.deepEqual(catalogItemResponseForRole(catalogItem, "dispatcher"), catalogItem);
+});
+
+test("downloaded technician field packages cannot reintroduce job financials", () => {
+  const payload = {
+    packageVersion: 1,
+    job,
+    equipment: null,
+  };
+  const response = diagnosticPackageResponseForRole(payload, "technician");
+  assert.ok(response.job);
+  assert.equal("total" in response.job, false);
+  assert.equal("laborCostCents" in response.job, false);
+  assert.equal(response.job.financialsRestricted, true);
+});
+
+test("field-package response hook targets only exact GET package routes", () => {
+  assert.equal(
+    isDiagnosticFieldPackageRequest("GET", "/api/diagnostics/field-package/job-1?fresh=true"),
+    true,
+  );
+  assert.equal(
+    isDiagnosticFieldPackageRequest("POST", "/api/diagnostics/field-package/job-1"),
+    false,
+  );
+  assert.equal(isDiagnosticFieldPackageRequest("GET", "/api/diagnostics/sessions"), false);
 });
