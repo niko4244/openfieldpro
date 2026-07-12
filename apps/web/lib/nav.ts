@@ -12,6 +12,8 @@ export interface NavSection {
   links: NavLink[];
 }
 
+export type NavigationRole = "owner" | "dispatcher" | "technician";
+
 export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Field",
@@ -55,10 +57,45 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+const TECHNICIAN_HREFS = new Set([
+  "/",
+  "/jobs",
+  "/closeout",
+  "/customers",
+  "/price-book",
+]);
+
+const DISPATCHER_HIDDEN_HREFS = new Set([
+  "/integrations",
+  "/settings",
+]);
+
+export function navSectionsForRole(role?: string | null): NavSection[] {
+  if (role === "owner") return NAV_SECTIONS;
+  if (role === "dispatcher") {
+    return NAV_SECTIONS
+      .map((section) => ({
+        ...section,
+        links: section.links.filter((link) => !DISPATCHER_HIDDEN_HREFS.has(link.href)),
+      }))
+      .filter((section) => section.links.length > 0);
+  }
+  if (role === "technician") {
+    return NAV_SECTIONS
+      .map((section) => ({
+        ...section,
+        links: section.links.filter((link) => TECHNICIAN_HREFS.has(link.href)),
+      }))
+      .filter((section) => section.links.length > 0);
+  }
+  return [];
+}
+
 export const NAV_LINKS: NavLink[] = NAV_SECTIONS.flatMap((section) => section.links);
 
-export function activeNavHref(pathname: string): string | null {
-  const matches = NAV_LINKS.filter(({ href }) =>
+export function activeNavHref(pathname: string, sections: NavSection[] = NAV_SECTIONS): string | null {
+  const links = sections.flatMap((section) => section.links);
+  const matches = links.filter(({ href }) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`),
   );
   return matches.sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;

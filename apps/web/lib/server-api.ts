@@ -9,6 +9,19 @@ import type {
 
 const BASE = process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
+export interface SessionUserDTO {
+  id: string;
+  name: string;
+  email: string;
+  role: "owner" | "dispatcher" | "technician";
+}
+
+export interface JobResponseDTO extends JobDTO {
+  description?: string | null;
+  laborCostCents?: number;
+  financialsRestricted?: boolean;
+}
+
 interface Appointment {
   id: string;
   jobId: string;
@@ -34,6 +47,7 @@ interface LineItem {
   quantity: number;
   unitPrice: number;
   unitCost: number;
+  financialsRestricted?: boolean;
   createdAt: string;
 }
 
@@ -66,9 +80,11 @@ export async function serverRequest<T>(path: string, init?: RequestInit): Promis
 }
 
 export const serverApi = {
-  jobs: () => serverRequest<JobDTO[]>("/api/jobs"),
-  job: (id: string) => serverRequest<JobDTO>(`/api/jobs/${id}`),
+  me: () => serverRequest<SessionUserDTO>("/api/auth/me"),
+  jobs: () => serverRequest<JobResponseDTO[]>("/api/jobs"),
+  job: (id: string) => serverRequest<JobResponseDTO>(`/api/jobs/${id}`),
   customers: () => serverRequest<CustomerDTO[]>("/api/customers"),
+  customer: (id: string) => serverRequest<CustomerDTO>(`/api/customers/${id}`),
   appointments: () => serverRequest<Appointment[]>("/api/appointments"),
   invoices: () => serverRequest<Invoice[]>("/api/invoices"),
   activities: (query?: { jobId?: string; customerId?: string }) => {

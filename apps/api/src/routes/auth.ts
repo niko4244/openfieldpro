@@ -6,6 +6,11 @@ import { hashPassword, verifyPassword, type JwtClaims } from "../auth.js";
 import { createFixedWindowRateLimit, requestIpKey } from "../rate-limit.js";
 import { publicRegistrationEnabled } from "../runtime-security.js";
 import { clearSessionCookie, setSessionCookie } from "../session-cookie.js";
+import {
+  browserAuthResponse,
+  nativeAuthResponse,
+  nativeLoginRequestAllowed,
+} from "../auth-session-response.js";
 
 const registerBody = z.object({
   orgName: z.string().trim().min(1).max(200),
@@ -56,6 +61,19 @@ function publicUser(user: { id: string; name: string; email: string; role: strin
   return { id: user.id, name: user.name, email: user.email, role: user.role };
 }
 
+async function authenticateUser(email: string, password: string) {
+  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (
+    !user ||
+    !user.active ||
+    !user.passwordHash ||
+    !(await verifyPassword(password, user.passwordHash))
+  ) {
+    return null;
+  }
+  return user;
+}
+
 export async function authRoutes(app: FastifyInstance) {
   app.post("/register", { preHandler: registerRateLimit }, async (req, reply) => {
     reply.header("Cache-Control", "no-store");
@@ -94,13 +112,13 @@ export async function authRoutes(app: FastifyInstance) {
       return reply.code(409).send({ error: "an account with this email already exists" });
     }
 
-    const token = signUserToken(app, result.user);
-    setSessionCookie(reply, token);
-    return reply.code(201).send({
-      token,
+    const identity = {
+      token: signUserToken(app, result.user),
       user: publicUser(result.user),
       orgId: result.org.id,
-    });
+    };
+    setSessionCookie(reply, identity.token);
+    return reply.code(201).send(browserAuthResponse(identity));
   });
 
   app.post("/login", { preHandler: loginRateLimit }, async (req, reply) => {
@@ -108,18 +126,43 @@ export async function authRoutes(app: FastifyInstance) {
     const parsed = loginBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const email = parsed.data.email.toLowerCase();
+    const user = await authenticateUser(email, parsed.data.password);
+    if (!user) return reply.code(401).send({ error: "invalid credentials" });
 
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    if (!user || !user.active || !user.passwordHash || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
-      return reply.code(401).send({ error: "invalid credentials" });
-    }
-    const token = signUserToken(app, user);
-    setSessionCookie(reply, token);
-    return {
-      token,
+    const identity = {
+      token: signUserToken(app, user),
       user: publicUser(user),
       orgId: user.orgId,
     };
+    setSessionCookie(reply, identity.token);
+    return browserAuthResponse(identity);
+  });
+
+  app.post("/native-login", { preHandler: loginRateLimit }, async (req, reply) => {
+    reply.header("Cache-Control", "no-store");
+    if (
+      !nativeLoginRequestAllowed(
+        req.headers.origin,
+        req.headers["sec-fetch-site"],
+        req.headers["x-openfieldpro-client"],
+      )
+    ) {
+      return reply.code(403).send({
+        error: "native login requires the native client protocol and rejects browser-origin requests",
+      });
+    }
+
+    const parsed = loginBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const email = parsed.data.email.toLowerCase();
+    const user = await authenticateUser(email, parsed.data.password);
+    if (!user) return reply.code(401).send({ error: "invalid credentials" });
+
+    return nativeAuthResponse({
+      token: signUserToken(app, user),
+      user: publicUser(user),
+      orgId: user.orgId,
+    });
   });
 
   app.post("/logout", async (_req, reply) => {

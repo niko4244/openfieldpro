@@ -5,7 +5,11 @@ import { db, lineItems, jobs } from "@ofp/db";
 import { sumLines, jobCost, jobMargin } from "../totals.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
-import { verifiedClaims } from "../operational-authorization.js";
+import { lineItemResponseForRole } from "../field-financials.js";
+import {
+  verifiedClaims,
+  type UserRole,
+} from "../operational-authorization.js";
 
 const createBody = z.object({
   description: z.string().min(1),
@@ -49,10 +53,11 @@ export async function lineItemRoutes(app: FastifyInstance) {
     if (!(await canAccessJob(orgId, jobId, claims.role, claims.userId))) {
       return reply.code(404).send({ error: "job not found" });
     }
-    return db
+    const rows = await db
       .select()
       .from(lineItems)
       .where(and(eq(lineItems.orgId, orgId), eq(lineItems.jobId, jobId)));
+    return rows.map((row) => lineItemResponseForRole(row, claims.role as UserRole));
   });
 
   app.post("/jobs/:jobId/line-items", async (req, reply) => {
@@ -69,7 +74,12 @@ export async function lineItemRoutes(app: FastifyInstance) {
     const [row] = await db.insert(lineItems).values({ orgId, jobId, ...parsed.data }).returning();
     const { total, cost, margin } = await recomputeJobTotals(orgId, jobId);
     safeEmitActivity(orgId, "line_item.added", `Added line item: ${row.description}`, { jobId });
-    return reply.code(201).send({ lineItem: row, jobTotal: total, jobCostCents: cost, jobMarginCents: margin });
+    return reply.code(201).send({
+      lineItem: row,
+      jobTotal: total,
+      jobCostCents: cost,
+      jobMarginCents: margin,
+    });
   });
 
   app.delete("/line-items/:id", async (req, reply) => {
@@ -92,7 +102,9 @@ export async function lineItemRoutes(app: FastifyInstance) {
       .returning();
     if (!removed) return reply.code(404).send({ error: "not found" });
     const { total, cost, margin } = await recomputeJobTotals(orgId, removed.jobId);
-    safeEmitActivity(orgId, "line_item.removed", `Removed line item: ${removed.description}`, { jobId: removed.jobId });
+    safeEmitActivity(orgId, "line_item.removed", `Removed line item: ${removed.description}`, {
+      jobId: removed.jobId,
+    });
     return { ok: true, jobTotal: total, jobCostCents: cost, jobMarginCents: margin };
   });
 }

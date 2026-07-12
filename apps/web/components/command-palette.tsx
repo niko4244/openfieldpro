@@ -4,8 +4,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { useSessionUser } from "@/lib/use-session-user";
 
 export function CommandPalette() {
+  const { user } = useSessionUser();
+  const canSearchInvoices = user?.role === "owner" || user?.role === "dispatcher";
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Awaited<ReturnType<typeof api.search>> | null>(null);
@@ -15,7 +18,6 @@ export function CommandPalette() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Global keydown listener for Cmd+K / Ctrl+K
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -26,20 +28,16 @@ export function CommandPalette() {
         setHighlightIdx(-1);
         setError(null);
       }
-      if (e.key === "Escape" && open) {
-        setOpen(false);
-      }
+      if (e.key === "Escape" && open) setOpen(false);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
-  // Auto-focus input when opened
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 50);
   }, [open]);
 
-  // Debounced search
   useEffect(() => {
     if (!query.trim()) {
       setResults(null);
@@ -63,15 +61,18 @@ export function CommandPalette() {
     return () => clearTimeout(debounceRef.current);
   }, [query]);
 
-  // Build flat list for keyboard nav
   const flatItems = useCallback(() => {
     if (!results) return [];
     const items: { label: string; href: string; group: string }[] = [];
     for (const job of results.jobs) items.push({ label: job.title, href: `/jobs/${job.id}`, group: "Jobs" });
     for (const cust of results.customers) items.push({ label: cust.name, href: `/customers/${cust.id}`, group: "Customers" });
-    for (const inv of results.invoices) items.push({ label: `${inv.number} (${inv.status})`, href: `/invoices/${inv.id}`, group: "Invoices" });
+    if (canSearchInvoices) {
+      for (const inv of results.invoices) {
+        items.push({ label: `${inv.number} (${inv.status})`, href: `/invoices/${inv.id}`, group: "Invoices" });
+      }
+    }
     return items;
-  }, [results]);
+  }, [results, canSearchInvoices]);
 
   const navigate = (href: string) => {
     setOpen(false);
@@ -81,7 +82,6 @@ export function CommandPalette() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     const items = flatItems();
     if (items.length === 0) return;
-
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setHighlightIdx((i) => (i < items.length - 1 ? i + 1 : 0));
@@ -98,25 +98,19 @@ export function CommandPalette() {
 
   const items = flatItems();
   const totalCount = results
-    ? results.jobs.length + results.customers.length + results.invoices.length
+    ? results.jobs.length + results.customers.length + (canSearchInvoices ? results.invoices.length : 0)
     : 0;
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
-        onClick={() => setOpen(false)}
-      />
-
-      {/* Modal */}
+      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)} />
       <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
-        <Card className="w-full max-w-lg mx-4 overflow-hidden">
+        <Card data-testid="command-palette" className="w-full max-w-lg mx-4 overflow-hidden">
           <div className="p-3 border-b border-border">
             <Input
               ref={inputRef}
               type="search"
-              placeholder="Search jobs, customers, invoices..."
+              placeholder={canSearchInvoices ? "Search jobs, customers, invoices..." : "Search assigned jobs and customers..."}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -130,24 +124,15 @@ export function CommandPalette() {
                 <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
               </div>
             )}
-
-            {error && (
-              <p className="p-6 text-sm text-red text-center">{error}</p>
-            )}
-
+            {error && <p className="p-6 text-sm text-red text-center">{error}</p>}
             {!loading && !error && query.trim() && totalCount === 0 && (
-              <p className="p-6 text-sm text-fg-muted text-center">
-                No results for &ldquo;{query}&rdquo;
-              </p>
+              <p className="p-6 text-sm text-fg-muted text-center">No results for &ldquo;{query}&rdquo;</p>
             )}
-
             {!loading && !error && results && totalCount > 0 && (
               <div>
                 {results.jobs.length > 0 && (
                   <div>
-                    <p className="px-4 py-2 text-[11px] font-semibold text-fg-dim uppercase tracking-wider bg-surface-300/50">
-                      Jobs
-                    </p>
+                    <p className="px-4 py-2 text-[11px] font-semibold text-fg-dim uppercase tracking-wider bg-surface-300/50">Jobs</p>
                     {results.jobs.map((j) => {
                       const idx = items.findIndex((i) => i.href === `/jobs/${j.id}`);
                       return (
@@ -168,9 +153,7 @@ export function CommandPalette() {
 
                 {results.customers.length > 0 && (
                   <div>
-                    <p className="px-4 py-2 text-[11px] font-semibold text-fg-dim uppercase tracking-wider bg-surface-300/50">
-                      Customers
-                    </p>
+                    <p className="px-4 py-2 text-[11px] font-semibold text-fg-dim uppercase tracking-wider bg-surface-300/50">Customers</p>
                     {results.customers.map((c) => {
                       const idx = items.findIndex((i) => i.href === `/customers/${c.id}`);
                       return (
@@ -188,11 +171,9 @@ export function CommandPalette() {
                   </div>
                 )}
 
-                {results.invoices.length > 0 && (
+                {canSearchInvoices && results.invoices.length > 0 && (
                   <div>
-                    <p className="px-4 py-2 text-[11px] font-semibold text-fg-dim uppercase tracking-wider bg-surface-300/50">
-                      Invoices
-                    </p>
+                    <p className="px-4 py-2 text-[11px] font-semibold text-fg-dim uppercase tracking-wider bg-surface-300/50">Invoices</p>
                     {results.invoices.map((inv) => {
                       const idx = items.findIndex((i) => i.href === `/invoices/${inv.id}`);
                       return (
@@ -215,7 +196,9 @@ export function CommandPalette() {
 
             {!loading && !error && !query.trim() && (
               <p className="p-6 text-sm text-fg-dim text-center">
-                Start typing to search across jobs, customers, and invoices
+                {canSearchInvoices
+                  ? "Start typing to search across jobs, customers, and invoices"
+                  : "Start typing to search assigned jobs and customers"}
               </p>
             )}
           </div>

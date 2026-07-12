@@ -3,10 +3,27 @@ import type { JwtClaims } from "./auth.js";
 
 export type UserRole = "owner" | "dispatcher" | "technician";
 
+const OWNER_ONLY_PREFIXES = [
+  "/api/plugins",
+];
+
 const OWNER_ONLY_WRITE_PREFIXES = [
   "/api/users",
   "/api/org",
-  "/api/plugins",
+];
+
+const OFFICE_READ_PREFIXES = [
+  "/api/users",
+  "/api/estimates",
+  "/api/invoices",
+  "/api/reports",
+  "/api/recurring",
+  "/api/reviews",
+  "/api/service-plans",
+  "/api/diagnostics/overview",
+  "/api/diagnostics/coverage",
+  "/api/diagnostics/workflows",
+  "/api/diagnostics/corrections",
 ];
 
 const OFFICE_WRITE_PREFIXES = [
@@ -20,17 +37,47 @@ const OFFICE_WRITE_PREFIXES = [
   "/api/reviews",
 ];
 
+function pathMatches(path: string, prefix: string) {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+function isLineItemMutation(method: string, path: string) {
+  if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) return false;
+  return (
+    /^\/api\/jobs\/[^/]+\/line-items(?:\/[^/]+)?$/.test(path) ||
+    /^\/api\/line-items\/[^/]+$/.test(path)
+  );
+}
+
 export function requiredRolesForRequest(method: string, rawUrl: string): UserRole[] | null {
-  if (["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) return null;
+  const normalizedMethod = method.toUpperCase();
   const path = rawUrl.split("?")[0] ?? rawUrl;
 
-  if (OWNER_ONLY_WRITE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
+  // CORS preflight must be answered before authentication or authorization.
+  // The subsequent real request still receives the full role check.
+  if (normalizedMethod === "OPTIONS") return null;
+
+  if (OWNER_ONLY_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
     return ["owner"];
   }
-  if (OFFICE_WRITE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
+
+  if (["GET", "HEAD"].includes(normalizedMethod)) {
+    if (OFFICE_READ_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
+      return ["owner", "dispatcher"];
+    }
+    return null;
+  }
+
+  if (isLineItemMutation(normalizedMethod, path)) {
     return ["owner", "dispatcher"];
   }
-  if (path === "/api/jobs" && method.toUpperCase() === "POST") {
+  if (OWNER_ONLY_WRITE_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
+    return ["owner"];
+  }
+  if (OFFICE_WRITE_PREFIXES.some((prefix) => pathMatches(path, prefix))) {
+    return ["owner", "dispatcher"];
+  }
+  if (path === "/api/jobs" && normalizedMethod === "POST") {
     return ["owner", "dispatcher"];
   }
 
@@ -84,8 +131,12 @@ export function technicianJobPatchAllowed(payload: Record<string, unknown>) {
   );
 }
 
-const CANONICAL_API_ONLY_SYNC_TABLES = new Set(["invoices", "payments", "estimates"]);
-const TECHNICIAN_SYNC_TABLES = new Set(["jobs", "line_items"]);
+const CANONICAL_API_ONLY_SYNC_TABLES = new Set([
+  "invoices",
+  "payments",
+  "estimates",
+  "line_items",
+]);
 
 export function roleCanSyncOperation(
   role: UserRole,
@@ -93,9 +144,6 @@ export function roleCanSyncOperation(
 ) {
   if (CANONICAL_API_ONLY_SYNC_TABLES.has(operation.table)) return false;
   if (role === "owner" || role === "dispatcher") return true;
-  if (!TECHNICIAN_SYNC_TABLES.has(operation.table)) return false;
-  if (operation.table === "jobs") {
-    return operation.type === "update" && technicianJobPatchAllowed(operation.payload);
-  }
-  return operation.table === "line_items" && ["create", "update", "delete"].includes(operation.type);
+  if (operation.table !== "jobs") return false;
+  return operation.type === "update" && technicianJobPatchAllowed(operation.payload);
 }
