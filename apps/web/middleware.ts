@@ -2,10 +2,11 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { routeAccessDecision } from "./lib/route-access";
 
-const AUTH_API_URL =
+const AUTH_API_URL = (
   process.env.INTERNAL_API_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:3001";
+  "http://localhost:3001"
+).replace(/\/$/, "");
 
 interface SessionUser {
   id: string;
@@ -94,6 +95,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.[^/]+$).*)",
   ],
 };
