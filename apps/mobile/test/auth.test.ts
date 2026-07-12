@@ -37,8 +37,8 @@ test("native login uses the dedicated protocol and normalizes email", async () =
     );
     assert.equal(captured?.url, "https://field.example.test/api/auth/native-login");
     assert.equal(captured?.init?.method, "POST");
-    const headers = captured?.init?.headers as Record<string, string>;
-    assert.equal(headers["x-openfieldpro-client"], "native");
+    const headers = new Headers(captured?.init?.headers);
+    assert.equal(headers.get("x-openfieldpro-client"), "native");
     assert.deepEqual(JSON.parse(String(captured?.init?.body)), {
       email: "alex@example.test",
       password: "correct horse",
@@ -48,7 +48,7 @@ test("native login uses the dedicated protocol and normalizes email", async () =
   }
 });
 
-test("authenticated native requests stay on the configured API origin", async () => {
+test("authenticated native requests stay on-origin and lock identity headers", async () => {
   const originalFetch = globalThis.fetch;
   let captured: { url: string; init?: RequestInit } | null = null;
   globalThis.fetch = async (input, init) => {
@@ -58,14 +58,20 @@ test("authenticated native requests stay on the configured API origin", async ()
 
   try {
     assert.deepEqual(
-      await nativeRequest("https://field.example.test", session, "/api/jobs"),
+      await nativeRequest("https://field.example.test", session, "/api/jobs", {
+        headers: {
+          authorization: "Bearer attacker-controlled",
+          "x-org-id": "other-org",
+          "x-openfieldpro-client": "browser",
+        },
+      }),
       [{ id: "job-1" }],
     );
     assert.equal(captured?.url, "https://field.example.test/api/jobs");
-    const headers = captured?.init?.headers as Record<string, string>;
-    assert.equal(headers.authorization, `Bearer ${session.token}`);
-    assert.equal(headers["x-org-id"], session.orgId);
-    assert.equal(headers["x-openfieldpro-client"], "native");
+    const headers = new Headers(captured?.init?.headers);
+    assert.equal(headers.get("authorization"), `Bearer ${session.token}`);
+    assert.equal(headers.get("x-org-id"), session.orgId);
+    assert.equal(headers.get("x-openfieldpro-client"), "native");
     await assert.rejects(
       () => nativeRequest("https://field.example.test", session, "https://evil.example/api/jobs"),
       /must use an \/api\//,
