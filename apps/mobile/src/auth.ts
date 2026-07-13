@@ -1,3 +1,9 @@
+import { utf8ByteLength } from "./utf8";
+
+export const MAX_NATIVE_LOGIN_RESPONSE_BYTES = 64_000;
+export const MAX_NATIVE_API_RESPONSE_BYTES = 6_000_000;
+const MAX_NATIVE_ERROR_RESPONSE_BYTES = 32_000;
+
 export type NativeUserRole = "owner" | "dispatcher" | "technician";
 
 export interface NativeSessionUser {
@@ -51,8 +57,26 @@ function apiEndpoint(apiUrl: string, path: string) {
   return endpoint.toString();
 }
 
+async function readBoundedText(response: Response, maxBytes: number, label: string) {
+  const declared = response.headers.get("content-length");
+  if (declared) {
+    const declaredBytes = Number(declared);
+    if (Number.isFinite(declaredBytes) && declaredBytes >= 0 && declaredBytes > maxBytes) {
+      throw new NativeRequestError(502, `${label} exceeds the ${maxBytes} byte response limit`);
+    }
+  }
+
+  const text = await response.text();
+  if (utf8ByteLength(text) > maxBytes) {
+    throw new NativeRequestError(502, `${label} exceeds the ${maxBytes} byte response limit`);
+  }
+  return text;
+}
+
 async function responseMessage(response: Response) {
-  const body = await response.text().catch(() => "");
+  const body = await readBoundedText(response, MAX_NATIVE_ERROR_RESPONSE_BYTES, "error response").catch(
+    () => "",
+  );
   if (!body) return `${response.status} ${response.statusText}`.trim();
   try {
     const parsed = JSON.parse(body) as { error?: unknown };
@@ -62,10 +86,19 @@ async function responseMessage(response: Response) {
   }
 }
 
-async function parseJson<T>(response: Response): Promise<T> {
+async function parseJson<T>(
+  response: Response,
+  maxBytes: number,
+  label: string,
+): Promise<T> {
   if (response.status === 204) return undefined as T;
-  const text = await response.text();
-  return text ? (JSON.parse(text) as T) : (undefined as T);
+  const text = await readBoundedText(response, maxBytes, label);
+  if (!text) return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new NativeRequestError(502, `${label} did not contain valid JSON`);
+  }
 }
 
 function sessionHeaders(session: NativeSession, init?: RequestInit) {
@@ -119,7 +152,11 @@ export async function nativeLogin(
   });
   if (!response.ok) throw new NativeRequestError(response.status, await responseMessage(response));
 
-  const session = await parseJson<NativeSession>(response);
+  const session = await parseJson<NativeSession>(
+    response,
+    MAX_NATIVE_LOGIN_RESPONSE_BYTES,
+    "native login response",
+  );
   if (
     !validBearerToken(session?.token) ||
     !validSessionIdentifier(session?.orgId) ||
@@ -142,7 +179,7 @@ export async function nativeRequest<T>(
     headers: sessionHeaders(session, init),
   });
   if (!response.ok) throw new NativeRequestError(response.status, await responseMessage(response));
-  return parseJson<T>(response);
+  return parseJson<T>(response, MAX_NATIVE_API_RESPONSE_BYTES, "native API response");
 }
 
 const BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
