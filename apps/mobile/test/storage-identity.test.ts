@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { NativeRequestError } from "../src/auth.ts";
 import {
+  OfflineStorageError,
   STORAGE_SCHEMA_VERSION,
   storageIdentityDecision,
 } from "../src/storage-identity.ts";
@@ -25,34 +27,33 @@ test("matching storage identity is accepted", () => {
   );
 });
 
-test("organization and user mismatches fail closed", () => {
-  assert.throws(
-    () =>
-      storageIdentityDecision(
-        {
-          org_id: "other-org",
-          user_id: expected.userId,
-          schema_version: STORAGE_SCHEMA_VERSION,
-        },
-        expected,
-      ),
-    /identity mismatch/,
-  );
-  assert.throws(
-    () =>
-      storageIdentityDecision(
-        {
-          org_id: expected.orgId,
-          user_id: "other-user",
-          schema_version: STORAGE_SCHEMA_VERSION,
-        },
-        expected,
-      ),
-    /identity mismatch/,
-  );
+test("organization and user mismatches fail closed as terminal session failures", () => {
+  for (const stored of [
+    {
+      org_id: "other-org",
+      user_id: expected.userId,
+      schema_version: STORAGE_SCHEMA_VERSION,
+    },
+    {
+      org_id: expected.orgId,
+      user_id: "other-user",
+      schema_version: STORAGE_SCHEMA_VERSION,
+    },
+  ]) {
+    assert.throws(
+      () => storageIdentityDecision(stored, expected),
+      (caught: unknown) =>
+        caught instanceof OfflineStorageError &&
+        caught instanceof NativeRequestError &&
+        caught.status === 403 &&
+        caught.terminalAuthenticationFailure &&
+        caught.terminalStorageFailure &&
+        /identity mismatch/.test(caught.message),
+    );
+  }
 });
 
-test("unsupported offline schemas fail closed", () => {
+test("unsupported offline schemas fail closed as terminal session failures", () => {
   assert.throws(
     () =>
       storageIdentityDecision(
@@ -63,6 +64,11 @@ test("unsupported offline schemas fail closed", () => {
         },
         expected,
       ),
-    /schema is not supported/,
+    (caught: unknown) =>
+      caught instanceof OfflineStorageError &&
+      caught.status === 403 &&
+      caught.terminalAuthenticationFailure &&
+      caught.terminalStorageFailure &&
+      /schema is not supported/.test(caught.message),
   );
 });
