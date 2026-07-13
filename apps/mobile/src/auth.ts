@@ -71,8 +71,27 @@ function sessionHeaders(session: NativeSession, init?: RequestInit) {
   return headers;
 }
 
+function utf8Bytes(value: string) {
+  const encoded = encodeURIComponent(value);
+  const bytes: number[] = [];
+  for (let index = 0; index < encoded.length; index += 1) {
+    if (encoded[index] === "%") {
+      bytes.push(Number.parseInt(encoded.slice(index + 1, index + 3), 16));
+      index += 2;
+    } else {
+      bytes.push(encoded.charCodeAt(index));
+    }
+  }
+  return bytes;
+}
+
 function validSessionIdentifier(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && value.length <= 64;
+  if (typeof value !== "string" || value.length === 0) return false;
+  try {
+    return utf8Bytes(value).length <= 64;
+  } catch {
+    return false;
+  }
 }
 
 function validBearerToken(value: unknown): value is string {
@@ -122,23 +141,9 @@ export async function nativeRequest<T>(
 
 const BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-function utf8Bytes(value: string) {
-  const encoded = encodeURIComponent(value);
-  const bytes: number[] = [];
-  for (let index = 0; index < encoded.length; index += 1) {
-    if (encoded[index] === "%") {
-      bytes.push(Number.parseInt(encoded.slice(index + 1, index + 3), 16));
-      index += 2;
-    } else {
-      bytes.push(encoded.charCodeAt(index));
-    }
-  }
-  return bytes;
-}
-
 function base64Url(value: string) {
   if (!validSessionIdentifier(value)) {
-    throw new Error("Offline storage identity values must be between 1 and 64 characters.");
+    throw new Error("Offline storage identity values must encode to between 1 and 64 UTF-8 bytes.");
   }
 
   const bytes = utf8Bytes(value);
