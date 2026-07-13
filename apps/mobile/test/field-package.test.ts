@@ -52,7 +52,7 @@ test("package version, generated time, support state, and readiness are strict",
   }
 });
 
-test("job and organization mismatches fail before cache replacement", () => {
+test("job and every embedded entity must belong to the authenticated organization", () => {
   assert.throws(
     () => validateFieldPackage({ ...validPackage(), job: { id: "other-job", orgId: expected.orgId } }, expected),
     /requested job/,
@@ -61,6 +61,16 @@ test("job and organization mismatches fail before cache replacement", () => {
     () => validateFieldPackage({ ...validPackage(), job: { id: expected.jobId, orgId: "other-org" } }, expected),
     /different organization/,
   );
+
+  const stepOrgMismatch = validPackage();
+  stepOrgMismatch.steps = [{ ...stepOrgMismatch.steps[0], orgId: "other-org" }];
+  assert.throws(() => validateFieldPackage(stepOrgMismatch, expected), /different organization/);
+
+  const measurementOrgMismatch = validPackage();
+  measurementOrgMismatch.measurements = [
+    { ...measurementOrgMismatch.measurements[0], orgId: "other-org" },
+  ];
+  assert.throws(() => validateFieldPackage(measurementOrgMismatch, expected), /different organization/);
 });
 
 test("session, equipment, workflow, step, and measurement links must remain coherent", () => {
@@ -83,6 +93,44 @@ test("session, equipment, workflow, step, and measurement links must remain cohe
   const measurementMismatch = validPackage();
   measurementMismatch.measurements = [{ ...measurementMismatch.measurements[0], sessionId: "other-session" }];
   assert.throws(() => validateFieldPackage(measurementMismatch, expected), /different session/);
+});
+
+test("orphan records and falsely download-ready packages fail closed", () => {
+  const workflowWithoutSession = validPackage();
+  workflowWithoutSession.session = null;
+  workflowWithoutSession.measurements = [];
+  assert.throws(() => validateFieldPackage(workflowWithoutSession, expected), /workflow cannot exist/);
+
+  const stepsWithoutWorkflow = validPackage();
+  stepsWithoutWorkflow.workflow = null;
+  stepsWithoutWorkflow.session = null;
+  stepsWithoutWorkflow.measurements = [];
+  stepsWithoutWorkflow.downloadReady = false;
+  assert.throws(() => validateFieldPackage(stepsWithoutWorkflow, expected), /steps require a workflow/);
+
+  const measurementsWithoutSession = validPackage();
+  measurementsWithoutSession.session = null;
+  measurementsWithoutSession.workflow = null;
+  measurementsWithoutSession.steps = [];
+  measurementsWithoutSession.downloadReady = false;
+  assert.throws(() => validateFieldPackage(measurementsWithoutSession, expected), /measurements require/);
+
+  const readyWithoutSteps = validPackage();
+  readyWithoutSteps.steps = [];
+  assert.throws(() => validateFieldPackage(readyWithoutSteps, expected), /download-ready/);
+});
+
+test("duplicate step or measurement IDs are rejected", () => {
+  const duplicateSteps = validPackage();
+  duplicateSteps.steps = [duplicateSteps.steps[0], { ...duplicateSteps.steps[0] }];
+  assert.throws(() => validateFieldPackage(duplicateSteps, expected), /duplicate id/);
+
+  const duplicateMeasurements = validPackage();
+  duplicateMeasurements.measurements = [
+    duplicateMeasurements.measurements[0],
+    { ...duplicateMeasurements.measurements[0] },
+  ];
+  assert.throws(() => validateFieldPackage(duplicateMeasurements, expected), /duplicate id/);
 });
 
 test("package collection and serialized-size limits fail closed", () => {
