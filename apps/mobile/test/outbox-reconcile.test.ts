@@ -43,6 +43,48 @@ test("valid outbox rows become operations while corrupt rows are quarantined", (
   );
 });
 
+test("tampered operation IDs, kinds, and oversized payloads are quarantined before network use", () => {
+  const prepared = prepareOutbox([
+    {
+      op_id: "",
+      kind: "measurement.create",
+      payload_json: "{}",
+      attempts: 0,
+    },
+    {
+      op_id: `measurement:${"x".repeat(210)}`,
+      kind: "measurement.create",
+      payload_json: "{}",
+      attempts: 0,
+    },
+    {
+      op_id: "measurement:control-character\n",
+      kind: "measurement.create",
+      payload_json: "{}",
+      attempts: 0,
+    },
+    {
+      op_id: "malicious-kind",
+      kind: "admin.delete",
+      payload_json: "{}",
+      attempts: 0,
+    },
+    {
+      op_id: "oversized-payload",
+      kind: "session.patch",
+      payload_json: JSON.stringify({ value: "x".repeat(1_000_001) }),
+      attempts: 0,
+    },
+  ]);
+
+  assert.deepEqual(prepared.operations, []);
+  assert.equal(prepared.actions.length, 5);
+  assert.equal(prepared.actions.every((action) => action.type === "quarantine"), true);
+  assert.match(prepared.actions[0].type === "quarantine" ? prepared.actions[0].reason : "", /operation ID/);
+  assert.match(prepared.actions[3].type === "quarantine" ? prepared.actions[3].reason : "", /kind is not supported/);
+  assert.match(prepared.actions[4].type === "quarantine" ? prepared.actions[4].reason : "", /1 MB/);
+});
+
 test("every submitted operation receives exactly one reconciliation action", () => {
   const submitted = [
     { opId: "ok", kind: "measurement.create", payload: {} },
