@@ -66,6 +66,17 @@ function assertOrg(record: Record<string, unknown> | null, label: string, orgId:
   }
 }
 
+function assertUniqueIds(records: Array<Record<string, unknown>>, label: string) {
+  const ids = new Set<string>();
+  for (const [index, record] of records.entries()) {
+    const id = requiredString(record, "id", `${label}[${index}]`);
+    if (ids.has(id)) {
+      throw new FieldPackageValidationError(`${label} contains duplicate id ${id}`);
+    }
+    ids.add(id);
+  }
+}
+
 function serializePackage(value: unknown) {
   let serialized: string;
   try {
@@ -109,11 +120,17 @@ export function validateFieldPackage(
   assertOrg(session, "session", expected.orgId);
   assertOrg(workflow, "workflow", expected.orgId);
 
+  if (!session && workflow) {
+    throw new FieldPackageValidationError("workflow cannot exist without a diagnostic session");
+  }
   if (session) {
     if (requiredString(session, "jobId", "session") !== expected.jobId) {
       throw new FieldPackageValidationError("diagnostic session belongs to a different job");
     }
-    if (equipment && requiredString(session, "equipmentId", "session") !== requiredString(equipment, "id", "equipment")) {
+    if (!equipment) {
+      throw new FieldPackageValidationError("diagnostic session requires equipment");
+    }
+    if (requiredString(session, "equipmentId", "session") !== requiredString(equipment, "id", "equipment")) {
       throw new FieldPackageValidationError("diagnostic session and equipment do not match");
     }
     if (workflow && requiredString(session, "workflowId", "session") !== requiredString(workflow, "id", "workflow")) {
@@ -125,9 +142,14 @@ export function validateFieldPackage(
     throw new FieldPackageValidationError("field package steps are missing or exceed the offline limit");
   }
   const steps = root.steps.map((step, index) => objectRecord(step, `steps[${index}]`));
+  assertUniqueIds(steps, "steps");
+  if (steps.length > 0 && !workflow) {
+    throw new FieldPackageValidationError("field package steps require a workflow");
+  }
   if (workflow) {
     const workflowId = requiredString(workflow, "id", "workflow");
     for (const [index, step] of steps.entries()) {
+      assertOrg(step, `steps[${index}]`, expected.orgId);
       if (requiredString(step, "workflowId", `steps[${index}]`) !== workflowId) {
         throw new FieldPackageValidationError(`steps[${index}] belongs to a different workflow`);
       }
@@ -140,9 +162,14 @@ export function validateFieldPackage(
   const measurements = root.measurements.map((measurement, index) =>
     objectRecord(measurement, `measurements[${index}]`),
   );
+  assertUniqueIds(measurements, "measurements");
+  if (measurements.length > 0 && !session) {
+    throw new FieldPackageValidationError("field package measurements require a diagnostic session");
+  }
   if (session) {
     const sessionId = requiredString(session, "id", "session");
     for (const [index, measurement] of measurements.entries()) {
+      assertOrg(measurement, `measurements[${index}]`, expected.orgId);
       if (requiredString(measurement, "sessionId", `measurements[${index}]`) !== sessionId) {
         throw new FieldPackageValidationError(`measurements[${index}] belongs to a different session`);
       }
@@ -154,6 +181,9 @@ export function validateFieldPackage(
   }
   if (typeof root.downloadReady !== "boolean") {
     throw new FieldPackageValidationError("field package downloadReady must be boolean");
+  }
+  if (root.downloadReady && (!session || !workflow || steps.length === 0)) {
+    throw new FieldPackageValidationError("download-ready package requires a session, workflow, and steps");
   }
 
   return {
