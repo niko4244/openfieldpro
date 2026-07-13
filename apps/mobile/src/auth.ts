@@ -31,6 +31,9 @@ function normalizedApiOrigin(apiUrl: string) {
   if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && developmentHost)) {
     throw new Error("The technician app requires an HTTPS API origin outside local development.");
   }
+  if (parsed.username || parsed.password) {
+    throw new Error("The technician app API origin must not contain embedded credentials.");
+  }
   parsed.pathname = "/";
   parsed.search = "";
   parsed.hash = "";
@@ -42,6 +45,9 @@ function apiEndpoint(apiUrl: string, path: string) {
   const origin = normalizedApiOrigin(apiUrl);
   const endpoint = new URL(path, origin);
   if (endpoint.origin !== origin.origin) throw new Error("Native API requests must remain same-origin.");
+  if (!endpoint.pathname.startsWith("/api/")) {
+    throw new Error("Native API requests must remain inside the /api/ namespace after URL normalization.");
+  }
   return endpoint.toString();
 }
 
