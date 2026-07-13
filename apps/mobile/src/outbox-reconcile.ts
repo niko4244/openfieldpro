@@ -1,3 +1,5 @@
+import { utf8ByteLength } from "./utf8";
+
 export const ALLOWED_OFFLINE_OPERATION_KINDS = new Set([
   "measurement.create",
   "session.patch",
@@ -39,24 +41,6 @@ function boundedError(value: string) {
   return value.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 500) || "unknown error";
 }
 
-function utf8ByteLength(value: string) {
-  return new TextEncoder().encode(value).length;
-}
-
-function hasUnpairedSurrogate(value: string) {
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    if (code >= 0xd800 && code <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
-      index += 1;
-    } else if (code >= 0xdc00 && code <= 0xdfff) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function validateJsonTree(
   value: unknown,
   depth = 0,
@@ -76,7 +60,11 @@ function validateJsonTree(
     return;
   }
   if (typeof value === "string") {
-    if (hasUnpairedSurrogate(value)) throw new Error("offline operation payload contains malformed Unicode");
+    try {
+      utf8ByteLength(value);
+    } catch {
+      throw new Error("offline operation payload contains malformed Unicode");
+    }
     return;
   }
   if (typeof value !== "object") {
@@ -90,7 +78,11 @@ function validateJsonTree(
       return;
     }
     for (const [key, item] of Object.entries(value)) {
-      if (hasUnpairedSurrogate(key)) throw new Error("offline operation payload contains malformed Unicode");
+      try {
+        utf8ByteLength(key);
+      } catch {
+        throw new Error("offline operation payload contains malformed Unicode");
+      }
       validateJsonTree(item, depth + 1, state);
     }
   } finally {
@@ -163,9 +155,6 @@ export function prepareOutbox(rows: StoredOutboxRow[]) {
         operations.length >= MAX_OFFLINE_BATCH_OPERATIONS ||
         batchBytes + operationBytes > MAX_OFFLINE_BATCH_BYTES;
 
-      // Preserve queue order: once a valid operation cannot fit, defer it and
-      // all subsequent valid rows to a later batch. Invalid rows are still
-      // quarantined during this scan.
       if (batchClosed || exceedsBatch) {
         batchClosed = true;
         deferred += 1;
