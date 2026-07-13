@@ -7,6 +7,8 @@ export const ALLOWED_OFFLINE_OPERATION_KINDS = new Set([
 export const MAX_OFFLINE_OPERATION_BYTES = 250_000;
 export const MAX_OFFLINE_BATCH_BYTES = 2_000_000;
 export const MAX_OFFLINE_BATCH_OPERATIONS = 50;
+const MAX_OFFLINE_JSON_DEPTH = 32;
+const MAX_OFFLINE_JSON_NODES = 50_000;
 
 export interface StoredOutboxRow {
   op_id: string;
@@ -38,10 +40,61 @@ function boundedError(value: string) {
 }
 
 function utf8ByteLength(value: string) {
+  return new TextEncoder().encode(value).length;
+}
+
+function hasUnpairedSurrogate(value: string) {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function validateJsonTree(
+  value: unknown,
+  depth = 0,
+  state: { nodes: number; seen: Set<object> } = { nodes: 0, seen: new Set() },
+) {
+  state.nodes += 1;
+  if (state.nodes > MAX_OFFLINE_JSON_NODES) {
+    throw new Error("offline operation payload contains too many JSON values");
+  }
+  if (depth > MAX_OFFLINE_JSON_DEPTH) {
+    throw new Error("offline operation payload exceeds the maximum JSON depth");
+  }
+
+  if (value === null || typeof value === "boolean") return;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("offline operation payload contains a non-finite number");
+    return;
+  }
+  if (typeof value === "string") {
+    if (hasUnpairedSurrogate(value)) throw new Error("offline operation payload contains malformed Unicode");
+    return;
+  }
+  if (typeof value !== "object") {
+    throw new Error("offline operation payload contains a non-JSON value");
+  }
+  if (state.seen.has(value)) throw new Error("offline operation payload contains a cycle");
+  state.seen.add(value);
   try {
-    return new TextEncoder().encode(value).length;
-  } catch {
-    throw new Error("operation content contains malformed Unicode");
+    if (Array.isArray(value)) {
+      for (const item of value) validateJsonTree(item, depth + 1, state);
+      return;
+    }
+    for (const [key, item] of Object.entries(value)) {
+      if (hasUnpairedSurrogate(key)) throw new Error("offline operation payload contains malformed Unicode");
+      validateJsonTree(item, depth + 1, state);
+    }
+  } finally {
+    state.seen.delete(value);
   }
 }
 
@@ -61,6 +114,7 @@ export function serializeOfflineOperation(operation: PreparedOfflineOperation) {
   if (!operation.payload || typeof operation.payload !== "object" || Array.isArray(operation.payload)) {
     throw new Error("offline operation payload must be a JSON object");
   }
+  validateJsonTree(operation.payload);
 
   let payloadJson: string;
   try {
@@ -97,6 +151,7 @@ export function prepareOutbox(rows: StoredOutboxRow[]) {
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
         throw new Error("payload must be a JSON object");
       }
+      validateJsonTree(payload);
 
       const operation = {
         opId: row.op_id,
