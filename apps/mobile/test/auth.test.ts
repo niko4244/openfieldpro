@@ -54,6 +54,8 @@ test("native login rejects malformed bearer and account identity responses", asy
     { ...session, token: "token with whitespace" },
     { ...session, orgId: "" },
     { ...session, orgId: "x".repeat(65) },
+    { ...session, orgId: "😀".repeat(17) },
+    { ...session, orgId: "\ud800" },
     { ...session, user: { ...session.user, id: "" } },
     { ...session, user: { ...session.user, role: "unknown" } },
   ];
@@ -155,6 +157,8 @@ test("offline database names are deterministic, filesystem-safe, and collision-r
   assert.equal(unicodeVariant, "openfieldpro-field-v2-w4VtZXM-VXNlciBB.db");
   assert.equal(new Set([first, second, punctuationVariant, caseVariant, unicodeVariant]).size, 5);
   assert.match(first, /^[A-Za-z0-9._-]+$/);
-  assert.throws(() => scopedDatabaseName("", "user"), /between 1 and 64/);
-  assert.throws(() => scopedDatabaseName("org", "x".repeat(65)), /between 1 and 64/);
+  assert.throws(() => scopedDatabaseName("", "user"), /UTF-8 bytes/);
+  assert.throws(() => scopedDatabaseName("org", "x".repeat(65)), /UTF-8 bytes/);
+  assert.throws(() => scopedDatabaseName("org", "😀".repeat(17)), /UTF-8 bytes/);
+  assert.throws(() => scopedDatabaseName("org", "\ud800"), /UTF-8 bytes/);
 });
