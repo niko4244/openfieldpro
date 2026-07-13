@@ -392,7 +392,7 @@ export class SyncService {
         this.session(),
         "/api/appointments",
       ),
-      nativeRequest<Array<{ session: { jobId: string; status: string }>>(
+      nativeRequest<Array<{ session: { jobId: string; status: string } }>>(
         this.opts.apiUrl,
         this.session(),
         "/api/diagnostics/sessions",
