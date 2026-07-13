@@ -5,6 +5,11 @@ import {
   scopedDatabaseName,
   type NativeSession,
 } from "../auth";
+import {
+  STORAGE_SCHEMA_VERSION,
+  storageIdentityDecision,
+  type StoredStorageIdentity,
+} from "../storage-identity";
 
 export interface SyncServiceOptions extends NativeSession {
   apiUrl: string;
@@ -51,12 +56,6 @@ interface OutboxRow {
 
 interface PackageRow {
   payload_json: string;
-}
-
-interface StorageIdentityRow {
-  org_id: string;
-  user_id: string;
-  schema_version: number;
 }
 
 function makeId(): string {
@@ -111,23 +110,21 @@ export class SyncService {
     `);
 
     await database.withExclusiveTransactionAsync(async () => {
-      const identity = await database.getFirstAsync<StorageIdentityRow>(
+      const identity = await database.getFirstAsync<StoredStorageIdentity>(
         "SELECT org_id, user_id, schema_version FROM storage_identity WHERE singleton = 1 LIMIT 1",
       );
-      if (!identity) {
+      const decision = storageIdentityDecision(identity, {
+        orgId: this.opts.orgId,
+        userId: this.opts.user.id,
+      });
+      if (decision === "initialize") {
         await database.runAsync(
           `INSERT INTO storage_identity (singleton, org_id, user_id, schema_version)
-           VALUES (1, ?, ?, 2)`,
+           VALUES (1, ?, ?, ?)`,
           this.opts.orgId,
           this.opts.user.id,
+          STORAGE_SCHEMA_VERSION,
         );
-        return;
-      }
-      if (identity.org_id !== this.opts.orgId || identity.user_id !== this.opts.user.id) {
-        throw new Error("Offline storage identity mismatch. This cache cannot be opened for the signed-in account.");
-      }
-      if (identity.schema_version !== 2) {
-        throw new Error("Offline storage schema is not supported by this application version.");
       }
     });
   }
