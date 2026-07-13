@@ -1,5 +1,14 @@
 export const STORAGE_SCHEMA_VERSION = 2;
 
+export class OfflineStorageError extends Error {
+  readonly terminalStorageFailure = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "OfflineStorageError";
+  }
+}
+
 export interface StoredStorageIdentity {
   org_id: string;
   user_id: string;
@@ -14,10 +23,14 @@ export function storageIdentityDecision(
 ): StorageIdentityDecision {
   if (!stored) return "initialize";
   if (stored.org_id !== expected.orgId || stored.user_id !== expected.userId) {
-    throw new Error("Offline storage identity mismatch. This cache cannot be opened for the signed-in account.");
+    throw new OfflineStorageError(
+      "Offline storage identity mismatch. This cache cannot be opened for the signed-in account.",
+    );
   }
   if (stored.schema_version !== STORAGE_SCHEMA_VERSION) {
-    throw new Error("Offline storage schema is not supported by this application version.");
+    throw new OfflineStorageError(
+      "Offline storage schema is not supported by this application version.",
+    );
   }
   return "verified";
 }
