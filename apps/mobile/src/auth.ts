@@ -71,6 +71,14 @@ function sessionHeaders(session: NativeSession, init?: RequestInit) {
   return headers;
 }
 
+function validSessionIdentifier(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 64;
+}
+
+function validBearerToken(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 8192 && !/\s/.test(value);
+}
+
 export async function nativeLogin(
   apiUrl: string,
   email: string,
@@ -88,9 +96,9 @@ export async function nativeLogin(
 
   const session = await parseJson<NativeSession>(response);
   if (
-    !session?.token ||
-    !session.orgId ||
-    !session.user?.id ||
+    !validBearerToken(session?.token) ||
+    !validSessionIdentifier(session?.orgId) ||
+    !validSessionIdentifier(session?.user?.id) ||
     !["owner", "dispatcher", "technician"].includes(session.user.role)
   ) {
     throw new Error("The authentication service returned an invalid native session.");
@@ -112,11 +120,42 @@ export async function nativeRequest<T>(
   return parseJson<T>(response);
 }
 
-function safeScopePart(value: string) {
-  const normalized = value.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/-+/g, "-");
-  return normalized.replace(/^[-_]+|[-_]+$/g, "").slice(0, 64) || "unknown";
+const BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+function utf8Bytes(value: string) {
+  const encoded = encodeURIComponent(value);
+  const bytes: number[] = [];
+  for (let index = 0; index < encoded.length; index += 1) {
+    if (encoded[index] === "%") {
+      bytes.push(Number.parseInt(encoded.slice(index + 1, index + 3), 16));
+      index += 2;
+    } else {
+      bytes.push(encoded.charCodeAt(index));
+    }
+  }
+  return bytes;
+}
+
+function base64Url(value: string) {
+  if (!validSessionIdentifier(value)) {
+    throw new Error("Offline storage identity values must be between 1 and 64 characters.");
+  }
+
+  const bytes = utf8Bytes(value);
+  let output = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const second = bytes[index + 1];
+    const third = bytes[index + 2];
+    const combined = (first << 16) | ((second ?? 0) << 8) | (third ?? 0);
+    output += BASE64URL_ALPHABET[(combined >>> 18) & 63];
+    output += BASE64URL_ALPHABET[(combined >>> 12) & 63];
+    if (second !== undefined) output += BASE64URL_ALPHABET[(combined >>> 6) & 63];
+    if (third !== undefined) output += BASE64URL_ALPHABET[combined & 63];
+  }
+  return output;
 }
 
 export function scopedDatabaseName(orgId: string, userId: string) {
-  return `openfieldpro-field-${safeScopePart(orgId)}-${safeScopePart(userId)}.db`;
+  return `openfieldpro-field-v2-${base64Url(orgId)}-${base64Url(userId)}.db`;
 }
