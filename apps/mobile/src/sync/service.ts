@@ -6,9 +6,13 @@ import {
   type NativeSession,
 } from "../auth";
 import {
+  validateFieldPackage,
+  type FieldPackage,
+} from "../field-package";
+import {
   prepareOutbox,
   reconcileOutbox,
-  type OfflineBatchResult,
+  serializeOfflineOperation,
   type OutboxAction,
   type StoredOutboxRow,
 } from "../outbox-reconcile";
@@ -17,6 +21,8 @@ import {
   storageIdentityDecision,
   type StoredStorageIdentity,
 } from "../storage-identity";
+
+export type { FieldPackage } from "../field-package";
 
 export interface SyncServiceOptions extends NativeSession {
   apiUrl: string;
@@ -33,19 +39,6 @@ export interface OfflineOperation {
   payload: Record<string, unknown>;
 }
 
-export interface FieldPackage {
-  packageVersion: number;
-  generatedAt: string;
-  job: Record<string, unknown>;
-  equipment: Record<string, unknown> | null;
-  session: Record<string, unknown> | null;
-  workflow: Record<string, unknown> | null;
-  steps: Array<Record<string, unknown>>;
-  measurements: Array<Record<string, unknown>>;
-  supportState: string;
-  downloadReady: boolean;
-}
-
 export interface FieldSyncResult {
   downloaded: number;
   queuedBeforeFlush: number;
@@ -55,7 +48,13 @@ export interface FieldSyncResult {
 }
 
 interface PackageRow {
+  job_id: string;
   payload_json: string;
+}
+
+function boundedLocalReason(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 500) || "invalid offline data";
 }
 
 function makeId(): string {
@@ -98,6 +97,12 @@ export class SyncService {
         support_state TEXT NOT NULL,
         download_ready INTEGER NOT NULL DEFAULT 0,
         cached_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS field_package_dead_letter (
+        job_id TEXT PRIMARY KEY NOT NULL,
+        payload_json TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        quarantined_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS diagnostic_outbox (
         op_id TEXT PRIMARY KEY NOT NULL,
@@ -167,12 +172,43 @@ export class SyncService {
     await database?.closeAsync().catch(() => undefined);
   }
 
+  private async quarantineFieldPackage(
+    database: SQLite.SQLiteDatabase,
+    row: PackageRow,
+    error: unknown,
+  ) {
+    await database.withExclusiveTransactionAsync(async () => {
+      await database.runAsync(
+        `INSERT OR REPLACE INTO field_package_dead_letter
+          (job_id, payload_json, reason, quarantined_at)
+         VALUES (?, ?, ?, ?)`,
+        row.job_id,
+        row.payload_json,
+        boundedLocalReason(error),
+        new Date().toISOString(),
+      );
+      await database.runAsync("DELETE FROM field_packages WHERE job_id = ?", row.job_id);
+    });
+  }
+
+  private validateStoredPackage(row: PackageRow) {
+    const parsed = JSON.parse(row.payload_json) as unknown;
+    return validateFieldPackage(parsed, {
+      orgId: this.opts.orgId,
+      jobId: row.job_id,
+    }).fieldPackage;
+  }
+
   async downloadPackage(jobId: string): Promise<FieldPackage> {
-    const fieldPackage = await nativeRequest<FieldPackage>(
+    const response = await nativeRequest<unknown>(
       this.opts.apiUrl,
       this.session(),
       `/api/diagnostics/field-package/${encodeURIComponent(jobId)}`,
     );
+    const { fieldPackage, serialized } = validateFieldPackage(response, {
+      orgId: this.opts.orgId,
+      jobId,
+    });
     const database = await this.database();
     const workflowVersion =
       fieldPackage.session && typeof fieldPackage.session.workflowVersion === "number"
@@ -184,7 +220,7 @@ export class SyncService {
         (job_id, payload_json, workflow_version, support_state, download_ready, cached_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
       jobId,
-      JSON.stringify(fieldPackage),
+      serialized,
       workflowVersion,
       fieldPackage.supportState,
       fieldPackage.downloadReady ? 1 : 0,
@@ -196,13 +232,14 @@ export class SyncService {
   async getCachedPackage(jobId: string): Promise<FieldPackage | null> {
     const database = await this.database();
     const row = await database.getFirstAsync<PackageRow>(
-      "SELECT payload_json FROM field_packages WHERE job_id = ? LIMIT 1",
+      "SELECT job_id, payload_json FROM field_packages WHERE job_id = ? LIMIT 1",
       jobId,
     );
     if (!row) return null;
     try {
-      return JSON.parse(row.payload_json) as FieldPackage;
-    } catch {
+      return this.validateStoredPackage(row);
+    } catch (error) {
+      await this.quarantineFieldPackage(database, row, error);
       return null;
     }
   }
@@ -210,15 +247,17 @@ export class SyncService {
   async listCachedPackages(): Promise<FieldPackage[]> {
     const database = await this.database();
     const rows = await database.getAllAsync<PackageRow>(
-      "SELECT payload_json FROM field_packages ORDER BY cached_at DESC",
+      "SELECT job_id, payload_json FROM field_packages ORDER BY cached_at DESC",
     );
-    return rows.flatMap((row) => {
+    const valid: FieldPackage[] = [];
+    for (const row of rows) {
       try {
-        return [JSON.parse(row.payload_json) as FieldPackage];
-      } catch {
-        return [];
+        valid.push(this.validateStoredPackage(row));
+      } catch (error) {
+        await this.quarantineFieldPackage(database, row, error);
       }
-    });
+    }
+    return valid;
   }
 
   async queuedCount(): Promise<number> {
@@ -230,6 +269,7 @@ export class SyncService {
   }
 
   async queueOperation(operation: OfflineOperation): Promise<void> {
+    const payloadJson = serializeOfflineOperation(operation);
     const database = await this.database();
     await database.runAsync(
       `INSERT OR REPLACE INTO diagnostic_outbox
@@ -237,7 +277,7 @@ export class SyncService {
        VALUES (?, ?, ?, 0, NULL, ?)`,
       operation.opId,
       operation.kind,
-      JSON.stringify(operation.payload),
+      payloadJson,
       new Date().toISOString(),
     );
   }
@@ -353,7 +393,7 @@ export class SyncService {
       return { flushed: 0, failed: prepared.actions.length };
     }
 
-    const body = await nativeRequest<{ results: OfflineBatchResult[] }>(
+    const body = await nativeRequest<{ results?: unknown }>(
       this.opts.apiUrl,
       this.session(),
       "/api/diagnostics/offline-batch",
