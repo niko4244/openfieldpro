@@ -5,6 +5,7 @@ import {
   MAX_OFFLINE_BATCH_OPERATIONS,
   prepareOutbox,
   reconcileOutbox,
+  serializeOfflineOperation,
 } from "../src/outbox-reconcile.ts";
 
 function row(
@@ -19,6 +20,41 @@ function row(
     attempts: 0,
   };
 }
+
+test("new offline operations are validated before local storage", () => {
+  assert.equal(
+    serializeOfflineOperation({
+      opId: "measurement:1",
+      kind: "measurement.create",
+      payload: { value: "5.2" },
+    }),
+    JSON.stringify({ value: "5.2" }),
+  );
+  assert.throws(
+    () =>
+      serializeOfflineOperation({
+        opId: "measurement:oversized",
+        kind: "measurement.create",
+        payload: { value: "x".repeat(250_001) },
+      }),
+    /250 KB/,
+  );
+  assert.throws(
+    () =>
+      serializeOfflineOperation({
+        opId: "unsupported",
+        kind: "admin.delete",
+        payload: {},
+      }),
+    /kind is not supported/,
+  );
+  const cyclic: Record<string, unknown> = {};
+  cyclic.self = cyclic;
+  assert.throws(
+    () => serializeOfflineOperation({ opId: "cyclic", kind: "session.patch", payload: cyclic }),
+    /could not be serialized/,
+  );
+});
 
 test("valid outbox rows become operations while corrupt rows are quarantined", () => {
   const prepared = prepareOutbox([
