@@ -110,6 +110,35 @@ test("authenticated native requests stay on-origin and lock identity headers", a
   }
 });
 
+test("native requests remain in the normalized API namespace and reject URL credentials", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return new Response("[]", { status: 200 });
+  };
+
+  try {
+    for (const path of [
+      "/api/../admin",
+      "/api/%2e%2e/admin",
+      "/api/%2E%2E/admin",
+    ]) {
+      await assert.rejects(
+        () => nativeRequest("https://field.example.test", session, path),
+        /remain inside the \/api\/ namespace/,
+      );
+    }
+    await assert.rejects(
+      () => nativeRequest("https://user:password@field.example.test", session, "/api/jobs"),
+      /must not contain embedded credentials/,
+    );
+    assert.equal(requests, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("terminal authorization failures are distinguishable from network failures", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () =>
