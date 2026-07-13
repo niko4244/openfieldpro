@@ -4,6 +4,10 @@ export const ALLOWED_OFFLINE_OPERATION_KINDS = new Set([
   "correction.create",
 ]);
 
+export const MAX_OFFLINE_OPERATION_BYTES = 250_000;
+export const MAX_OFFLINE_BATCH_BYTES = 2_000_000;
+export const MAX_OFFLINE_BATCH_OPERATIONS = 50;
+
 export interface StoredOutboxRow {
   op_id: string;
   kind: string;
@@ -33,6 +37,14 @@ function boundedError(value: string) {
   return value.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 500) || "unknown error";
 }
 
+function utf8ByteLength(value: string) {
+  try {
+    return new TextEncoder().encode(value).length;
+  } catch {
+    throw new Error("operation content contains malformed Unicode");
+  }
+}
+
 function validateStoredRow(row: StoredOutboxRow) {
   if (!row.op_id || row.op_id.length > 200 || /[\u0000-\u001f\u007f]/.test(row.op_id)) {
     throw new Error("operation ID is empty, oversized, or contains control characters");
@@ -40,14 +52,21 @@ function validateStoredRow(row: StoredOutboxRow) {
   if (!ALLOWED_OFFLINE_OPERATION_KINDS.has(row.kind)) {
     throw new Error("operation kind is not supported by this application version");
   }
-  if (row.payload_json.length > 1_000_000) {
-    throw new Error("operation payload exceeds the 1 MB offline replay limit");
+  if (utf8ByteLength(row.payload_json) > MAX_OFFLINE_OPERATION_BYTES) {
+    throw new Error("operation payload exceeds the 250 KB offline replay limit");
   }
+}
+
+function operationByteLength(operation: PreparedOfflineOperation) {
+  return utf8ByteLength(JSON.stringify(operation));
 }
 
 export function prepareOutbox(rows: StoredOutboxRow[]) {
   const operations: PreparedOfflineOperation[] = [];
   const actions: OutboxAction[] = [];
+  let deferred = 0;
+  let batchBytes = 0;
+  let batchClosed = false;
 
   for (const row of rows) {
     try {
@@ -56,11 +75,28 @@ export function prepareOutbox(rows: StoredOutboxRow[]) {
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
         throw new Error("payload must be a JSON object");
       }
-      operations.push({
+
+      const operation = {
         opId: row.op_id,
         kind: row.kind,
         payload: payload as Record<string, unknown>,
-      });
+      };
+      const operationBytes = operationByteLength(operation);
+      const exceedsBatch =
+        operations.length >= MAX_OFFLINE_BATCH_OPERATIONS ||
+        batchBytes + operationBytes > MAX_OFFLINE_BATCH_BYTES;
+
+      // Preserve queue order: once a valid operation cannot fit, defer it and
+      // all subsequent valid rows to a later batch. Invalid rows are still
+      // quarantined during this scan.
+      if (batchClosed || exceedsBatch) {
+        batchClosed = true;
+        deferred += 1;
+        continue;
+      }
+
+      operations.push(operation);
+      batchBytes += operationBytes;
     } catch (error) {
       actions.push({
         type: "quarantine",
@@ -71,20 +107,26 @@ export function prepareOutbox(rows: StoredOutboxRow[]) {
     }
   }
 
-  return { operations, actions };
+  return { operations, actions, deferred, batchBytes };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 export function reconcileOutbox(
   submitted: PreparedOfflineOperation[],
-  results: OfflineBatchResult[],
+  results: unknown,
 ): OutboxAction[] {
   if (!Array.isArray(results)) throw new Error("Offline batch response did not contain a results array.");
 
   const knownIds = new Set(submitted.map((operation) => operation.opId));
-  const resultById = new Map<string, OfflineBatchResult>();
-  for (const result of results) {
-    if (!result || typeof result.opId !== "string" || !knownIds.has(result.opId)) continue;
-    if (!resultById.has(result.opId)) resultById.set(result.opId, result);
+  const resultById = new Map<string, Record<string, unknown>>();
+  for (const candidate of results) {
+    if (!isObject(candidate) || typeof candidate.opId !== "string" || !knownIds.has(candidate.opId)) {
+      continue;
+    }
+    if (!resultById.has(candidate.opId)) resultById.set(candidate.opId, candidate);
   }
 
   return submitted.map((operation): OutboxAction => {
@@ -96,12 +138,21 @@ export function reconcileOutbox(
         error: "server did not acknowledge this operation",
       };
     }
-    if (result.ok) return { type: "delete", opId: operation.opId };
-    if (result.conflict && Number.isFinite(result.conflict.currentVersion)) {
+    if (result.ok === true) return { type: "delete", opId: operation.opId };
+    if (result.ok !== false) {
       return {
         type: "fail",
         opId: operation.opId,
-        error: `conflict: server version ${result.conflict.currentVersion}`,
+        error: "server returned a malformed acknowledgement",
+      };
+    }
+
+    const conflict = isObject(result.conflict) ? result.conflict.currentVersion : undefined;
+    if (typeof conflict === "number" && Number.isSafeInteger(conflict) && conflict >= 0) {
+      return {
+        type: "fail",
+        opId: operation.opId,
+        error: `conflict: server version ${conflict}`,
       };
     }
     return {
