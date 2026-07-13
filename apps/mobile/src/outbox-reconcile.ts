@@ -7,7 +7,10 @@ export const ALLOWED_OFFLINE_OPERATION_KINDS = new Set([
 ]);
 
 export const MAX_OFFLINE_OPERATION_BYTES = 250_000;
-export const MAX_OFFLINE_BATCH_BYTES = 2_000_000;
+// The API server body limit is 1,048,576 bytes. Keep the serialized operation
+// set below that ceiling so the surrounding {"ops": ...} envelope and headers
+// cannot turn an accepted client batch into a server-side 413 response.
+export const MAX_OFFLINE_BATCH_BYTES = 900_000;
 export const MAX_OFFLINE_BATCH_OPERATIONS = 50;
 const MAX_OFFLINE_JSON_DEPTH = 32;
 const MAX_OFFLINE_JSON_NODES = 50_000;
