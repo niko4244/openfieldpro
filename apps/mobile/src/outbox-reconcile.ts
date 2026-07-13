@@ -1,3 +1,9 @@
+export const ALLOWED_OFFLINE_OPERATION_KINDS = new Set([
+  "measurement.create",
+  "session.patch",
+  "correction.create",
+]);
+
 export interface StoredOutboxRow {
   op_id: string;
   kind: string;
@@ -27,12 +33,25 @@ function boundedError(value: string) {
   return value.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 500) || "unknown error";
 }
 
+function validateStoredRow(row: StoredOutboxRow) {
+  if (!row.op_id || row.op_id.length > 200 || /[\u0000-\u001f\u007f]/.test(row.op_id)) {
+    throw new Error("operation ID is empty, oversized, or contains control characters");
+  }
+  if (!ALLOWED_OFFLINE_OPERATION_KINDS.has(row.kind)) {
+    throw new Error("operation kind is not supported by this application version");
+  }
+  if (row.payload_json.length > 1_000_000) {
+    throw new Error("operation payload exceeds the 1 MB offline replay limit");
+  }
+}
+
 export function prepareOutbox(rows: StoredOutboxRow[]) {
   const operations: PreparedOfflineOperation[] = [];
   const actions: OutboxAction[] = [];
 
   for (const row of rows) {
     try {
+      validateStoredRow(row);
       const payload = JSON.parse(row.payload_json) as unknown;
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
         throw new Error("payload must be a JSON object");
