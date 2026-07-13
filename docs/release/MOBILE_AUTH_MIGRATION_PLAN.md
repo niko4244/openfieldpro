@@ -9,12 +9,17 @@ The `mobile-per-user-auth` branch must:
 - remove every use of `EXPO_PUBLIC_AUTH_TOKEN` and `EXPO_PUBLIC_ORG_ID` as credentials;
 - add per-user email/password login through `/api/auth/native-login` with `X-OpenFieldPro-Client: native`;
 - keep the token only in app memory;
-- constrain authenticated requests to the configured HTTPS API origin;
-- force sign-in after terminal 401/403 responses;
-- isolate SQLite packages and queued operations by organization ID and user ID;
+- constrain authenticated requests to the configured HTTPS API origin and normalized `/api/` namespace;
+- reject API URLs containing embedded credentials;
+- force sign-in after terminal 401/403 or unsafe local-storage responses;
+- validate native account identifiers before deriving local storage paths;
+- isolate SQLite packages and queued operations by exact organization ID and user ID;
+- bind every database internally to that organization, user, and schema version;
 - serialize startup, interval, and pull-to-refresh synchronization;
-- wait for active synchronization before closing SQLite;
-- add dependency-free mobile auth/isolation tests;
+- wait for active synchronization before closing SQLite and prevent post-close reopening;
+- quarantine malformed or tampered offline rows before network replay;
+- reconcile every submitted operation exhaustively;
+- add dependency-free mobile auth, storage, outbox, and synchronization tests;
 - make release safety reject any future compiled shared token.
 
 Phase one deliberately requires sign-in after every app restart. It must not expose cached customer data based only on an entered email address.
@@ -28,7 +33,8 @@ The production target must:
 - restore the session on startup without exposing credentials in logs or UI;
 - delete credentials on sign-out and terminal 401/403 responses;
 - preserve cached field packages and queued diagnostic operations according to offline retention policy;
-- define migration or quarantine of the legacy shared `openfieldpro-field.db` database;
+- define migration or quarantine of the legacy shared `openfieldpro-field.db` database and earlier phase-one cache filenames;
+- provide an auditable recovery/export path for dead-letter operations;
 - add explicit handling for expired sessions while offline.
 
 ## Dependency procedure
@@ -61,11 +67,18 @@ A lockfile regeneration that changes unrelated dependencies must be rejected.
 ### Mobile phase one
 
 - Native login normalizes email and sends the native client marker.
+- Malformed bearer tokens, roles, account IDs, oversized UTF-8 IDs, and invalid Unicode identities are rejected.
 - Authenticated requests remain on the configured origin.
+- Normalized path traversal cannot escape `/api/`.
+- API URLs with embedded credentials are rejected.
 - Callers cannot override authorization, organization, or native-client headers.
 - Production endpoints require HTTPS.
 - Terminal authorization failures are distinguishable from transient network failures.
-- Database names are deterministic and unique per organization/user.
+- Database names are deterministic and collision-resistant per organization/user.
+- Internal database identity and schema mismatches fail closed.
+- A signed-out synchronization service cannot reopen its database.
+- Corrupt JSON, invalid operation kinds/IDs, and oversized replay payloads are quarantined.
+- Missing, duplicate, and unknown server acknowledgements are reconciled deterministically.
 - Concurrent refreshes share one synchronization execution.
 - Shutdown waits for active synchronization and suppresses future work.
 
@@ -79,8 +92,9 @@ A lockfile regeneration that changes unrelated dependencies must be rejected.
 - Reconnection authenticates before flushing queued writes.
 - Organization/user change cannot expose the previous user's cached work.
 - Legacy shared-cache migration does not lose queued operations.
+- Dead-letter operations can be reviewed and recovered without silent data loss.
 - Screenshots, logs, crash reports, SQLite, and AsyncStorage contain no JWT.
 
 ## Release gate
 
-Phase one may merge as a security correction after its full CI passes, because it removes the compiled shared JWT. Production mobile release remains **no-go** until phase two, device validation, deterministic dependency verification, and legacy-cache handling are complete.
+Phase one may merge as a security correction only after its full CI passes, because it removes the compiled shared JWT. Production mobile release remains **no-go** until phase two, device validation, deterministic dependency verification, legacy-cache handling, and dead-letter recovery are complete.
