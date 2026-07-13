@@ -1,454 +1,257 @@
-// OpenFieldPro technician app — next-action field dashboard with a durable
-// diagnostic-package fallback for low-signal service locations.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import {
   ActivityIndicator,
-  RefreshControl,
-  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  SafeAreaView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
-import type { JobDTO } from "@ofp/shared";
-import { SyncService, type FieldPackage } from "./src/sync";
+import {
+  NativeRequestError,
+  nativeLogin,
+  type NativeSession,
+} from "./src/auth";
+import { FieldDashboard } from "./src/FieldDashboard";
 
 const API = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
-const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN ?? "";
-const ORG_ID = process.env.EXPO_PUBLIC_ORG_ID ?? "";
 
-interface Appointment {
-  id: string;
-  jobId: string;
-  technicianId: string | null;
-  startsAt: string;
-  endsAt: string;
-}
-
-interface DiagnosticListItem {
-  session: {
-    id: string;
-    jobId: string;
-    status: string;
-    customerComplaint?: string | null;
-    updatedAt: string;
-  };
-  equipment: {
-    id: string;
-    type: string;
-    make?: string | null;
-    model?: string | null;
-    serialNumber?: string | null;
-  };
-  workflow: {
-    id: string;
-    name: string;
-    supportStatus: string;
-  } | null;
-}
-
-async function fetchJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API}${path}`, {
-    headers: {
-      ...(AUTH_TOKEN ? { authorization: `Bearer ${AUTH_TOKEN}` } : {}),
-      ...(ORG_ID ? { "x-org-id": ORG_ID } : {}),
-    },
-  });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response.json() as Promise<T>;
-}
-
-function humanize(value: string) {
-  return value.replaceAll("_", " ");
-}
-
-function statusColor(status: string) {
-  if (["blocked", "escalated", "suspended"].includes(status)) return "#ff8080";
-  if (["diagnosed", "completed"].includes(status)) return "#86e29a";
-  if (["testing", "workflow_ready"].includes(status)) return "#7ab8ff";
-  return "#e0b34f";
-}
-
-function packageToDiagnostic(fieldPackage: FieldPackage): DiagnosticListItem | null {
-  if (!fieldPackage.session || !fieldPackage.equipment) return null;
-  return {
-    session: fieldPackage.session as unknown as DiagnosticListItem["session"],
-    equipment: fieldPackage.equipment as unknown as DiagnosticListItem["equipment"],
-    workflow: fieldPackage.workflow
-      ? (fieldPackage.workflow as unknown as DiagnosticListItem["workflow"])
-      : null,
-  };
-}
-
-function packageToAppointment(fieldPackage: FieldPackage): Appointment | null {
-  const job = fieldPackage.job as Partial<JobDTO> & { scheduledAt?: string | null };
-  if (!job.id || !job.scheduledAt) return null;
-  const start = new Date(job.scheduledAt);
-  if (Number.isNaN(start.getTime())) return null;
-  return {
-    id: `cached-${job.id}`,
-    jobId: job.id,
-    technicianId: null,
-    startsAt: start.toISOString(),
-    endsAt: new Date(start.getTime() + 90 * 60 * 1000).toISOString(),
-  };
+function apiLabel() {
+  try {
+    return new URL(API).origin;
+  } catch {
+    return API;
+  }
 }
 
 export default function App() {
-  const [jobs, setJobs] = useState<JobDTO[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [diagnostics, setDiagnostics] = useState<DiagnosticListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [offline, setOffline] = useState(false);
+  const [session, setSession] = useState<NativeSession | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastSync, setLastSync] = useState<string | null>(null);
-  const [queuedWrites, setQueuedWrites] = useState(0);
-  const syncRef = useRef<SyncService | null>(null);
 
-  const loadCached = useCallback(async (): Promise<boolean> => {
-    const packages = await syncRef.current?.listCachedPackages();
-    if (!packages?.length) return false;
-
-    setJobs(packages.map((item) => item.job as unknown as JobDTO));
-    setAppointments(
-      packages.flatMap((item) => {
-        const appointment = packageToAppointment(item);
-        return appointment ? [appointment] : [];
-      }),
-    );
-    setDiagnostics(
-      packages.flatMap((item) => {
-        const diagnostic = packageToDiagnostic(item);
-        return diagnostic ? [diagnostic] : [];
-      }),
-    );
-    setQueuedWrites((await syncRef.current?.queuedCount()) ?? 0);
-    setOffline(true);
-    return true;
+  const expireSession = useCallback((message: string) => {
+    setSession(null);
+    setPassword("");
+    setError(message);
   }, []);
 
-  const load = useCallback(async () => {
+  const signOut = useCallback(() => {
+    setSession(null);
+    setPassword("");
+    setError("Signed out. Your downloaded field packages remain isolated to your account.");
+  }, []);
+
+  async function submitLogin() {
+    if (!email.trim() || !password) {
+      setError("Enter your individual OpenFieldPro email and password.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
     try {
-      setError(null);
-      const [jobRows, appointmentRows, diagnosticRows] = await Promise.all([
-        fetchJson<JobDTO[]>("/api/jobs"),
-        fetchJson<Appointment[]>("/api/appointments"),
-        fetchJson<DiagnosticListItem[]>("/api/diagnostics/sessions").catch(() => []),
-      ]);
-      setJobs(jobRows);
-      setAppointments(appointmentRows);
-      setDiagnostics(diagnosticRows);
-      setOffline(false);
-      setQueuedWrites((await syncRef.current?.queuedCount()) ?? 0);
+      const nextSession = await nativeLogin(API, email, password);
+      setPassword("");
+      setSession(nextSession);
     } catch (caught) {
-      const restored = await loadCached();
+      setPassword("");
       setError(
-        restored
-          ? "Offline mode — showing downloaded field packages. New readings remain queued until synchronization succeeds."
+        caught instanceof NativeRequestError && caught.status === 401
+          ? "Sign-in failed. Verify your email and password."
           : caught instanceof Error
             ? caught.message
-            : String(caught),
+            : "Sign-in failed.",
       );
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setSubmitting(false);
     }
-  }, [loadCached]);
+  }
 
-  useEffect(() => {
-    const service = new SyncService({ apiUrl: API, orgId: ORG_ID, token: AUTH_TOKEN });
-    syncRef.current = service;
-    void load();
-
-    const synchronize = async () => {
-      try {
-        const result = await service.pull();
-        setLastSync(new Date().toLocaleTimeString());
-        setQueuedWrites(Math.max(0, result.queuedBeforeFlush - result.flushed));
-        await load();
-      } catch {
-        await loadCached();
-      }
-    };
-
-    void synchronize();
-    const interval = setInterval(() => void synchronize(), 30_000);
-    return () => clearInterval(interval);
-  }, [load, loadCached]);
-
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrowStart = new Date(todayStart);
-  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-
-  const todayAppointments = useMemo(
-    () =>
-      appointments
-        .filter((appointment) => {
-          const starts = new Date(appointment.startsAt);
-          return starts >= todayStart && starts < tomorrowStart;
-        })
-        .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()),
-    [appointments, todayStart.getTime(), tomorrowStart.getTime()],
-  );
-
-  const activeDiagnostics = useMemo(
-    () =>
-      diagnostics.filter((item) =>
-        ["identification_required", "workflow_ready", "testing", "blocked", "escalated"].includes(
-          item.session.status,
-        ),
-      ),
-    [diagnostics],
-  );
-
-  const nextAppointment = todayAppointments.find(
-    (appointment) => new Date(appointment.endsAt) > now,
-  );
-  const nextJob = nextAppointment ? jobs.find((job) => job.id === nextAppointment.jobId) : null;
-  const nextDiagnostic = nextAppointment
-    ? diagnostics.find((item) => item.session.jobId === nextAppointment.jobId)
-    : null;
-
-  if (loading) {
+  if (session) {
     return (
-      <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#22c55e" />
-          <Text style={styles.loadingText}>Loading today’s field work…</Text>
-        </View>
+      <SafeAreaView style={styles.appContainer}>
+        <FieldDashboard
+          apiUrl={API}
+          session={session}
+          onSessionExpired={expireSession}
+          onSignOut={signOut}
+        />
         <StatusBar style="light" />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void load();
-            }}
-            tintColor="#22c55e"
-          />
-        }
+    <SafeAreaView style={styles.appContainer}>
+      <KeyboardAvoidingView
+        style={styles.loginContainer}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.header}>
-          <View style={styles.headerStatusRow}>
-            <Text style={styles.eyebrow}>OPENFIELDPRO FIELD</Text>
-            <Text style={[styles.connectivity, { color: offline ? "#e0b34f" : "#86e29a" }]}>
-              {offline ? "OFFLINE" : "ONLINE"}
-            </Text>
+        <View style={styles.loginCard}>
+          <View style={styles.logo}>
+            <Text style={styles.logoText}>OF</Text>
           </View>
-          <Text style={styles.headerTitle}>Today</Text>
-          <Text style={styles.headerSub}>
-            {todayAppointments.length} visit{todayAppointments.length === 1 ? "" : "s"} · {activeDiagnostics.length} active diagnostic{activeDiagnostics.length === 1 ? "" : "s"}
-            {queuedWrites ? ` · ${queuedWrites} queued` : ""}
-            {lastSync ? ` · synced ${lastSync}` : ""}
+          <Text style={styles.eyebrow}>OPENFIELDPRO FIELD</Text>
+          <Text style={styles.title}>Secure technician sign-in</Text>
+          <Text style={styles.description}>
+            Use your individual team account. Shared build-time credentials are no longer accepted by the field app.
           </Text>
-        </View>
 
-        {error && (
-          <View style={[styles.errorBanner, offline && styles.offlineBanner]}>
-            <Text style={[styles.errorTitle, offline && styles.offlineTitle]}>
-              {offline ? "Working from downloaded field packages" : "Field data needs attention"}
+          <View style={styles.securityPanel}>
+            <Text style={styles.securityTitle}>SESSION SECURITY</Text>
+            <Text style={styles.securityText}>
+              Your bearer token stays only in app memory. Sign-in is required again after the app restarts. Downloaded field packages are stored in a database isolated to your organization and user ID.
             </Text>
-            <Text style={styles.errorMessage}>{error}</Text>
           </View>
-        )}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Next action</Text>
-          {nextAppointment ? (
-            <View style={styles.primaryCard}>
-              <View style={styles.rowBetween}>
-                <View style={styles.timeBlock}>
-                  <Text style={styles.timeText}>
-                    {new Date(nextAppointment.startsAt).toLocaleTimeString([], {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
-                  </Text>
-                  <Text style={styles.timeLabel}>arrival</Text>
-                </View>
-                <View style={styles.flexOne}>
-                  <Text style={styles.cardTitle}>{nextJob?.title ?? "Assigned service job"}</Text>
-                  <Text style={styles.cardMeta}>
-                    {nextJob?.status ? humanize(nextJob.status) : "scheduled"}
-                  </Text>
-                </View>
-              </View>
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            accessibilityLabel="Email"
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect={false}
+            keyboardType="email-address"
+            onChangeText={setEmail}
+            placeholder="technician@example.com"
+            placeholderTextColor="#5f6d91"
+            returnKeyType="next"
+            style={styles.input}
+            textContentType="username"
+            value={email}
+          />
 
-              {nextDiagnostic ? (
-                <View style={styles.appliancePanel}>
-                  <View style={styles.rowBetween}>
-                    <View style={styles.flexOne}>
-                      <Text style={styles.applianceTitle}>
-                        {[nextDiagnostic.equipment.make, nextDiagnostic.equipment.model]
-                          .filter(Boolean)
-                          .join(" ") || nextDiagnostic.equipment.type}
-                      </Text>
-                      <Text style={styles.cardMeta}>
-                        {nextDiagnostic.workflow?.name ?? "Coverage required"}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.statusPill,
-                        { borderColor: statusColor(nextDiagnostic.session.status) },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusText,
-                          { color: statusColor(nextDiagnostic.session.status) },
-                        ]}
-                      >
-                        {humanize(nextDiagnostic.session.status)}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.complaintText}>
-                    {nextDiagnostic.session.customerComplaint || "Customer complaint not recorded"}
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.warningPanel}>
-                  <Text style={styles.warningTitle}>Diagnostic not started</Text>
-                  <Text style={styles.cardMeta}>
-                    Confirm the exact model and serial, then select the applicable validated workflow.
-                  </Text>
-                </View>
-              )}
-            </View>
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No remaining appointments today</Text>
-              <Text style={styles.emptyText}>
-                Check Jobs for unscheduled work, parts returns, and incomplete diagnostic sessions.
-              </Text>
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            accessibilityLabel="Password"
+            autoCapitalize="none"
+            autoComplete="current-password"
+            autoCorrect={false}
+            onChangeText={setPassword}
+            onSubmitEditing={() => void submitLogin()}
+            placeholder="Password"
+            placeholderTextColor="#5f6d91"
+            returnKeyType="go"
+            secureTextEntry
+            style={styles.input}
+            textContentType="password"
+            value={password}
+          />
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Sign in securely"
+            disabled={submitting}
+            onPress={() => void submitLogin()}
+            style={({ pressed }) => [
+              styles.loginButton,
+              (pressed || submitting) && styles.buttonPressed,
+            ]}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text style={styles.loginButtonText}>Sign in securely</Text>
+            )}
+          </Pressable>
+
+          {error && (
+            <View accessibilityLiveRegion="polite" style={styles.errorPanel}>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
-        </View>
 
-        <View style={styles.section}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.sectionTitle}>Diagnostic attention</Text>
-            <Text style={styles.sectionCount}>{activeDiagnostics.length}</Text>
-          </View>
-          {activeDiagnostics.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No active diagnostic sessions</Text>
-              <Text style={styles.emptyText}>
-                New sessions appear after the work order is linked to the exact appliance.
-              </Text>
-            </View>
-          ) : (
-            activeDiagnostics.slice(0, 8).map((item) => (
-              <View key={item.session.id} style={styles.listCard}>
-                <View style={styles.rowBetween}>
-                  <View style={styles.flexOne}>
-                    <Text style={styles.listTitle}>
-                      {[item.equipment.make, item.equipment.model].filter(Boolean).join(" ") ||
-                        item.equipment.type}
-                    </Text>
-                    <Text style={styles.cardMeta}>
-                      {item.workflow?.name ?? "Unsupported / unresolved"}
-                    </Text>
-                  </View>
-                  <Text style={[styles.smallStatus, { color: statusColor(item.session.status) }]}>
-                    {humanize(item.session.status)}
-                  </Text>
-                </View>
-                <Text style={styles.complaintText} numberOfLines={2}>
-                  {item.session.customerComplaint || "Complaint not recorded"}
-                </Text>
-              </View>
-            ))
-          )}
+          <Text style={styles.apiText}>API: {apiLabel()}</Text>
         </View>
-
-        <View style={styles.section}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.sectionTitle}>Today’s route</Text>
-            <Text style={styles.sectionCount}>{todayAppointments.length}</Text>
-          </View>
-          {todayAppointments.map((appointment) => {
-            const job = jobs.find((item) => item.id === appointment.jobId);
-            const session = diagnostics.find((item) => item.session.jobId === appointment.jobId);
-            return (
-              <View key={appointment.id} style={styles.routeCard}>
-                <Text style={styles.routeTime}>
-                  {new Date(appointment.startsAt).toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </Text>
-                <View style={styles.flexOne}>
-                  <Text style={styles.listTitle}>{job?.title ?? "Service job"}</Text>
-                  <Text style={styles.cardMeta}>
-                    {session ? humanize(session.session.status) : "diagnostic not started"}
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-        <View style={{ height: 48 }} />
-      </ScrollView>
+      </KeyboardAvoidingView>
       <StatusBar style="light" />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b1020" },
-  scroll: { flex: 1 },
-  scrollContent: { paddingTop: 58, paddingBottom: 24 },
-  loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  loadingText: { color: "#8a97c2", fontSize: 14 },
-  header: { paddingHorizontal: 20, marginBottom: 22 },
-  headerStatusRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  eyebrow: { color: "#22c55e", fontSize: 10, fontWeight: "800", letterSpacing: 2 },
-  connectivity: { fontSize: 9, fontWeight: "900", letterSpacing: 1.4 },
-  headerTitle: { color: "#e6e9f0", fontSize: 32, fontWeight: "800", letterSpacing: -0.8, marginTop: 4 },
-  headerSub: { color: "#8a97c2", fontSize: 12, marginTop: 5 },
-  errorBanner: { marginHorizontal: 20, marginBottom: 18, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,128,128,.28)", backgroundColor: "rgba(255,128,128,.08)", padding: 14 },
-  offlineBanner: { borderColor: "rgba(224,179,79,.28)", backgroundColor: "rgba(224,179,79,.08)" },
-  errorTitle: { color: "#ff8080", fontSize: 13, fontWeight: "700" },
-  offlineTitle: { color: "#e0b34f" },
-  errorMessage: { color: "#8a97c2", fontSize: 11, marginTop: 4 },
-  section: { paddingHorizontal: 20, marginBottom: 24 },
-  sectionTitle: { color: "#e6e9f0", fontSize: 16, fontWeight: "700", marginBottom: 11 },
-  sectionCount: { color: "#6b7aa8", fontSize: 12, fontWeight: "700", marginBottom: 11 },
-  primaryCard: { borderRadius: 18, borderWidth: 1, borderColor: "rgba(34,197,94,.35)", backgroundColor: "#141b33", padding: 16 },
-  rowBetween: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
-  flexOne: { flex: 1, minWidth: 0 },
-  timeBlock: { width: 72, borderRadius: 12, backgroundColor: "#0f1630", paddingVertical: 9, alignItems: "center" },
-  timeText: { color: "#e6e9f0", fontSize: 16, fontWeight: "800" },
-  timeLabel: { color: "#6b7aa8", fontSize: 9, marginTop: 2, textTransform: "uppercase" },
-  cardTitle: { color: "#e6e9f0", fontSize: 17, fontWeight: "700" },
-  cardMeta: { color: "#8a97c2", fontSize: 11, marginTop: 3 },
-  appliancePanel: { marginTop: 14, borderRadius: 13, backgroundColor: "#0f1630", padding: 13 },
-  applianceTitle: { color: "#e6e9f0", fontSize: 14, fontWeight: "700" },
-  statusPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
-  statusText: { fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
-  complaintText: { color: "#aab4d0", fontSize: 12, lineHeight: 17, marginTop: 10 },
-  warningPanel: { marginTop: 14, borderRadius: 13, backgroundColor: "rgba(224,179,79,.08)", padding: 13 },
-  warningTitle: { color: "#e0b34f", fontSize: 13, fontWeight: "700" },
-  emptyCard: { borderRadius: 14, backgroundColor: "#141b33", paddingVertical: 28, paddingHorizontal: 18, alignItems: "center" },
-  emptyTitle: { color: "#8a97c2", fontSize: 14, fontWeight: "700", textAlign: "center" },
-  emptyText: { color: "#6b7aa8", fontSize: 11, lineHeight: 16, marginTop: 5, textAlign: "center" },
-  listCard: { borderRadius: 14, backgroundColor: "#141b33", borderWidth: 1, borderColor: "#1d2440", padding: 14, marginBottom: 9 },
-  listTitle: { color: "#e6e9f0", fontSize: 13, fontWeight: "700" },
-  smallStatus: { fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
-  routeCard: { flexDirection: "row", alignItems: "center", gap: 13, borderRadius: 13, backgroundColor: "#141b33", padding: 13, marginBottom: 8 },
-  routeTime: { width: 70, color: "#7ab8ff", fontSize: 13, fontWeight: "800" },
+  appContainer: { flex: 1, backgroundColor: "#0b1020" },
+  loginContainer: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+  },
+  loginCard: {
+    width: "100%",
+    maxWidth: 460,
+    alignSelf: "center",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#202a48",
+    backgroundColor: "#141b33",
+    padding: 22,
+  },
+  logo: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#4f67ff",
+    marginBottom: 18,
+  },
+  logoText: { color: "#ffffff", fontSize: 14, fontWeight: "900" },
+  eyebrow: { color: "#22c55e", fontSize: 10, fontWeight: "900", letterSpacing: 2 },
+  title: {
+    color: "#e6e9f0",
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.6,
+    marginTop: 8,
+  },
+  description: { color: "#9aa6c3", fontSize: 13, lineHeight: 20, marginTop: 10 },
+  securityPanel: {
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,.28)",
+    backgroundColor: "rgba(34,197,94,.07)",
+    padding: 13,
+    marginTop: 20,
+    marginBottom: 22,
+  },
+  securityTitle: { color: "#86e29a", fontSize: 9, fontWeight: "900", letterSpacing: 1.2 },
+  securityText: { color: "#aab4d0", fontSize: 11, lineHeight: 17, marginTop: 6 },
+  label: { color: "#aab4d0", fontSize: 11, fontWeight: "700", marginBottom: 7 },
+  input: {
+    height: 50,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "#2a3555",
+    backgroundColor: "#0f1630",
+    color: "#e6e9f0",
+    fontSize: 14,
+    paddingHorizontal: 14,
+    marginBottom: 17,
+  },
+  loginButton: {
+    height: 52,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#4f67ff",
+    marginTop: 3,
+  },
+  buttonPressed: { opacity: 0.72 },
+  loginButtonText: { color: "#ffffff", fontSize: 14, fontWeight: "800" },
+  errorPanel: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,128,128,.28)",
+    backgroundColor: "rgba(255,128,128,.08)",
+    padding: 11,
+    marginTop: 14,
+  },
+  errorText: { color: "#ff9baa", fontSize: 11, lineHeight: 16 },
+  apiText: { color: "#5f6d91", fontSize: 9, marginTop: 16, textAlign: "center" },
 });

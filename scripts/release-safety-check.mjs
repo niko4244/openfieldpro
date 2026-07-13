@@ -93,6 +93,15 @@ for (const file of tracked) {
 if (secretFindings.length) fail(`possible committed secrets: ${secretFindings.join("; ")}`);
 else pass("tracked-text secret pattern scan passed");
 
+const compiledMobileCredentialFiles = textFiles
+  .filter(({ file, content }) => file.startsWith("apps/mobile/") && content.includes("EXPO_PUBLIC_AUTH_TOKEN"))
+  .map(({ file }) => file);
+if (compiledMobileCredentialFiles.length) {
+  fail(`compiled shared mobile authentication token reference remains in: ${compiledMobileCredentialFiles.join(", ")}`);
+} else {
+  pass("mobile application code contains no EXPO_PUBLIC_AUTH_TOKEN credential path");
+}
+
 const directCompetitorPattern = /housecall\s*pro/i;
 const competitorMentions = textFiles
   .filter(({ content }) => directCompetitorPattern.test(content))

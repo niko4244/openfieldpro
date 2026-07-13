@@ -1,9 +1,31 @@
 import * as SQLite from "expo-sqlite";
+import {
+  NativeRequestError,
+  nativeRequest,
+  scopedDatabaseName,
+  type NativeSession,
+} from "../auth";
+import {
+  validateFieldPackage,
+  type FieldPackage,
+} from "../field-package";
+import {
+  prepareOutbox,
+  reconcileOutbox,
+  serializeOfflineOperation,
+  type OutboxAction,
+  type StoredOutboxRow,
+} from "../outbox-reconcile";
+import {
+  STORAGE_SCHEMA_VERSION,
+  storageIdentityDecision,
+  type StoredStorageIdentity,
+} from "../storage-identity";
 
-export interface SyncServiceOptions {
+export type { FieldPackage } from "../field-package";
+
+export interface SyncServiceOptions extends NativeSession {
   apiUrl: string;
-  orgId: string;
-  token: string;
 }
 
 export type OfflineOpKind =
@@ -17,19 +39,6 @@ export interface OfflineOperation {
   payload: Record<string, unknown>;
 }
 
-export interface FieldPackage {
-  packageVersion: number;
-  generatedAt: string;
-  job: Record<string, unknown>;
-  equipment: Record<string, unknown> | null;
-  session: Record<string, unknown> | null;
-  workflow: Record<string, unknown> | null;
-  steps: Array<Record<string, unknown>>;
-  measurements: Array<Record<string, unknown>>;
-  supportState: string;
-  downloadReady: boolean;
-}
-
 export interface FieldSyncResult {
   downloaded: number;
   queuedBeforeFlush: number;
@@ -38,15 +47,14 @@ export interface FieldSyncResult {
   cachedJobs: string[];
 }
 
-interface OutboxRow {
-  op_id: string;
-  kind: OfflineOpKind;
+interface PackageRow {
+  job_id: string;
   payload_json: string;
-  attempts: number;
 }
 
-interface PackageRow {
-  payload_json: string;
+function boundedLocalReason(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 500) || "invalid offline data";
 }
 
 function makeId(): string {
@@ -61,58 +69,146 @@ function makeId(): string {
 
 export class SyncService {
   private databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
+  private closed = false;
 
   constructor(private opts: SyncServiceOptions) {}
 
-  private headers(): Record<string, string> {
+  private session(): NativeSession {
     return {
-      "Content-Type": "application/json",
-      ...(this.opts.token ? { Authorization: `Bearer ${this.opts.token}` } : {}),
-      ...(this.opts.orgId ? { "x-org-id": this.opts.orgId } : {}),
+      token: this.opts.token,
+      orgId: this.opts.orgId,
+      user: this.opts.user,
     };
   }
 
-  private async database(): Promise<SQLite.SQLiteDatabase> {
-    if (!this.databasePromise) {
-      this.databasePromise = SQLite.openDatabaseAsync("openfieldpro-field.db").then(
-        async (database) => {
-          await database.execAsync(`
-            PRAGMA journal_mode = WAL;
-            CREATE TABLE IF NOT EXISTS field_packages (
-              job_id TEXT PRIMARY KEY NOT NULL,
-              payload_json TEXT NOT NULL,
-              workflow_version TEXT,
-              support_state TEXT NOT NULL,
-              download_ready INTEGER NOT NULL DEFAULT 0,
-              cached_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS diagnostic_outbox (
-              op_id TEXT PRIMARY KEY NOT NULL,
-              kind TEXT NOT NULL,
-              payload_json TEXT NOT NULL,
-              attempts INTEGER NOT NULL DEFAULT 0,
-              last_error TEXT,
-              created_at TEXT NOT NULL
-            );
-          `);
-          return database;
-        },
+  private async initializeDatabase(database: SQLite.SQLiteDatabase) {
+    await database.execAsync(`
+      PRAGMA journal_mode = WAL;
+      CREATE TABLE IF NOT EXISTS storage_identity (
+        singleton INTEGER PRIMARY KEY NOT NULL CHECK (singleton = 1),
+        org_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        schema_version INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS field_packages (
+        job_id TEXT PRIMARY KEY NOT NULL,
+        payload_json TEXT NOT NULL,
+        workflow_version TEXT,
+        support_state TEXT NOT NULL,
+        download_ready INTEGER NOT NULL DEFAULT 0,
+        cached_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS field_package_dead_letter (
+        job_id TEXT PRIMARY KEY NOT NULL,
+        payload_json TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        quarantined_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS diagnostic_outbox (
+        op_id TEXT PRIMARY KEY NOT NULL,
+        kind TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS diagnostic_dead_letter (
+        op_id TEXT PRIMARY KEY NOT NULL,
+        kind TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        quarantined_at TEXT NOT NULL
+      );
+    `);
+
+    await database.withExclusiveTransactionAsync(async () => {
+      const identity = await database.getFirstAsync<StoredStorageIdentity>(
+        "SELECT org_id, user_id, schema_version FROM storage_identity WHERE singleton = 1 LIMIT 1",
+      );
+      const decision = storageIdentityDecision(identity, {
+        orgId: this.opts.orgId,
+        userId: this.opts.user.id,
+      });
+      if (decision === "initialize") {
+        await database.runAsync(
+          `INSERT INTO storage_identity (singleton, org_id, user_id, schema_version)
+           VALUES (1, ?, ?, ?)`,
+          this.opts.orgId,
+          this.opts.user.id,
+          STORAGE_SCHEMA_VERSION,
+        );
+      }
+    });
+  }
+
+  private async database(): Promise<SQLite.SQLiteDatabase> {
+    if (this.closed) throw new Error("Offline storage is closed for this signed-out session.");
+    if (!this.databasePromise) {
+      const databaseName = scopedDatabaseName(this.opts.orgId, this.opts.user.id);
+      this.databasePromise = SQLite.openDatabaseAsync(databaseName).then(async (database) => {
+        try {
+          await this.initializeDatabase(database);
+          if (this.closed) {
+            await database.closeAsync();
+            throw new Error("Offline storage closed while it was initializing.");
+          }
+          return database;
+        } catch (error) {
+          await database.closeAsync().catch(() => undefined);
+          throw error;
+        }
+      });
     }
     return this.databasePromise;
   }
 
-  async downloadPackage(jobId: string): Promise<FieldPackage> {
-    const response = await fetch(
-      `${this.opts.apiUrl}/api/diagnostics/field-package/${jobId}`,
-      { headers: this.headers() },
-    );
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`field package failed: ${response.status} ${body}`);
-    }
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    const pendingDatabase = this.databasePromise;
+    this.databasePromise = null;
+    if (!pendingDatabase) return;
+    const database = await pendingDatabase.catch(() => null);
+    await database?.closeAsync().catch(() => undefined);
+  }
 
-    const fieldPackage = (await response.json()) as FieldPackage;
+  private async quarantineFieldPackage(
+    database: SQLite.SQLiteDatabase,
+    row: PackageRow,
+    error: unknown,
+  ) {
+    await database.withExclusiveTransactionAsync(async () => {
+      await database.runAsync(
+        `INSERT OR REPLACE INTO field_package_dead_letter
+          (job_id, payload_json, reason, quarantined_at)
+         VALUES (?, ?, ?, ?)`,
+        row.job_id,
+        row.payload_json,
+        boundedLocalReason(error),
+        new Date().toISOString(),
+      );
+      await database.runAsync("DELETE FROM field_packages WHERE job_id = ?", row.job_id);
+    });
+  }
+
+  private validateStoredPackage(row: PackageRow) {
+    const parsed = JSON.parse(row.payload_json) as unknown;
+    return validateFieldPackage(parsed, {
+      orgId: this.opts.orgId,
+      jobId: row.job_id,
+    }).fieldPackage;
+  }
+
+  async downloadPackage(jobId: string): Promise<FieldPackage> {
+    const response = await nativeRequest<unknown>(
+      this.opts.apiUrl,
+      this.session(),
+      `/api/diagnostics/field-package/${encodeURIComponent(jobId)}`,
+    );
+    const { fieldPackage, serialized } = validateFieldPackage(response, {
+      orgId: this.opts.orgId,
+      jobId,
+    });
     const database = await this.database();
     const workflowVersion =
       fieldPackage.session && typeof fieldPackage.session.workflowVersion === "number"
@@ -124,7 +220,7 @@ export class SyncService {
         (job_id, payload_json, workflow_version, support_state, download_ready, cached_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
       jobId,
-      JSON.stringify(fieldPackage),
+      serialized,
       workflowVersion,
       fieldPackage.supportState,
       fieldPackage.downloadReady ? 1 : 0,
@@ -136,13 +232,14 @@ export class SyncService {
   async getCachedPackage(jobId: string): Promise<FieldPackage | null> {
     const database = await this.database();
     const row = await database.getFirstAsync<PackageRow>(
-      "SELECT payload_json FROM field_packages WHERE job_id = ? LIMIT 1",
+      "SELECT job_id, payload_json FROM field_packages WHERE job_id = ? LIMIT 1",
       jobId,
     );
     if (!row) return null;
     try {
-      return JSON.parse(row.payload_json) as FieldPackage;
-    } catch {
+      return this.validateStoredPackage(row);
+    } catch (error) {
+      await this.quarantineFieldPackage(database, row, error);
       return null;
     }
   }
@@ -150,15 +247,17 @@ export class SyncService {
   async listCachedPackages(): Promise<FieldPackage[]> {
     const database = await this.database();
     const rows = await database.getAllAsync<PackageRow>(
-      "SELECT payload_json FROM field_packages ORDER BY cached_at DESC",
+      "SELECT job_id, payload_json FROM field_packages ORDER BY cached_at DESC",
     );
-    return rows.flatMap((row) => {
+    const valid: FieldPackage[] = [];
+    for (const row of rows) {
       try {
-        return [JSON.parse(row.payload_json) as FieldPackage];
-      } catch {
-        return [];
+        valid.push(this.validateStoredPackage(row));
+      } catch (error) {
+        await this.quarantineFieldPackage(database, row, error);
       }
-    });
+    }
+    return valid;
   }
 
   async queuedCount(): Promise<number> {
@@ -170,6 +269,7 @@ export class SyncService {
   }
 
   async queueOperation(operation: OfflineOperation): Promise<void> {
+    const payloadJson = serializeOfflineOperation(operation);
     const database = await this.database();
     await database.runAsync(
       `INSERT OR REPLACE INTO diagnostic_outbox
@@ -177,7 +277,7 @@ export class SyncService {
        VALUES (?, ?, ?, 0, NULL, ?)`,
       operation.opId,
       operation.kind,
-      JSON.stringify(operation.payload),
+      payloadJson,
       new Date().toISOString(),
     );
   }
@@ -238,96 +338,109 @@ export class SyncService {
     return id;
   }
 
+  private async applyOutboxActions(
+    database: SQLite.SQLiteDatabase,
+    rows: StoredOutboxRow[],
+    actions: OutboxAction[],
+  ) {
+    const rowsById = new Map(rows.map((row) => [row.op_id, row]));
+    for (const action of actions) {
+      if (action.type === "delete") {
+        await database.runAsync("DELETE FROM diagnostic_outbox WHERE op_id = ?", action.opId);
+        continue;
+      }
+      if (action.type === "fail") {
+        await database.runAsync(
+          `UPDATE diagnostic_outbox
+           SET attempts = attempts + 1, last_error = ?
+           WHERE op_id = ?`,
+          action.error,
+          action.opId,
+        );
+        continue;
+      }
+
+      const row = rowsById.get(action.opId);
+      if (!row) continue;
+      await database.runAsync(
+        `INSERT OR REPLACE INTO diagnostic_dead_letter
+          (op_id, kind, payload_json, reason, quarantined_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        row.op_id,
+        row.kind,
+        action.payloadJson,
+        action.reason,
+        new Date().toISOString(),
+      );
+      await database.runAsync("DELETE FROM diagnostic_outbox WHERE op_id = ?", row.op_id);
+    }
+  }
+
   async flushOutbox(): Promise<{ flushed: number; failed: number }> {
     const database = await this.database();
-    const rows = await database.getAllAsync<OutboxRow>(
+    const rows = await database.getAllAsync<StoredOutboxRow>(
       "SELECT op_id, kind, payload_json, attempts FROM diagnostic_outbox ORDER BY created_at ASC LIMIT 200",
     );
     if (rows.length === 0) return { flushed: 0, failed: 0 };
 
-    const operations = rows.flatMap((row) => {
-      try {
-        return [
-          {
-            opId: row.op_id,
-            kind: row.kind,
-            payload: JSON.parse(row.payload_json) as Record<string, unknown>,
-          },
-        ];
-      } catch {
-        return [];
-      }
-    });
-
-    const response = await fetch(`${this.opts.apiUrl}/api/diagnostics/offline-batch`, {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify({ ops: operations }),
-    });
-    if (!response.ok) throw new Error(`diagnostic outbox flush failed: ${response.status}`);
-
-    const body = (await response.json()) as {
-      results: Array<{
-        opId: string;
-        ok: boolean;
-        conflict?: { currentVersion: number };
-        error?: string;
-      }>;
-    };
-
-    let flushed = 0;
-    let failed = 0;
-    await database.withExclusiveTransactionAsync(async () => {
-      for (const result of body.results) {
-        if (result.ok) {
-          await database.runAsync(
-            "DELETE FROM diagnostic_outbox WHERE op_id = ?",
-            result.opId,
-          );
-          flushed += 1;
-        } else {
-          await database.runAsync(
-            `UPDATE diagnostic_outbox
-             SET attempts = attempts + 1, last_error = ?
-             WHERE op_id = ?`,
-            result.conflict
-              ? `conflict: server version ${result.conflict.currentVersion}`
-              : result.error ?? "unknown error",
-            result.opId,
-          );
-          failed += 1;
-        }
-      }
-    });
-
-    return { flushed, failed };
-  }
-
-  /**
-   * Synchronize field work as coherent job/appliance/diagnostic packages.
-   * This replaces the former empty generic sync request, which could not
-   * populate a durable local mirror.
-   */
-  async pull(): Promise<FieldSyncResult> {
-    const queuedBeforeFlush = await this.queuedCount();
-    const flush = await this.flushOutbox().catch(() => ({ flushed: 0, failed: queuedBeforeFlush }));
-
-    const [appointmentsResponse, sessionsResponse] = await Promise.all([
-      fetch(`${this.opts.apiUrl}/api/appointments`, { headers: this.headers() }),
-      fetch(`${this.opts.apiUrl}/api/diagnostics/sessions`, { headers: this.headers() }),
-    ]);
-    if (!appointmentsResponse.ok) {
-      throw new Error(`appointment package discovery failed: ${appointmentsResponse.status}`);
+    const prepared = prepareOutbox(rows);
+    if (prepared.actions.length > 0) {
+      await database.withExclusiveTransactionAsync(async () => {
+        await this.applyOutboxActions(database, rows, prepared.actions);
+      });
+    }
+    if (prepared.operations.length === 0) {
+      return { flushed: 0, failed: prepared.actions.length };
     }
 
-    const appointments = (await appointmentsResponse.json()) as Array<{
-      jobId: string;
-      startsAt: string;
-      endsAt: string;
-    }>;
-    const sessions = sessionsResponse.ok
-      ? ((await sessionsResponse.json()) as Array<{ session: { jobId: string; status: string } }>)
-      : [];
+    const body = await nativeRequest<{ results?: unknown }>(
+      this.opts.apiUrl,
+      this.session(),
+      "/api/diagnostics/offline-batch",
+      {
+        method: "POST",
+        body: JSON.stringify({ ops: prepared.operations }),
+      },
+    );
+    const reconciliation = reconcileOutbox(prepared.operations, body?.results);
+
+    await database.withExclusiveTransactionAsync(async () => {
+      await this.applyOutboxActions(database, rows, reconciliation);
+    });
+
+    return {
+      flushed: reconciliation.filter((action) => action.type === "delete").length,
+      failed:
+        prepared.actions.length +
+        reconciliation.filter((action) => action.type === "fail").length,
+    };
+  }
+
+  /** Synchronize coherent job/appliance/diagnostic packages for this user only. */
+  async pull(): Promise<FieldSyncResult> {
+    const queuedBeforeFlush = await this.queuedCount();
+    let flush = { flushed: 0, failed: queuedBeforeFlush };
+    try {
+      flush = await this.flushOutbox();
+    } catch (error) {
+      if (error instanceof NativeRequestError && error.terminalAuthenticationFailure) throw error;
+    }
+
+    const [appointments, sessions] = await Promise.all([
+      nativeRequest<Array<{ jobId: string; startsAt: string; endsAt: string }>>(
+        this.opts.apiUrl,
+        this.session(),
+        "/api/appointments",
+      ),
+      nativeRequest<Array<{ session: { jobId: string; status: string } }>>(
+        this.opts.apiUrl,
+        this.session(),
+        "/api/diagnostics/sessions",
+      ).catch((error) => {
+        if (error instanceof NativeRequestError && error.terminalAuthenticationFailure) throw error;
+        return [];
+      }),
+    ]);
 
     const now = Date.now();
     const horizon = now + 7 * 24 * 60 * 60 * 1000;
@@ -349,7 +462,8 @@ export class SyncService {
       try {
         await this.downloadPackage(jobId);
         downloaded += 1;
-      } catch {
+      } catch (error) {
+        if (error instanceof NativeRequestError && error.terminalAuthenticationFailure) throw error;
         failed += 1;
       }
     }
