@@ -53,6 +53,12 @@ interface PackageRow {
   payload_json: string;
 }
 
+interface StorageIdentityRow {
+  org_id: string;
+  user_id: string;
+  schema_version: number;
+}
+
 function makeId(): string {
   const cryptoLike = globalThis.crypto as { randomUUID?: () => string } | undefined;
   if (cryptoLike?.randomUUID) return cryptoLike.randomUUID();
@@ -65,6 +71,7 @@ function makeId(): string {
 
 export class SyncService {
   private databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
+  private closed = false;
 
   constructor(private opts: SyncServiceOptions) {}
 
@@ -76,40 +83,84 @@ export class SyncService {
     };
   }
 
+  private async initializeDatabase(database: SQLite.SQLiteDatabase) {
+    await database.execAsync(`
+      PRAGMA journal_mode = WAL;
+      CREATE TABLE IF NOT EXISTS storage_identity (
+        singleton INTEGER PRIMARY KEY NOT NULL CHECK (singleton = 1),
+        org_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        schema_version INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS field_packages (
+        job_id TEXT PRIMARY KEY NOT NULL,
+        payload_json TEXT NOT NULL,
+        workflow_version TEXT,
+        support_state TEXT NOT NULL,
+        download_ready INTEGER NOT NULL DEFAULT 0,
+        cached_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS diagnostic_outbox (
+        op_id TEXT PRIMARY KEY NOT NULL,
+        kind TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    await database.withExclusiveTransactionAsync(async () => {
+      const identity = await database.getFirstAsync<StorageIdentityRow>(
+        "SELECT org_id, user_id, schema_version FROM storage_identity WHERE singleton = 1 LIMIT 1",
+      );
+      if (!identity) {
+        await database.runAsync(
+          `INSERT INTO storage_identity (singleton, org_id, user_id, schema_version)
+           VALUES (1, ?, ?, 2)`,
+          this.opts.orgId,
+          this.opts.user.id,
+        );
+        return;
+      }
+      if (identity.org_id !== this.opts.orgId || identity.user_id !== this.opts.user.id) {
+        throw new Error("Offline storage identity mismatch. This cache cannot be opened for the signed-in account.");
+      }
+      if (identity.schema_version !== 2) {
+        throw new Error("Offline storage schema is not supported by this application version.");
+      }
+    });
+  }
+
   private async database(): Promise<SQLite.SQLiteDatabase> {
+    if (this.closed) throw new Error("Offline storage is closed for this signed-out session.");
     if (!this.databasePromise) {
       const databaseName = scopedDatabaseName(this.opts.orgId, this.opts.user.id);
       this.databasePromise = SQLite.openDatabaseAsync(databaseName).then(async (database) => {
-        await database.execAsync(`
-          PRAGMA journal_mode = WAL;
-          CREATE TABLE IF NOT EXISTS field_packages (
-            job_id TEXT PRIMARY KEY NOT NULL,
-            payload_json TEXT NOT NULL,
-            workflow_version TEXT,
-            support_state TEXT NOT NULL,
-            download_ready INTEGER NOT NULL DEFAULT 0,
-            cached_at TEXT NOT NULL
-          );
-          CREATE TABLE IF NOT EXISTS diagnostic_outbox (
-            op_id TEXT PRIMARY KEY NOT NULL,
-            kind TEXT NOT NULL,
-            payload_json TEXT NOT NULL,
-            attempts INTEGER NOT NULL DEFAULT 0,
-            last_error TEXT,
-            created_at TEXT NOT NULL
-          );
-        `);
-        return database;
+        try {
+          await this.initializeDatabase(database);
+          if (this.closed) {
+            await database.closeAsync();
+            throw new Error("Offline storage closed while it was initializing.");
+          }
+          return database;
+        } catch (error) {
+          await database.closeAsync().catch(() => undefined);
+          throw error;
+        }
       });
     }
     return this.databasePromise;
   }
 
   async close(): Promise<void> {
-    if (!this.databasePromise) return;
-    const database = await this.databasePromise;
+    if (this.closed) return;
+    this.closed = true;
+    const pendingDatabase = this.databasePromise;
     this.databasePromise = null;
-    await database.closeAsync();
+    if (!pendingDatabase) return;
+    const database = await pendingDatabase.catch(() => null);
+    await database?.closeAsync().catch(() => undefined);
   }
 
   async downloadPackage(jobId: string): Promise<FieldPackage> {
