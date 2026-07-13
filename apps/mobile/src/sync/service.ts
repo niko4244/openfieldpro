@@ -6,6 +6,13 @@ import {
   type NativeSession,
 } from "../auth";
 import {
+  prepareOutbox,
+  reconcileOutbox,
+  type OfflineBatchResult,
+  type OutboxAction,
+  type StoredOutboxRow,
+} from "../outbox-reconcile";
+import {
   STORAGE_SCHEMA_VERSION,
   storageIdentityDecision,
   type StoredStorageIdentity,
@@ -45,13 +52,6 @@ export interface FieldSyncResult {
   flushed: number;
   failed: number;
   cachedJobs: string[];
-}
-
-interface OutboxRow {
-  op_id: string;
-  kind: OfflineOpKind;
-  payload_json: string;
-  attempts: number;
 }
 
 interface PackageRow {
@@ -106,6 +106,13 @@ export class SyncService {
         attempts INTEGER NOT NULL DEFAULT 0,
         last_error TEXT,
         created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS diagnostic_dead_letter (
+        op_id TEXT PRIMARY KEY NOT NULL,
+        kind TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        quarantined_at TEXT NOT NULL
       );
     `);
 
@@ -291,65 +298,82 @@ export class SyncService {
     return id;
   }
 
+  private async applyOutboxActions(
+    database: SQLite.SQLiteDatabase,
+    rows: StoredOutboxRow[],
+    actions: OutboxAction[],
+  ) {
+    const rowsById = new Map(rows.map((row) => [row.op_id, row]));
+    for (const action of actions) {
+      if (action.type === "delete") {
+        await database.runAsync("DELETE FROM diagnostic_outbox WHERE op_id = ?", action.opId);
+        continue;
+      }
+      if (action.type === "fail") {
+        await database.runAsync(
+          `UPDATE diagnostic_outbox
+           SET attempts = attempts + 1, last_error = ?
+           WHERE op_id = ?`,
+          action.error,
+          action.opId,
+        );
+        continue;
+      }
+
+      const row = rowsById.get(action.opId);
+      if (!row) continue;
+      await database.runAsync(
+        `INSERT OR REPLACE INTO diagnostic_dead_letter
+          (op_id, kind, payload_json, reason, quarantined_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        row.op_id,
+        row.kind,
+        action.payloadJson,
+        action.reason,
+        new Date().toISOString(),
+      );
+      await database.runAsync("DELETE FROM diagnostic_outbox WHERE op_id = ?", row.op_id);
+    }
+  }
+
   async flushOutbox(): Promise<{ flushed: number; failed: number }> {
     const database = await this.database();
-    const rows = await database.getAllAsync<OutboxRow>(
+    const rows = await database.getAllAsync<StoredOutboxRow>(
       "SELECT op_id, kind, payload_json, attempts FROM diagnostic_outbox ORDER BY created_at ASC LIMIT 200",
     );
     if (rows.length === 0) return { flushed: 0, failed: 0 };
 
-    const operations = rows.flatMap((row) => {
-      try {
-        return [
-          {
-            opId: row.op_id,
-            kind: row.kind,
-            payload: JSON.parse(row.payload_json) as Record<string, unknown>,
-          },
-        ];
-      } catch {
-        return [];
-      }
-    });
+    const prepared = prepareOutbox(rows);
+    if (prepared.actions.length > 0) {
+      await database.withExclusiveTransactionAsync(async () => {
+        await this.applyOutboxActions(database, rows, prepared.actions);
+      });
+    }
+    if (prepared.operations.length === 0) {
+      return { flushed: 0, failed: prepared.actions.length };
+    }
 
-    const body = await nativeRequest<{
-      results: Array<{
-        opId: string;
-        ok: boolean;
-        conflict?: { currentVersion: number };
-        error?: string;
-      }>;
-    }>(this.opts.apiUrl, this.session(), "/api/diagnostics/offline-batch", {
-      method: "POST",
-      body: JSON.stringify({ ops: operations }),
-    });
+    const body = await nativeRequest<{ results: OfflineBatchResult[] }>(
+      this.opts.apiUrl,
+      this.session(),
+      "/api/diagnostics/offline-batch",
+      {
+        method: "POST",
+        body: JSON.stringify({ ops: prepared.operations }),
+      },
+    );
+    const reconciliation = reconcileOutbox(prepared.operations, body?.results);
 
-    let flushed = 0;
-    let failed = 0;
     await database.withExclusiveTransactionAsync(async () => {
-      for (const result of body.results) {
-        if (result.ok) {
-          await database.runAsync(
-            "DELETE FROM diagnostic_outbox WHERE op_id = ?",
-            result.opId,
-          );
-          flushed += 1;
-        } else {
-          await database.runAsync(
-            `UPDATE diagnostic_outbox
-             SET attempts = attempts + 1, last_error = ?
-             WHERE op_id = ?`,
-            result.conflict
-              ? `conflict: server version ${result.conflict.currentVersion}`
-              : result.error ?? "unknown error",
-            result.opId,
-          );
-          failed += 1;
-        }
-      }
+      await this.applyOutboxActions(database, rows, reconciliation);
     });
 
-    return { flushed, failed };
+    return {
+      flushed: reconciliation.filter((action) => action.type === "delete").length,
+      failed:
+        prepared.actions.length +
+        reconciliation.filter((action) => action.type === "fail").length,
+    };
   }
 
   /** Synchronize coherent job/appliance/diagnostic packages for this user only. */
@@ -368,7 +392,7 @@ export class SyncService {
         this.session(),
         "/api/appointments",
       ),
-      nativeRequest<Array<{ session: { jobId: string; status: string } }>>(
+      nativeRequest<Array<{ session: { jobId: string; status: string }>>(
         this.opts.apiUrl,
         this.session(),
         "/api/diagnostics/sessions",
