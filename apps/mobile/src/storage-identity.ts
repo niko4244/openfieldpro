@@ -1,10 +1,12 @@
+import { NativeRequestError } from "./auth";
+
 export const STORAGE_SCHEMA_VERSION = 2;
 
-export class OfflineStorageError extends Error {
+export class OfflineStorageError extends NativeRequestError {
   readonly terminalStorageFailure = true;
 
   constructor(message: string) {
-    super(message);
+    super(403, message);
     this.name = "OfflineStorageError";
   }
 }
