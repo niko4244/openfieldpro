@@ -57,6 +57,28 @@ function validateStoredRow(row: StoredOutboxRow) {
   }
 }
 
+export function serializeOfflineOperation(operation: PreparedOfflineOperation) {
+  if (!operation.payload || typeof operation.payload !== "object" || Array.isArray(operation.payload)) {
+    throw new Error("offline operation payload must be a JSON object");
+  }
+
+  let payloadJson: string;
+  try {
+    payloadJson = JSON.stringify(operation.payload);
+  } catch {
+    throw new Error("offline operation payload could not be serialized");
+  }
+  if (!payloadJson) throw new Error("offline operation payload could not be serialized");
+
+  validateStoredRow({
+    op_id: operation.opId,
+    kind: operation.kind,
+    payload_json: payloadJson,
+    attempts: 0,
+  });
+  return payloadJson;
+}
+
 function operationByteLength(operation: PreparedOfflineOperation) {
   return utf8ByteLength(JSON.stringify(operation));
 }
