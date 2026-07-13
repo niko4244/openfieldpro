@@ -48,6 +48,33 @@ test("native login uses the dedicated protocol and normalizes email", async () =
   }
 });
 
+test("native login rejects malformed bearer and account identity responses", async () => {
+  const originalFetch = globalThis.fetch;
+  const invalidSessions = [
+    { ...session, token: "token with whitespace" },
+    { ...session, orgId: "" },
+    { ...session, orgId: "x".repeat(65) },
+    { ...session, user: { ...session.user, id: "" } },
+    { ...session, user: { ...session.user, role: "unknown" } },
+  ];
+
+  try {
+    for (const invalidSession of invalidSessions) {
+      globalThis.fetch = async () =>
+        new Response(JSON.stringify(invalidSession), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      await assert.rejects(
+        () => nativeLogin("https://field.example.test", "alex@example.test", "correct horse"),
+        /invalid native session/,
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("authenticated native requests stay on-origin and lock identity headers", async () => {
   const originalFetch = globalThis.fetch;
   let captured: { url: string; init?: RequestInit } | null = null;
@@ -114,11 +141,20 @@ test("production API transport requires HTTPS while emulator localhost remains a
   }
 });
 
-test("offline database names are deterministic, filesystem-safe, and user-isolated", () => {
+test("offline database names are deterministic, filesystem-safe, and collision-resistant", () => {
   const first = scopedDatabaseName("Org/One", "User A");
   const second = scopedDatabaseName("Org/One", "User B");
-  assert.equal(first, "openfieldpro-field-org-one-user-a.db");
-  assert.equal(second, "openfieldpro-field-org-one-user-b.db");
-  assert.notEqual(first, second);
-  assert.match(first, /^[a-z0-9._-]+$/);
+  const punctuationVariant = scopedDatabaseName("Org One", "User A");
+  const caseVariant = scopedDatabaseName("org/one", "User A");
+  const unicodeVariant = scopedDatabaseName("Åmes", "User A");
+
+  assert.equal(first, "openfieldpro-field-v2-T3JnL09uZQ-VXNlciBB.db");
+  assert.equal(second, "openfieldpro-field-v2-T3JnL09uZQ-VXNlciBC.db");
+  assert.equal(punctuationVariant, "openfieldpro-field-v2-T3JnIE9uZQ-VXNlciBB.db");
+  assert.equal(caseVariant, "openfieldpro-field-v2-b3JnL29uZQ-VXNlciBB.db");
+  assert.equal(unicodeVariant, "openfieldpro-field-v2-w4VtZXM-VXNlciBB.db");
+  assert.equal(new Set([first, second, punctuationVariant, caseVariant, unicodeVariant]).size, 5);
+  assert.match(first, /^[A-Za-z0-9._-]+$/);
+  assert.throws(() => scopedDatabaseName("", "user"), /between 1 and 64/);
+  assert.throws(() => scopedDatabaseName("org", "x".repeat(65)), /between 1 and 64/);
 });
