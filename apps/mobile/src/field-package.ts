@@ -1,3 +1,5 @@
+import { utf8ByteLength } from "./utf8";
+
 export const MAX_FIELD_PACKAGE_BYTES = 5_000_000;
 export const MAX_FIELD_PACKAGE_STEPS = 2_000;
 export const MAX_FIELD_PACKAGE_MEASUREMENTS = 10_000;
@@ -49,6 +51,11 @@ function requiredString(record: Record<string, unknown>, key: string, label: str
   if (typeof value !== "string" || value.length === 0 || value.length > 200) {
     throw new FieldPackageValidationError(`${label}.${key} must be a bounded nonempty string`);
   }
+  try {
+    utf8ByteLength(value);
+  } catch {
+    throw new FieldPackageValidationError(`${label}.${key} contains malformed Unicode`);
+  }
   return value;
 }
 
@@ -66,7 +73,7 @@ function serializePackage(value: unknown) {
   } catch {
     throw new FieldPackageValidationError("field package could not be serialized");
   }
-  if (new TextEncoder().encode(serialized).length > MAX_FIELD_PACKAGE_BYTES) {
+  if (utf8ByteLength(serialized) > MAX_FIELD_PACKAGE_BYTES) {
     throw new FieldPackageValidationError("field package exceeds the 5 MB offline cache limit");
   }
   return serialized;
