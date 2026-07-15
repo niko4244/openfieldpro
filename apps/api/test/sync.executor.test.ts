@@ -29,6 +29,15 @@ function buildFakeDb(currentVersion: Map<string, number> = new Map()) {
   //   SELECT version FROM <table> WHERE id = <entityId> LIMIT 1
   const fakeExecute = async (sqlFragment: unknown) => {
     const chunks = (sqlFragment as { queryChunks?: unknown[] })?.queryChunks ?? [];
+    const text = chunks.map((chunk) => {
+      if (typeof chunk === "string") return chunk;
+      if (typeof chunk === "object" && chunk !== null) {
+        const value = (chunk as { value?: unknown }).value;
+        if (Array.isArray(value)) return value.join("");
+        if (typeof value === "string") return value;
+      }
+      return String(chunk);
+    }).join(" ");
     // walk chunks for the rightmost UUID-looking string (entityId)
     let entityId: string | undefined;
     for (let i = chunks.length - 1; i >= 0; i--) {
@@ -45,6 +54,9 @@ function buildFakeDb(currentVersion: Map<string, number> = new Map()) {
       }
     }
     if (!entityId) return { rows: [] };
+    if (!/SELECT version/i.test(text) && [CUST_ID, JOB_ID, INV_ID].includes(entityId)) {
+      return { rows: [{ id: entityId }] };
+    }
     for (const [id, version] of currentVersion.entries()) {
       if (id === entityId) return { rows: [{ version }] };
     }
@@ -236,8 +248,8 @@ test("applyOps: update with bad payload (after passing version check) returns pa
       table: "jobs",
       entityId: JOB_ID,
       baseVersion: 1,
-      // missing required customerId — must surface AFTER version check
-      payload: { title: "Renamed" },
+      // invalid value — must surface AFTER version check
+      payload: { total: -1 },
     },
   ]);    assert.equal(results[0].ok, false);
     assert.equal(results[0].error?.kind, "validation");

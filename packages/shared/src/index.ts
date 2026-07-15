@@ -40,6 +40,7 @@ export interface JobDTO {
   id: string;
   customerId: string;
   title: string;
+  description?: string | null;
   status: JobStatus;
   scheduledAt?: string | null;
   assignedTo?: string | null;

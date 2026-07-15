@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
 import { resolveOrgId } from "./org.js";
 import { savePhoto, getPhotoFile, listJobPhotos } from "../uploads.js";
@@ -39,10 +39,10 @@ export async function photoRoutes(app: FastifyInstance) {
     },
   });
 
-  app.post(
+  app.post<{ Params: PhotoParams }>(
     "/upload/:jobId",
     { preHandler: uploadRateLimit },
-    async (req: FastifyRequest<{ Params: PhotoParams }>, reply: FastifyReply) => {
+    async (req, reply) => {
       const orgId = await resolveOrgId(req);
       const { jobId } = req.params;
 
@@ -69,9 +69,9 @@ export async function photoRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get(
+  app.get<{ Params: PhotoIdParams }>(
     "/:photoId/file",
-    async (req: FastifyRequest<{ Params: PhotoIdParams }>, reply: FastifyReply) => {
+    async (req, reply) => {
       const orgId = await resolveOrgId(req);
       const { photoId } = req.params;
 
@@ -91,9 +91,9 @@ export async function photoRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get(
+  app.get<{ Params: PhotoParams }>(
     "/job/:jobId",
-    async (req: FastifyRequest<{ Params: PhotoParams }>, reply: FastifyReply) => {
+    async (req, reply) => {
       const orgId = await resolveOrgId(req);
       const { jobId } = req.params;
       return listJobPhotos(jobId, orgId);

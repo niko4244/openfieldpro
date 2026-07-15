@@ -46,7 +46,7 @@ export default async function CustomerPortalPage({
           </p>
         </div>
 
-        <SponsorSlot surface="customer_portal" sponsorName="Metro Supply Co." message="Local sponsor placement can appear for free-tier portals and be removed by Pro branding." />
+        <SponsorSlot />
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <Card>
