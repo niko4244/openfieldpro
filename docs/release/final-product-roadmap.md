@@ -9,6 +9,8 @@ The product advances two connected tracks:
 
 The operations platform is the product foundation. Appliance-specific tools are optional workflow depth and must not displace CRM, scheduling, dispatch, estimates, invoices, payments, customer communication, reporting, or mobile field execution.
 
+The current product parity gap audit is `docs/release/PRODUCT_PARITY_GAP_AUDIT.md`. That audit is release-blocking until the P0 business settings, invoice settings, estimate settings, payment/tax/discount configuration, and customer portal gaps are resolved.
+
 ## Product principles
 
 - The free core remains operationally complete: customers, jobs, dispatch, estimates, invoices, payments, reviews, reporting, documents, service plans, and mobile technician workflow.
@@ -40,6 +42,15 @@ The operations platform is the product foundation. Appliance-specific tools are 
 | Appliance technical records | Equipment-linked diagnostic notes and evidence | Optional foundation |
 
 ## Priority sequence
+
+### 0. Close the business-configuration parity gap
+
+- Replace the small Settings page with a full business configuration center.
+- Add persistent invoice settings for due terms, customer-view visibility, format, messages, numbering, reminders, and payment instructions.
+- Add persistent estimate settings for expiration, approval mode, signatures, deposits, customer-view visibility, messages, option labels, and numbering.
+- Add payment, tax, discount, and portal settings.
+- Make customer-facing invoice and estimate previews obey those settings.
+- Validate with Marco's Appliance Repair Company before sponsor outreach.
 
 ### 1. Finish daily operations
 
