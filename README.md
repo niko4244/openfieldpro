@@ -111,6 +111,8 @@ pnpm --filter @ofp/mobile typecheck
 
 ## Open-source and sponsorship model
 
+The business model and public voice are governed by `docs/product/BUSINESS_PLAN_AND_VOICE.md`: practical, field-ready, self-hostable, no telemetry, no phone-home licensing, and no artificial limits on the core workflow.
+
 The AGPL core is free to self-host and is never limited by users, technicians, customers, jobs, invoices, locations, or core operational features. Hosted modified versions must follow the obligations in `LICENSE`.
 
 Optional signed entitlements are verified locally without a license server, telemetry, or phone-home. They may represent sponsor recognition, bounded support benefits, or premium first-party plugins; they cannot disable or restrict the core.

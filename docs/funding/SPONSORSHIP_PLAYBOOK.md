@@ -1,5 +1,7 @@
 # OpenFieldPro Sponsorship Playbook
 
+This playbook follows the public business-plan and voice canon in `docs/product/BUSINESS_PLAN_AND_VOICE.md`.
+
 OpenFieldPro is an AGPL-licensed, self-hostable field-service platform for independent service businesses. Sponsorship should fund maintenance, security, documentation, testing, accessibility, and reliable releases without selling project control or restricting the free core.
 
 ## 1. Apply for GitHub Sponsors

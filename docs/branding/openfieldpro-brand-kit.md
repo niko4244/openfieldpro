@@ -1,5 +1,7 @@
 # OpenFieldPro Brand Kit
 
+Business model, positioning, and public voice are governed by `docs/product/BUSINESS_PLAN_AND_VOICE.md`. This brand kit should be read as the visual and copy companion to that canon.
+
 ## Brand position
 
 OpenFieldPro is an open-source field service command center for service businesses that want to own their software, data, workflows, and customer experience.
