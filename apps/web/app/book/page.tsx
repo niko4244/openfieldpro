@@ -155,7 +155,6 @@ export default function BookPage() {
                     value={form.service}
                     onChange={(e) => update("service", e.target.value)}
                     className="h-10 w-full rounded-lg border border-border bg-surface-200 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
-                    style={{ colorScheme: "dark" }}
                   >
                     {SERVICES.map((s) => (
                       <option key={s} value={s}>
@@ -200,7 +199,6 @@ export default function BookPage() {
                     value={form.preferredTime}
                     onChange={(e) => update("preferredTime", e.target.value)}
                     className="h-10 w-full rounded-lg border border-border bg-surface-200 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
-                    style={{ colorScheme: "dark" }}
                   >
                     <option value="">No preference</option>
                     <option value="morning">Morning (8am–12pm)</option>

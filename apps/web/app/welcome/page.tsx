@@ -21,7 +21,7 @@ const diagnosticFlow = [
 export default function WelcomePage() {
   return (
     <main className="min-h-screen bg-surface-100 text-fg">
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-surface-100/90 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-border bg-surface-100/90 backdrop-blur-xl">
         <div className="mx-auto flex h-16 w-[min(1180px,calc(100%-32px))] items-center gap-5">
           <Link href="/welcome" className="flex items-center gap-3 text-fg no-underline">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-xs font-black text-white">OF</span>
@@ -42,7 +42,7 @@ export default function WelcomePage() {
         </div>
       </header>
 
-      <section className="overflow-hidden border-b border-white/10 bg-gradient-to-br from-surface-100 via-surface-50 to-surface-100">
+      <section className="overflow-hidden border-b border-border bg-gradient-to-br from-surface-100 via-surface-50 to-surface-100">
         <div className="mx-auto grid w-[min(1180px,calc(100%-32px))] gap-12 py-20 lg:grid-cols-[.95fr_1.05fr] lg:items-center lg:py-28">
           <div>
             <p className="mb-5 inline-flex rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-accent">
@@ -58,7 +58,7 @@ export default function WelcomePage() {
               <Link href="/login" className="rounded-full bg-accent px-5 py-3 text-sm font-black text-white no-underline hover:bg-accent-hover">
                 Open the product
               </Link>
-              <a href="https://github.com/niko4244/openfieldpro" target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/15 bg-white/5 px-5 py-3 text-sm font-bold text-fg no-underline hover:bg-white/10">
+              <a href="https://github.com/niko4244/openfieldpro" target="_blank" rel="noopener noreferrer" className="rounded-full border border-border bg-surface-50 px-5 py-3 text-sm font-bold text-fg no-underline hover:bg-surface-200">
                 View repository
               </a>
             </div>
@@ -69,14 +69,14 @@ export default function WelcomePage() {
                 "No telemetry required",
                 "Appliance diagnostic core",
               ].map((item) => (
-                <div key={item} className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center font-semibold text-fg-muted">
+                <div key={item} className="rounded-2xl border border-border bg-surface-50 p-3 text-center font-semibold text-fg-muted">
                   {item}
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="rounded-[2rem] border border-white/10 bg-surface-50 p-5 shadow-2xl">
+          <div className="rounded-[2rem] border border-border bg-surface-50 p-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[.18em] text-accent">Today’s field command</p>
@@ -118,7 +118,7 @@ export default function WelcomePage() {
         </div>
       </section>
 
-      <section id="operations" className="border-b border-white/10 py-20">
+      <section id="operations" className="border-b border-border py-20">
         <div className="mx-auto w-[min(1180px,calc(100%-32px))]">
           <div className="max-w-3xl">
             <p className="text-xs font-black uppercase tracking-[.2em] text-blue">Complete operations core</p>
@@ -138,7 +138,7 @@ export default function WelcomePage() {
         </div>
       </section>
 
-      <section id="diagnostics" className="border-b border-white/10 bg-surface-50 py-20">
+      <section id="diagnostics" className="border-b border-border bg-surface-50 py-20">
         <div className="mx-auto grid w-[min(1180px,calc(100%-32px))] gap-12 lg:grid-cols-[.8fr_1.2fr]">
           <div>
             <p className="text-xs font-black uppercase tracking-[.2em] text-accent">Appliance-specific differentiator</p>
@@ -158,7 +158,7 @@ export default function WelcomePage() {
         </div>
       </section>
 
-      <section id="trust" className="border-b border-white/10 py-20">
+      <section id="trust" className="border-b border-border py-20">
         <div className="mx-auto grid w-[min(1180px,calc(100%-32px))] gap-6 lg:grid-cols-3">
           {[
             ["Explicit support status", "Validated, pilot, experimental, unsupported, suspended, and retired states remain visible. A missing workflow is never disguised as an answer."],
@@ -188,7 +188,7 @@ export default function WelcomePage() {
         </div>
       </section>
 
-      <footer className="border-t border-white/10 py-8">
+      <footer className="border-t border-border py-8">
         <div className="mx-auto flex w-[min(1180px,calc(100%-32px))] flex-wrap items-center justify-between gap-3 text-sm text-fg-dim">
           <span>OpenFieldPro</span>
           <span>Open field service operations with visible diagnostic evidence.</span>

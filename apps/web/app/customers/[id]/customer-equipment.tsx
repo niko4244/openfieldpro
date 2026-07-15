@@ -189,7 +189,6 @@ export function CustomerEquipment({ customerId }: { customerId: string }) {
                 <select
                   value={form.type}
                   onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
-                  style={{ colorScheme: "dark" }}
                   className="h-10 w-full rounded-lg border border-border bg-surface-300 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                 >
                   {EQUIPMENT_TYPES.map((t) => (

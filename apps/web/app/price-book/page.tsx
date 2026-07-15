@@ -157,7 +157,6 @@ export default function PriceBookPage() {
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
           className="h-10 rounded-lg border border-border bg-surface-200 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
-          style={{ colorScheme: "dark" }}
         >
           <option value="all">All categories</option>
           {CATEGORIES.map((c) => (
@@ -201,7 +200,6 @@ export default function PriceBookPage() {
                 value={form.category}
                 onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
                 className="h-10 rounded-lg border border-border bg-surface-200 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
-                style={{ colorScheme: "dark" }}
               >
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>

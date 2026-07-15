@@ -216,7 +216,6 @@ export default function JobsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            style={{ colorScheme: "dark" }}
             className="h-10 rounded-lg border border-border bg-surface-200 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
           >
             {STATUS_OPTIONS.map((opt) => (

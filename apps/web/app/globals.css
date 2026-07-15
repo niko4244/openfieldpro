@@ -2,6 +2,35 @@
 
 /* ── OpenFieldPro Field Command brand tokens ── */
 @theme {
+  --color-surface-50: #ffffff;
+  --color-surface-100: #f7f3ea;
+  --color-surface-200: #ede8dc;
+  --color-surface-300: #e3ddcf;
+  --color-surface-400: #d5cebd;
+  --color-surface-500: #c2baa8;
+  --color-surface-600: #9d9584;
+
+  --color-border: #d1c9b8;
+  --color-border-light: #bcb39f;
+
+  --color-fg: #111827;
+  --color-fg-muted: #526257;
+  --color-fg-dim: #7a887f;
+  --color-fg-link: #036672;
+
+  --color-accent: #047857;
+  --color-accent-hover: #065f46;
+  --color-accent-muted: #dff7e8;
+
+  --color-green: #15803d;
+  --color-yellow: #9a5b13;
+  --color-red: #dc2626;
+  --color-blue: #087f99;
+}
+
+/* ── Dark theme ── */
+[data-theme="dark"] {
+  color-scheme: dark;
   --color-surface-50: #0b1115;
   --color-surface-100: #101820;
   --color-surface-200: #132026;
@@ -28,40 +57,12 @@
   --color-blue: #06b6d4;
 }
 
-/* ── Light theme ── */
-[data-theme="light"] {
-  color-scheme: light;
-  --color-surface-50: #ffffff;
-  --color-surface-100: #f7f3ea;
-  --color-surface-200: #ede8dc;
-  --color-surface-300: #e3ddcf;
-  --color-surface-400: #d5cebd;
-  --color-surface-500: #c2baa8;
-  --color-surface-600: #9d9584;
-
-  --color-border: #d1c9b8;
-  --color-border-light: #bcb39f;
-
-  --color-fg: #111827;
-  --color-fg-muted: #526257;
-  --color-fg-dim: #7a887f;
-  --color-fg-link: #047481;
-
-  --color-accent: #16a34a;
-  --color-accent-hover: #15803d;
-  --color-accent-muted: #dff7e8;
-
-  --color-green: #15803d;
-  --color-yellow: #b7791f;
-  --color-red: #dc2626;
-  --color-blue: #0891b2;
-}
-
 @layer base {
   * { @apply border-border; }
 
   html {
-    background: #101820;
+    @apply bg-surface-100;
+    color-scheme: light;
   }
 
   body {
@@ -86,15 +87,15 @@
 
   .ofp-command-gradient {
     background:
-      radial-gradient(circle at 20% 10%, rgba(34, 197, 94, 0.18), transparent 34%),
-      radial-gradient(circle at 80% 20%, rgba(6, 182, 212, 0.14), transparent 28%),
-      linear-gradient(135deg, #101820 0%, #12332a 48%, #0f4c5c 100%);
+      radial-gradient(circle at 20% 10%, color-mix(in srgb, var(--color-accent) 16%, transparent), transparent 34%),
+      radial-gradient(circle at 80% 20%, color-mix(in srgb, var(--color-blue) 12%, transparent), transparent 28%),
+      linear-gradient(135deg, var(--color-surface-100) 0%, var(--color-surface-200) 48%, var(--color-surface-300) 100%);
   }
 
   .ofp-grid-surface {
     background-image:
-      linear-gradient(rgba(126, 231, 242, 0.07) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(126, 231, 242, 0.07) 1px, transparent 1px);
+      linear-gradient(color-mix(in srgb, var(--color-fg-link) 9%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--color-fg-link) 9%, transparent) 1px, transparent 1px);
     background-size: 36px 36px;
   }
 
