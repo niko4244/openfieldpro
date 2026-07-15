@@ -58,6 +58,7 @@ export const orgs = pgTable("orgs", {
   publicPhone: text("public_phone"),
   publicAddress: text("public_address"),
   removeOpenFieldProAttribution: boolean("remove_openfieldpro_attribution").default(false).notNull(),
+  businessSettings: jsonb("business_settings").$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
   updatedAt: updatedAt(),
   createdAt: ts(),
 });

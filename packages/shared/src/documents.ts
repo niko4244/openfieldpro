@@ -29,6 +29,11 @@ export interface FieldDocumentData {
   lineItems: FieldDocumentLineItem[];
   paymentsCents?: DocumentMoney;
   branding: FieldDocumentBranding;
+  presentation?: {
+    showLineItemPrices?: boolean;
+    showPayments?: boolean;
+    showBalance?: boolean;
+  };
 }
 
 export function fieldDocumentTitle(kind: FieldDocumentKind): string {
@@ -70,14 +75,18 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
   const attribution = data.branding.removeOpenFieldProAttribution
     ? ""
     : `<p class="attribution">Powered by OpenFieldPro</p>`;
+  const presentation = data.presentation ?? {};
+  const showLineItemPrices = presentation.showLineItemPrices ?? true;
+  const showPayments = presentation.showPayments ?? true;
+  const showBalance = presentation.showBalance ?? true;
   const rows = data.lineItems
     .map(
       (item) => `
         <tr>
           <td>${escapeHtml(item.description)}</td>
           <td class="num">${item.quantity}</td>
-          <td class="num">${formatCents(item.unitPriceCents)}</td>
-          <td class="num">${formatCents(item.quantity * item.unitPriceCents)}</td>
+          <td class="num">${showLineItemPrices ? formatCents(item.unitPriceCents) : "—"}</td>
+          <td class="num">${showLineItemPrices ? formatCents(item.quantity * item.unitPriceCents) : "—"}</td>
         </tr>`,
     )
     .join("");
@@ -112,8 +121,8 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
     </table>
     <section class="totals">
       <div class="total-row"><span>Subtotal</span><strong>${formatCents(totals.subtotalCents)}</strong></div>
-      <div class="total-row"><span>Paid</span><strong>${formatCents(totals.paidCents)}</strong></div>
-      <div class="total-row strong"><span>Balance</span><strong>${formatCents(totals.balanceCents)}</strong></div>
+      ${showPayments ? `<div class="total-row"><span>Paid</span><strong>${formatCents(totals.paidCents)}</strong></div>` : ""}
+      ${showBalance ? `<div class="total-row strong"><span>Balance</span><strong>${formatCents(totals.balanceCents)}</strong></div>` : ""}
     </section>
     ${data.notes ? `<section class="notes">${escapeHtml(data.notes)}</section>` : ""}
     <footer class="footer">${attribution}</footer>

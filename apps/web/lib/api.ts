@@ -54,6 +54,7 @@ type ActivityDTO = import("@ofp/shared").ActivityDTO;
 type ReportSummaryDTO = import("@ofp/shared").ReportSummaryDTO;
 type UserDTO = import("@ofp/shared").UserDTO;
 type RecurringJobDTO = import("@ofp/shared").RecurringJobDTO;
+export type BusinessSettingsDTO = import("@ofp/shared").BusinessSettings;
 
 export interface OrgSettingsDTO {
   id: string;
@@ -66,6 +67,7 @@ export interface OrgSettingsDTO {
   publicPhone?: string | null;
   publicAddress?: string | null;
   removeOpenFieldProAttribution: boolean;
+  businessSettings: BusinessSettingsDTO;
   updatedAt?: string;
   createdAt?: string;
 }
@@ -249,7 +251,7 @@ export const api = {
 
   // ── Organization settings ──
   org: () => request<OrgSettingsDTO>("/api/org/me"),
-  patchOrg: (body: Partial<Pick<OrgSettingsDTO, "name" | "timezone" | "logoUrl" | "brandColor" | "documentFooter" | "publicEmail" | "publicPhone" | "publicAddress" | "removeOpenFieldProAttribution">>) =>
+  patchOrg: (body: Partial<Pick<OrgSettingsDTO, "name" | "timezone" | "logoUrl" | "brandColor" | "documentFooter" | "publicEmail" | "publicPhone" | "publicAddress" | "removeOpenFieldProAttribution" | "businessSettings">>) =>
     request<OrgSettingsDTO>("/api/org/me", { method: "PATCH", body: JSON.stringify(body) }),
 
   jobs: () => request<JobDTO[]>("/api/jobs"),

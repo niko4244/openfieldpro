@@ -11,10 +11,11 @@ export default async function CustomerPortalPage({
   params: Promise<{ customerId: string }>;
 }) {
   const { customerId } = await params;
-  const [customer, jobs, invoices] = await Promise.all([
+  const [customer, jobs, invoices, org] = await Promise.all([
     api.customer(customerId).catch(() => null),
     api.jobs().catch(() => []),
     api.invoices().catch(() => []),
+    api.org().catch(() => null),
   ]);
 
   const customerJobs = jobs.filter((job) => job.customerId === customerId);
@@ -46,7 +47,7 @@ export default async function CustomerPortalPage({
           </p>
         </div>
 
-        <SponsorSlot />
+        {org?.businessSettings.portal.showSponsorSlot ? <SponsorSlot /> : null}
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <Card>

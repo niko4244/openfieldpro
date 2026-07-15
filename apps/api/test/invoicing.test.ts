@@ -1,7 +1,7 @@
 // Runnable check (no DB): node --experimental-strip-types --test test/invoicing.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyPayment, invoiceNumber } from "../src/invoicing.ts";
+import { applyPayment, defaultInvoiceDueAt, invoiceNumber } from "../src/invoicing.ts";
 
 test("full payment marks the invoice paid", () => {
   const r = applyPayment(18900, 0, 18900, "sent");
@@ -39,4 +39,9 @@ test("non-positive payment is rejected", () => {
 test("invoice numbers are sequential and zero-padded", () => {
   assert.equal(invoiceNumber(0), "INV-1000");
   assert.equal(invoiceNumber(42), "INV-1042");
+  assert.equal(invoiceNumber(2, "MARC", 5000), "MARC-5002");
+});
+
+test("default invoice due date follows configured net days", () => {
+  assert.equal(defaultInvoiceDueAt(14, new Date("2026-07-15T12:00:00.000Z")).toISOString(), "2026-07-29T12:00:00.000Z");
 });

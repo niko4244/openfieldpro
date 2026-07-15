@@ -32,6 +32,12 @@ export function applyPayment(
 }
 
 /** Human invoice number from a per-org sequence. */
-export function invoiceNumber(seq: number): string {
-  return `INV-${String(1000 + seq).padStart(4, "0")}`;
+export function invoiceNumber(seq: number, prefix = "INV", nextNumber = 1000): string {
+  return `${prefix}-${String(nextNumber + seq).padStart(4, "0")}`;
+}
+
+export function defaultInvoiceDueAt(netDays: number, now = new Date()): Date {
+  const due = new Date(now);
+  due.setDate(due.getDate() + Math.max(0, Math.floor(netDays)));
+  return due;
 }

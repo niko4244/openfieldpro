@@ -8,7 +8,7 @@ This is not a branding problem. It is a product-depth problem.
 
 ## Benchmark
 
-The comparison target is the operational depth expected from Housecall Pro-style field-service software, especially:
+The comparison target is the operational depth expected from mature incumbent field-service software, especially:
 
 - company and business settings;
 - invoice customer-view settings;
@@ -20,7 +20,7 @@ The comparison target is the operational depth expected from Housecall Pro-style
 - dispatch/schedule depth;
 - reporting and accounting handoff.
 
-OpenFieldPro should not copy Housecall Pro's closed SaaS model, but it must meet the operational expectations that independent service businesses already understand.
+OpenFieldPro should not copy a closed SaaS model, but it must meet the operational expectations that independent service businesses already understand.
 
 ## Current gap summary
 

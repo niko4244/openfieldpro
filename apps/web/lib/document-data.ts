@@ -57,6 +57,19 @@ function lineItemsForDocument(lineItems: LineItemLike[], fallbackTotalCents: num
   return [{ description: "Service work", quantity: 1, unitPriceCents: fallbackTotalCents }];
 }
 
+function visibleLineItems(
+  lineItems: LineItemLike[],
+  fallbackTotalCents: number,
+  options: { showLineItems: boolean },
+) {
+  if (!options.showLineItems) return [{ description: "Service work", quantity: 1, unitPriceCents: fallbackTotalCents }];
+  return lineItemsForDocument(lineItems, fallbackTotalCents);
+}
+
+function joinNotes(parts: (string | null | undefined)[]) {
+  return parts.filter((part): part is string => Boolean(part?.trim())).join("\n\n");
+}
+
 export function invoiceDocumentHtml({
   invoice,
   customer,
@@ -71,20 +84,29 @@ export function invoiceDocumentHtml({
   org?: OrgSettingsDTO | null;
 }) {
   const paid = invoice.payments?.reduce((sum, payment) => sum + payment.amount, 0) ?? 0;
+  const settings = org?.businessSettings;
+  const visibility = settings?.invoice.visibility;
   return renderFieldDocumentHtml({
     kind: paid >= invoice.total && invoice.total > 0 ? "receipt" : "invoice",
     number: invoice.number,
     status: invoice.status,
     issuedAt: issuedDate(invoice.createdAt),
     dueAt: invoice.dueAt ? new Date(invoice.dueAt).toLocaleDateString() : null,
-    customerName: customer?.name ?? "Customer",
-    customerEmail: customer?.email,
-    customerPhone: customer?.phone,
-    jobTitle: job?.title ?? "Service work",
-    notes: job?.description ?? null,
-    lineItems: lineItemsForDocument(lineItems, invoice.total),
+    customerName: visibility?.showCustomerInfo === false ? "Customer" : customer?.name ?? "Customer",
+    customerEmail: visibility?.showCustomerInfo === false ? null : customer?.email,
+    customerPhone: visibility?.showCustomerInfo === false ? null : customer?.phone,
+    jobTitle: visibility?.showJobInfo === false ? "Service work" : job?.title ?? "Service work",
+    notes: joinNotes([job?.description, settings?.invoice.defaultMessage, settings?.invoice.paymentInstructions]),
+    lineItems: visibleLineItems(lineItems, invoice.total, {
+      showLineItems: visibility?.showLineItems ?? true,
+    }),
     paymentsCents: paid,
     branding: brandingForDocument(org),
+    presentation: {
+      showLineItemPrices: visibility?.showLineItemPrices ?? true,
+      showPayments: visibility?.showPayments ?? true,
+      showBalance: visibility?.showBalance ?? true,
+    },
   });
 }
 
@@ -101,18 +123,30 @@ export function estimateDocumentHtml({
   lineItems: LineItemLike[];
   org?: OrgSettingsDTO | null;
 }) {
+  const settings = org?.businessSettings;
+  const visibility = settings?.estimate.visibility;
   return renderFieldDocumentHtml({
     kind: "estimate",
-    number: `EST-${estimate.id.slice(0, 8).toUpperCase()}`,
+    number: `${settings?.numbering.estimatePrefix ?? "EST"}-${estimate.id.slice(0, 8).toUpperCase()}`,
     status: estimate.accepted ? "accepted" : "pending",
     issuedAt: issuedDate(estimate.createdAt),
-    customerName: customer?.name ?? "Customer",
-    customerEmail: customer?.email,
-    customerPhone: customer?.phone,
-    jobTitle: job?.title ?? "Service work",
-    notes: job?.description ?? "Estimate is valid pending final service conditions and customer approval.",
-    lineItems: lineItemsForDocument(lineItems, estimate.total),
+    customerName: visibility?.showCustomerInfo === false ? "Customer" : customer?.name ?? "Customer",
+    customerEmail: visibility?.showCustomerInfo === false ? null : customer?.email,
+    customerPhone: visibility?.showCustomerInfo === false ? null : customer?.phone,
+    jobTitle: visibility?.showJobInfo === false ? "Service work" : job?.title ?? "Service work",
+    notes: joinNotes([
+      job?.description,
+      settings?.estimate.defaultMessage ?? "Estimate is valid pending final service conditions and customer approval.",
+      settings?.estimate.signatureRequired ? "Customer signature required for approval." : null,
+      settings?.estimate.depositMode !== "none" ? `Deposit required: ${settings?.estimate.depositValue}${settings?.estimate.depositMode === "percent" ? "%" : " cents"}` : null,
+    ]),
+    lineItems: visibleLineItems(lineItems, estimate.total, {
+      showLineItems: visibility?.showLineItems ?? true,
+    }),
     paymentsCents: 0,
     branding: brandingForDocument(org, "Estimate generated from OpenFieldPro"),
+    presentation: {
+      showLineItemPrices: visibility?.showLineItemPrices ?? true,
+    },
   });
 }

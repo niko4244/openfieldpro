@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { eq, and, desc, ne, sql } from "drizzle-orm";
-import { db, invoices, payments, jobs, lineItems } from "@ofp/db";
-import { applyPayment, invoiceNumber } from "../invoicing.js";
+import { db, invoices, payments, jobs, lineItems, orgs } from "@ofp/db";
+import { mergeBusinessSettings } from "@ofp/shared";
+import { applyPayment, defaultInvoiceDueAt, invoiceNumber } from "../invoicing.js";
 import { validateInvoiceCreation } from "../invoice-creation.js";
 import { createFixedWindowRateLimit, requestIpKey } from "../rate-limit.js";
 import { resolvePublicWebUrl } from "../runtime-security.js";
@@ -64,6 +65,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
       if (blocked) return { kind: "blocked" as const, blocked };
 
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`invoice-number:${orgId}`}))`);
+      const [org] = await tx.select({ businessSettings: orgs.businessSettings }).from(orgs).where(eq(orgs.id, orgId)).limit(1);
+      const settings = mergeBusinessSettings(org?.businessSettings);
       const [{ count }] = await tx
         .select({ count: sql<number>`count(*)::int` })
         .from(invoices)
@@ -73,10 +76,10 @@ export async function invoiceRoutes(app: FastifyInstance) {
         .values({
           orgId,
           jobId: job.id,
-          number: invoiceNumber(count),
+          number: invoiceNumber(count, settings.numbering.invoicePrefix, settings.numbering.invoiceNextNumber),
           status: "draft",
           total: job.total,
-          dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
+          dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : defaultInvoiceDueAt(settings.invoice.netDays),
         })
         .returning();
       return { kind: "created" as const, row, job };
