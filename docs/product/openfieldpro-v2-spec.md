@@ -2,7 +2,7 @@
 
 ## Product definition
 
-OpenFieldPro is an open-source, self-hostable field service management platform. It is intended to cover the operational workflow businesses expect from products such as Housecall Pro while preserving data ownership, extensibility, and deployability.
+OpenFieldPro is an open-source, self-hostable field service management platform. It is intended to cover the operational workflow businesses expect from established field-service platforms while preserving data ownership, extensibility, and deployability.
 
 The universal product is the operations system:
 

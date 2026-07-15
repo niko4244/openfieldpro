@@ -1,9 +1,9 @@
-# OpenFieldPro vs HouseCall Pro — Feature Comparison, Gap Analysis & Improvement Plan
+# OpenFieldPro — Feature Comparison, Gap Analysis & Improvement Plan
 
 _Generated 2026-06-28. Source of truth: the running build at `C:\Users\nikma\openfieldpro`
-(web on :3000, served by Next 15 / PID confirmed). Goal is **not** to clone HouseCall Pro
-(HCP) — it's to ship a leaner, open, profitability-first alternative that beats it on the
-things HCP is bad at (price gouging, closed ecosystem, buried margins, data lock-in)._
+(web on :3000, served by Next 15 / PID confirmed). Goal is **not** to clone incumbent
+field-service SaaS. It is to ship a leaner, open, profitability-first alternative that wins on
+price transparency, open extensibility, visible margins, and data ownership._
 
 ---
 
