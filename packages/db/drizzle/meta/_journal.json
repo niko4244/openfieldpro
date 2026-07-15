@@ -64,6 +64,13 @@
       "when": 1784149600000,
       "tag": "0008_business_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784150400000,
+      "tag": "0009_estimate_customer_approval",
+      "breakpoints": true
     }
   ]
 }

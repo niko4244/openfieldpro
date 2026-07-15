@@ -1,6 +1,7 @@
 // Runnable check (no DB): node --experimental-strip-types --test test/invoicing.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { defaultEstimateExpiresAt, estimateNumber } from "../src/estimates.ts";
 import { applyPayment, defaultInvoiceDueAt, invoiceNumber } from "../src/invoicing.ts";
 
 test("full payment marks the invoice paid", () => {
@@ -44,4 +45,10 @@ test("invoice numbers are sequential and zero-padded", () => {
 
 test("default invoice due date follows configured net days", () => {
   assert.equal(defaultInvoiceDueAt(14, new Date("2026-07-15T12:00:00.000Z")).toISOString(), "2026-07-29T12:00:00.000Z");
+});
+
+test("estimate numbers and expiration follow configured settings", () => {
+  assert.equal(estimateNumber(2, "MARC-EST", 700), "MARC-EST-0702");
+  assert.equal(defaultEstimateExpiresAt(0, new Date("2026-01-01T00:00:00.000Z")), null);
+  assert.equal(defaultEstimateExpiresAt(30, new Date("2026-01-01T00:00:00.000Z"))?.toISOString(), "2026-01-31T00:00:00.000Z");
 });

@@ -34,7 +34,7 @@ export default async function EstimatePreviewPage({
   const job = jobs.find((row) => row.id === estimate.jobId) ?? null;
   const customer = job ? customers.find((row) => row.id === job.customerId) ?? null : null;
   const html = estimateDocumentHtml({ estimate, customer, job, lineItems: estimate.lineItems, org });
-  const estimateNumber = `EST-${estimate.id.slice(0, 8).toUpperCase()}`;
+  const estimateNumber = estimate.number;
 
   return (
     <div>

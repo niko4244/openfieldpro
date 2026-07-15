@@ -107,8 +107,12 @@ interface Estimate {
   id: string;
   orgId: string;
   jobId: string;
+  number: string;
   total: number;
   accepted: boolean;
+  expiresAt?: string | null;
+  acceptedAt?: string | null;
+  acceptedByName?: string | null;
   createdAt: string;
 }
 
@@ -298,6 +302,11 @@ export const api = {
   estimate: (id: string) => request<EstimateDetail>(`/api/estimates/${id}`),
   createEstimate: (body: { jobId: string }) =>
     request<Estimate>("/api/estimates", { method: "POST", body: JSON.stringify(body) }),
+  acceptEstimate: (id: string, body?: { customerName?: string }) =>
+    request<Estimate & { jobStatus: string }>(`/api/estimates/${id}/accept`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
 
   reviews: () => request<ReviewList>("/api/reviews"),
   patchReview: (id: string, body: { reply?: string }) =>

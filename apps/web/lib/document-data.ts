@@ -28,7 +28,11 @@ interface InvoiceLike {
 
 interface EstimateLike {
   id: string;
+  number?: string;
   accepted: boolean;
+  expiresAt?: string | null;
+  acceptedAt?: string | null;
+  acceptedByName?: string | null;
   createdAt?: string | null;
 }
 
@@ -127,9 +131,10 @@ export function estimateDocumentHtml({
   const visibility = settings?.estimate.visibility;
   return renderFieldDocumentHtml({
     kind: "estimate",
-    number: `${settings?.numbering.estimatePrefix ?? "EST"}-${estimate.id.slice(0, 8).toUpperCase()}`,
+    number: estimate.number ?? `${settings?.numbering.estimatePrefix ?? "EST"}-${estimate.id.slice(0, 8).toUpperCase()}`,
     status: estimate.accepted ? "accepted" : "pending",
     issuedAt: issuedDate(estimate.createdAt),
+    dueAt: estimate.expiresAt ? new Date(estimate.expiresAt).toLocaleDateString() : null,
     customerName: visibility?.showCustomerInfo === false ? "Customer" : customer?.name ?? "Customer",
     customerEmail: visibility?.showCustomerInfo === false ? null : customer?.email,
     customerPhone: visibility?.showCustomerInfo === false ? null : customer?.phone,
@@ -137,6 +142,7 @@ export function estimateDocumentHtml({
     notes: joinNotes([
       job?.description,
       settings?.estimate.defaultMessage ?? "Estimate is valid pending final service conditions and customer approval.",
+      estimate.acceptedAt ? `Accepted ${new Date(estimate.acceptedAt).toLocaleDateString()}${estimate.acceptedByName ? ` by ${estimate.acceptedByName}` : ""}.` : null,
       settings?.estimate.signatureRequired ? "Customer signature required for approval." : null,
       settings?.estimate.depositMode !== "none" ? `Deposit required: ${settings?.estimate.depositValue}${settings?.estimate.depositMode === "percent" ? "%" : " cents"}` : null,
     ]),
