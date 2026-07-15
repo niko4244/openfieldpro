@@ -9,6 +9,8 @@ dist/
 .secrets/
 *.private.pem
 *.ofp-license
+.env.official
+official-release-manifest.json
 drizzle/meta/_journal.json.bak
 .DS_Store
 backups/

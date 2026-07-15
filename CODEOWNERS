@@ -1,0 +1,11 @@
+* @niko4244
+
+/.github/ @niko4244
+/apps/api/src/auth.ts @niko4244
+/apps/api/src/routes/ @niko4244
+/apps/api/src/plugins/ @niko4244
+/docs/security/ @niko4244
+/infra/ @niko4244
+/packages/db/drizzle/ @niko4244
+/scripts/ @niko4244
+

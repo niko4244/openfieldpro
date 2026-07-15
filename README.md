@@ -117,6 +117,8 @@ Optional signed entitlements are verified locally without a license server, tele
 
 A free dashboard may show one clearly labeled, locally configured sponsor placement. OpenFieldPro does not use ad networks, tracking pixels, behavioral targeting, or sponsor access to operational data. See `docs/funding/SPONSORSHIP_PLAYBOOK.md`.
 
+Official sponsorship campaigns, release scheduling, and token inventories are maintained in a separate private operations repository. Only approved public sponsor copy and immutable source identifiers enter official builds; the boundary is documented in `docs/operations/OFFICIAL_DISTRIBUTION_BOUNDARY.md`.
+
 ## Product direction
 
 The release gate is the complete lead-to-payment loop:
