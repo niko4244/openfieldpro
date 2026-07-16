@@ -18,10 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@9.0.0 --activate
       - name: Generate and verify deterministic lockfile, then install
@@ -69,10 +70,11 @@ jobs:
     env:
       DATABASE_URL: postgres://ofp:ofp-ci-only@127.0.0.1:5432/ofp
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@9.0.0 --activate
       - name: Install verified workspace
@@ -94,7 +96,7 @@ jobs:
         run: pnpm --filter @ofp/api test
       - name: Upload API compiler log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: api-compiler-log
           path: /tmp/openfieldpro-api-build.log
@@ -104,10 +106,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@9.0.0 --activate
       - name: Install verified workspace
@@ -125,7 +128,7 @@ jobs:
           NEXT_PUBLIC_API_URL: http://localhost:3001
       - name: Upload web compiler log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: web-compiler-log
           path: /tmp/openfieldpro-web-build.log
@@ -135,10 +138,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@9.0.0 --activate
       - name: Install verified workspace
@@ -155,7 +159,7 @@ jobs:
           NEXT_PUBLIC_API_URL: http://127.0.0.1:3001
       - name: Upload operations visual evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: operations-visual-evidence
           path: |
@@ -169,10 +173,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
+          package-manager-cache: false
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@9.0.0 --activate
       - name: Install verified workspace
@@ -186,7 +191,7 @@ jobs:
           exit $code
       - name: Upload mobile compiler log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mobile-typecheck-log
           path: /tmp/openfieldpro-mobile-typecheck.log
