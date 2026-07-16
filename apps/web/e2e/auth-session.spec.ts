@@ -93,7 +93,11 @@ test("desktop login uses an HTTP-only session and exposes sign out", async ({ pa
   const runtimeErrors = collectRuntimeErrors(page);
   await mockSessionApi(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/login");
+  const response = await page.goto("/login");
+
+  expect(response?.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(response?.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(response?.headers()["x-frame-options"]).toBe("DENY");
 
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await expect(page.getByText("New organization registration is controlled by the deployment owner")).toBeVisible();
@@ -105,8 +109,9 @@ test("desktop login uses an HTTP-only session and exposes sign out", async ({ pa
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL("/");
-  await expect(page.getByText("Morgan Owner")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  const accountPanel = page.getByRole("complementary");
+  await expect(accountPanel.getByText("Morgan Owner")).toBeVisible();
+  await expect(accountPanel.getByRole("button", { name: "Sign out" })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem("ofp_token"))).toBeNull();
 
   const cookies = await page.context().cookies("http://127.0.0.1:3001");
@@ -120,7 +125,7 @@ test("desktop login uses an HTTP-only session and exposes sign out", async ({ pa
     fullPage: true,
   });
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await accountPanel.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL("/login");
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   expect(runtimeErrors).toEqual([]);
@@ -143,9 +148,10 @@ test("mobile drawer shows the authenticated user and secure sign out", async ({ 
   await page.goto("/jobs/new");
   await page.getByRole("button", { name: "Open navigation menu" }).click();
 
-  await expect(page.getByText("Morgan Owner")).toBeVisible();
-  await expect(page.getByText("owner", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  const accountPanel = page.getByRole("complementary");
+  await expect(accountPanel.getByText("Morgan Owner")).toBeVisible();
+  await expect(accountPanel.getByText("owner", { exact: true })).toBeVisible();
+  await expect(accountPanel.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -157,8 +163,17 @@ test("mobile drawer shows the authenticated user and secure sign out", async ({ 
     fullPage: true,
   });
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await accountPanel.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL("/login");
   expect(await page.evaluate(() => localStorage.getItem("ofp_token"))).toBeNull();
   expect(runtimeErrors).toEqual([]);
+});
+
+test("an invalid customer portal link fails closed without placeholder billing data", async ({ page }) => {
+  await page.goto("/portal/not-a-valid-portal-link");
+
+  await expect(page.getByRole("heading", { name: "This portal link is unavailable" })).toBeVisible();
+  await expect(page.getByText("No customer or billing information has been displayed.")).toBeVisible();
+  await expect(page.getByText("$0.00 collected")).toHaveCount(0);
+  await expect(page.getByText("✓ Invoice payment link surface")).toHaveCount(0);
 });

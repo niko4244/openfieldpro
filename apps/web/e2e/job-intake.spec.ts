@@ -120,7 +120,7 @@ test("dispatcher creates and schedules a job for an existing customer", async ({
   await expect(page).toHaveTitle(/OpenFieldPro/i);
   await expect(page.getByRole("heading", { name: "New job" })).toBeVisible();
   await expect(page.getByText("Create the work order, customer record, and appointment in one intake flow.")).toBeVisible();
-  await expect(page.getByLabel("Customer")).toHaveValue("customer-1");
+  await expect(page.getByLabel("Customer", { exact: true })).toHaveValue("customer-1");
   await expect(page.getByRole("link", { name: "New Job" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Jobs", exact: true })).not.toHaveAttribute("aria-current", "page");
 

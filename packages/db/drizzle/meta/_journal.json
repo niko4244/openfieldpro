@@ -71,6 +71,13 @@
       "when": 1784150400000,
       "tag": "0009_estimate_customer_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785000000000,
+      "tag": "0010_schema_parity",
+      "breakpoints": true
     }
   ]
 }

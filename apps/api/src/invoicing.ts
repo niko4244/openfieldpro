@@ -36,6 +36,17 @@ export function invoiceNumber(seq: number, prefix = "INV", nextNumber = 1000): s
   return `${prefix}-${String(nextNumber + seq).padStart(4, "0")}`;
 }
 
+export function updateInvoiceStatus(
+  current: InvoiceStatus,
+  requested: "sent" | "void",
+): InvoiceStatus {
+  if (current === requested) return current;
+  if (current === "paid" || current === "void") {
+    throw new Error(`cannot mark a ${current} invoice ${requested}`);
+  }
+  return requested;
+}
+
 export function defaultInvoiceDueAt(netDays: number, now = new Date()): Date {
   const due = new Date(now);
   due.setDate(due.getDate() + Math.max(0, Math.floor(netDays)));

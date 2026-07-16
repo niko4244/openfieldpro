@@ -17,7 +17,7 @@ A release is ready only when every required gate below is complete and evidence 
 ```bash
 pnpm install:verified
 pnpm release:safety
-pnpm audit --prod --audit-level=high
+pnpm audit:dependencies
 ```
 
 - [ ] `pnpm lock:prepare` regenerates the lockfile from committed manifests and matches `pnpm-lock.expected.sha256`.
@@ -31,7 +31,9 @@ pnpm audit --prod --audit-level=high
 ## 3. Automated validation
 
 ```bash
-pnpm --filter @ofp/db generate
+pnpm db:check
+ALLOW_SCHEMA_PUSH=true pnpm db:migrate
+pnpm db:parity
 pnpm --filter @ofp/api build
 pnpm --filter @ofp/api test
 pnpm --filter @ofp/web test:unit
@@ -40,7 +42,8 @@ pnpm --filter @ofp/web test:e2e
 pnpm --filter @ofp/mobile typecheck
 ```
 
-- [ ] Database schema generation passes.
+- [ ] Committed migrations apply to an empty PostgreSQL database without interactive prompts.
+- [ ] Database table, column, and type parity matches the application schema.
 - [ ] API compiles and all tests pass.
 - [ ] Web unit tests pass.
 - [ ] Next.js production build passes.

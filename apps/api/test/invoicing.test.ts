@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { defaultEstimateExpiresAt, estimateNumber } from "../src/estimates.ts";
-import { applyPayment, defaultInvoiceDueAt, invoiceNumber } from "../src/invoicing.ts";
+import { applyPayment, defaultInvoiceDueAt, invoiceNumber, updateInvoiceStatus } from "../src/invoicing.ts";
 
 test("full payment marks the invoice paid", () => {
   const r = applyPayment(18900, 0, 18900, "sent");
@@ -35,6 +35,17 @@ test("paying a void invoice throws", () => {
 
 test("non-positive payment is rejected", () => {
   assert.throws(() => applyPayment(100, 0, 0, "sent"));
+});
+
+test("draft invoices can be sent or voided", () => {
+  assert.equal(updateInvoiceStatus("draft", "sent"), "sent");
+  assert.equal(updateInvoiceStatus("draft", "void"), "void");
+});
+
+test("terminal invoice states cannot be reopened", () => {
+  assert.throws(() => updateInvoiceStatus("paid", "sent"));
+  assert.throws(() => updateInvoiceStatus("void", "sent"));
+  assert.equal(updateInvoiceStatus("void", "void"), "void");
 });
 
 test("invoice numbers are sequential and zero-padded", () => {

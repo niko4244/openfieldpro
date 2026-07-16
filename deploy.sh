@@ -80,7 +80,7 @@ corepack enable >/dev/null 2>&1 || true
 corepack prepare pnpm@9.0.0 --activate >/dev/null
 pnpm install:verified
 pnpm release:safety
-pnpm audit --prod --audit-level=high
+pnpm audit:dependencies
 
 echo "Building production images..."
 "${COMPOSE[@]}" -f infra/compose.prod.yml build api web worker

@@ -5,17 +5,13 @@ import { db, activities } from "@ofp/db";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 
-// GET requires at least one filter so a bare /api/activities can't accidentally
-// pull every org row. Tighten the limit later if the timeline page needs pagination.
-const queryParams = z
-  .object({
-    customerId: z.string().uuid().optional(),
-    jobId: z.string().uuid().optional(),
-    limit: z.coerce.number().int().positive().max(200).default(50),
-  })
-  .refine((d) => Boolean(d.customerId) || Boolean(d.jobId), {
-    message: "Provide customerId or jobId",
-  });
+// A bare request is the organization-scoped recent feed used by the customer
+// directory. The mandatory cap prevents an unbounded organization timeline.
+export const activityQueryParams = z.object({
+  customerId: z.string().uuid().optional(),
+  jobId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().max(200).default(50),
+});
 
 const createBody = z
   .object({
@@ -37,7 +33,7 @@ export async function activityRoutes(app: FastifyInstance) {
   // a `(job_id, created_at desc)` index when the timeline page starts to lag.
   app.get("/", async (req, reply) => {
     const orgId = await resolveOrgId(req);
-    const parsed = queryParams.safeParse(req.query);
+    const parsed = activityQueryParams.safeParse(req.query);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
     const conds = [eq(activities.orgId, orgId)];

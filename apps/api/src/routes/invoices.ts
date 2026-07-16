@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq, and, desc, ne, sql } from "drizzle-orm";
 import { db, invoices, payments, jobs, lineItems, orgs } from "@ofp/db";
 import { mergeBusinessSettings } from "@ofp/shared";
-import { applyPayment, defaultInvoiceDueAt, invoiceNumber } from "../invoicing.js";
+import { applyPayment, defaultInvoiceDueAt, invoiceNumber, updateInvoiceStatus } from "../invoicing.js";
 import { validateInvoiceCreation } from "../invoice-creation.js";
 import { createFixedWindowRateLimit, requestIpKey } from "../rate-limit.js";
 import { resolvePublicWebUrl } from "../runtime-security.js";
@@ -12,6 +12,7 @@ import { safeEmitActivity } from "../activities.js";
 import { safeEmitEvent } from "../plugins/bus.js";
 
 const createBody = z.object({ jobId: z.string().uuid(), dueAt: z.string().datetime().optional() });
+const statusBody = z.object({ status: z.enum(["sent", "void"]) });
 const payBody = z.object({
   amount: z.number().int().positive(),
   method: z.enum(["manual", "cash", "check", "card"]).default("manual"),
@@ -96,6 +97,41 @@ export async function invoiceRoutes(app: FastifyInstance) {
       total: result.row.total,
     });
     return reply.code(201).send(result.row);
+  });
+
+  app.patch("/:id", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+    const parsed = statusBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+
+    const [existing] = await db
+      .select()
+      .from(invoices)
+      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
+    if (!existing) return reply.code(404).send({ error: "not found" });
+
+    let status;
+    try {
+      status = updateInvoiceStatus(existing.status, parsed.data.status);
+    } catch (error) {
+      return reply.code(409).send({ error: (error as Error).message });
+    }
+
+    await db
+      .update(invoices)
+      .set({ status, updatedAt: new Date() })
+      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
+    safeEmitActivity(orgId, "invoice.status_changed", `Invoice ${existing.number} marked ${status}`, {
+      jobId: existing.jobId,
+    });
+    void safeEmitEvent(orgId, "invoice.status_changed", {
+      id,
+      number: existing.number,
+      jobId: existing.jobId,
+      status,
+    });
+    return { ok: true, status };
   });
 
   app.post("/:id/pay", async (req, reply) => {

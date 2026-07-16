@@ -96,7 +96,7 @@ export function MobileNav() {
                           : "text-fg-muted hover:bg-surface-300 hover:text-fg",
                       )}
                     >
-                      <span className="w-5 text-center text-base">{icon}</span>
+                      <span aria-hidden="true" className="w-5 text-center text-base">{icon}</span>
                       {label}
                     </Link>
                   );

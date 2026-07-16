@@ -6,6 +6,9 @@
   "exports": { ".": "./src/index.ts", "./schema": "./src/schema.ts" },
   "scripts": {
     "generate": "drizzle-kit generate",
+    "check": "drizzle-kit check",
+    "schema:parity": "tsx src/check-schema-parity.ts",
+    "migrate": "tsx src/migrate.ts",
     "push": "drizzle-kit push",
     "seed": "tsx src/seed.ts"
   },

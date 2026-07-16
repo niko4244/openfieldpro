@@ -21,6 +21,19 @@ export default async function CustomerPortalPage({
   ]);
 
   const portalSettings = org?.businessSettings.portal;
+  if (!customer || !org || portalSettings?.enabled === false) {
+    return (
+      <main className="min-h-screen bg-surface-100 px-4 py-16 text-fg">
+        <Card className="mx-auto max-w-xl text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-accent">OpenFieldPro Portal</p>
+          <h1 className="mt-3 text-3xl font-black tracking-tight">This portal link is unavailable</h1>
+          <p className="mt-3 text-sm text-fg-muted">
+            Ask the service company for a new secure portal link. No customer or billing information has been displayed.
+          </p>
+        </Card>
+      </main>
+    );
+  }
   const customerJobs = jobs.filter((job) => job.customerId === customerId);
   const customerJobIds = new Set(customerJobs.map((job) => job.id));
   const customerInvoices = invoices.filter((invoice) => customerJobIds.has(invoice.jobId));
@@ -51,7 +64,7 @@ export default async function CustomerPortalPage({
             {customer?.name ?? "Customer portal"}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-fg-muted">
-            This portal surface is ready for estimate approvals, invoice payments, appointment visibility, service-plan status, receipts, and review requests.
+            Review service history, invoices, and estimates shared by your service company.
           </p>
         </div>
 
@@ -148,15 +161,6 @@ export default async function CustomerPortalPage({
           </Card>
         ) : null}
 
-        <Card className="mt-6 border-accent/30 bg-accent/5">
-          <h2 className="text-base font-semibold text-fg">Next portal integrations</h2>
-          <div className="mt-3 grid gap-2 text-sm text-fg-muted md:grid-cols-2">
-            <p>✓ Estimate approval surface</p>
-            <p>✓ Invoice payment link surface</p>
-            <p>✓ Service-plan status card</p>
-            <p>✓ Review request flow</p>
-          </div>
-        </Card>
       </div>
     </main>
   );

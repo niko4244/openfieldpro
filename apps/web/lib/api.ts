@@ -33,6 +33,24 @@ export interface LoginResult {
   user: { id: string; name: string; email: string; role: string };
 }
 
+export function parseSessionUser(value: unknown): LoginResult["user"] {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("id" in value) ||
+    !("name" in value) ||
+    !("email" in value) ||
+    !("role" in value) ||
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.email !== "string" ||
+    typeof value.role !== "string"
+  ) {
+    throw new Error("Invalid session response");
+  }
+  return value as LoginResult["user"];
+}
+
 export async function login(email: string, password: string): Promise<LoginResult> {
   return request("/api/auth/login", {
     method: "POST",
@@ -41,7 +59,7 @@ export async function login(email: string, password: string): Promise<LoginResul
 }
 
 export async function currentUser(): Promise<LoginResult["user"]> {
-  return request("/api/auth/me");
+  return parseSessionUser(await request<unknown>("/api/auth/me"));
 }
 
 export async function logout(): Promise<void> {

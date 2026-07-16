@@ -1,6 +1,9 @@
 node_modules/
 dist/
 .next/
+apps/web/artifacts/
+apps/web/playwright-report/
+apps/web/test-results/
 .expo/
 *.tsbuildinfo
 .env

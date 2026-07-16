@@ -21,7 +21,7 @@ EXPOSE 3001
 USER node
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
-  CMD wget -q -O - http://127.0.0.1:3001/health >/dev/null 2>&1 || exit 1
+  CMD wget -q -O - http://127.0.0.1:3001/api/health >/dev/null 2>&1 || exit 1
 
 # The API source is executed through the pinned tsx runtime because workspace
 # packages currently export TypeScript source. The build above remains a
