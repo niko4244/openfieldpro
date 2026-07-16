@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
-import { DocumentActions } from "@/app/documents/document-actions";
+import { DocumentPreviewWorkbench } from "@/components/document-preview-workbench";
 
 export default async function EstimatePreviewPage({
   params,
@@ -35,6 +35,17 @@ export default async function EstimatePreviewPage({
   const customer = job ? customers.find((row) => row.id === job.customerId) ?? null : null;
   const html = estimateDocumentHtml({ estimate, customer, job, lineItems: estimate.lineItems, org });
   const estimateNumber = estimate.number;
+  const variants = estimate.status === "approved" ? undefined : estimate.options.map((option) => ({
+    id: option.id,
+    label: option.label,
+    html: estimateDocumentHtml({
+      estimate: { ...estimate, selectedOptionId: option.id },
+      customer,
+      job,
+      lineItems: estimate.lineItems,
+      org,
+    }),
+  }));
 
   return (
     <div>
@@ -43,9 +54,8 @@ export default async function EstimatePreviewPage({
         description="Customer-facing estimate document preview."
         actions={
           <div className="flex flex-wrap gap-2">
-            <DocumentActions html={html} fileName={`${estimateNumber}.html`} />
             <Link href={`/estimates/${estimate.id}/document.html`} target="_blank">
-              <Button size="sm" variant="secondary">Open HTML</Button>
+              <Button size="sm" variant="secondary">Open customer view</Button>
             </Link>
             {job && (
               <Link href={`/jobs/${job.id}`}>
@@ -55,15 +65,9 @@ export default async function EstimatePreviewPage({
           </div>
         }
       />
-      <Card className="mb-5 border-accent/30 bg-accent/5">
-        <p className="text-sm text-fg-muted">
-          This estimate preview uses real estimate, job, customer, line-item, and organization-branding data. A later PDF/email workflow can reuse the same shared renderer.
-        </p>
-      </Card>
-      <iframe
-        title={`Estimate preview ${estimateNumber}`}
-        srcDoc={html}
-        className="h-[980px] w-full rounded-2xl border border-border bg-white"
+      <DocumentPreviewWorkbench
+        documents={[{ id: "estimate", label: "Estimate", html, variants }]}
+        fileName={`${estimateNumber}.html`}
       />
     </div>
   );

@@ -6,6 +6,9 @@ export interface FieldDocumentBranding {
   logoUrl?: string;
   brandColor?: string;
   footerText?: string;
+  publicEmail?: string | null;
+  publicPhone?: string | null;
+  publicAddress?: string | null;
   removeOpenFieldProAttribution?: boolean;
 }
 
@@ -38,6 +41,8 @@ export interface FieldDocumentData {
   paymentsCents?: DocumentMoney;
   branding: FieldDocumentBranding;
   presentation?: {
+    format?: "email" | "envelope";
+    showBusinessInfo?: boolean;
     showLineItemPrices?: boolean;
     showPayments?: boolean;
     showBalance?: boolean;
@@ -84,6 +89,7 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
     ? ""
     : `<p class="attribution">Powered by OpenFieldPro</p>`;
   const presentation = data.presentation ?? {};
+  const showBusinessInfo = presentation.showBusinessInfo ?? true;
   const showLineItemPrices = presentation.showLineItemPrices ?? true;
   const showPayments = presentation.showPayments ?? true;
   const showBalance = presentation.showBalance ?? true;
@@ -93,8 +99,8 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
         <tr>
           <td>${escapeHtml(item.description)}</td>
           <td class="num">${item.quantity}</td>
-          <td class="num">${showLineItemPrices ? formatCents(item.unitPriceCents) : "—"}</td>
-          <td class="num">${showLineItemPrices ? formatCents(item.quantity * item.unitPriceCents) : "—"}</td>
+          <td class="num">${showLineItemPrices ? formatCents(item.unitPriceCents) : "Hidden"}</td>
+          <td class="num">${showLineItemPrices ? formatCents(item.quantity * item.unitPriceCents) : "Hidden"}</td>
         </tr>`,
     )
     .join("");
@@ -102,10 +108,19 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
     ? data.options.map((option) => {
       const optionTotal = option.lineItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0);
       const optionRows = option.lineItems.map((item) => `
-        <tr><td>${escapeHtml(item.description)}</td><td class="num">${item.quantity}</td><td class="num">${showLineItemPrices ? formatCents(item.unitPriceCents) : "—"}</td><td class="num">${showLineItemPrices ? formatCents(item.quantity * item.unitPriceCents) : "—"}</td></tr>`).join("");
-      return `<section class="option${option.selected ? " selected" : ""}"><h2>${escapeHtml(option.label)}${option.selected ? " · Approved" : ""}</h2><table><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead><tbody>${optionRows}</tbody></table><p class="option-total">Option total <strong>${formatCents(optionTotal)}</strong></p></section>`;
+        <tr><td>${escapeHtml(item.description)}</td><td class="num">${item.quantity}</td><td class="num">${showLineItemPrices ? formatCents(item.unitPriceCents) : "Hidden"}</td><td class="num">${showLineItemPrices ? formatCents(item.quantity * item.unitPriceCents) : "Hidden"}</td></tr>`).join("");
+      const selectedLabel = data.status === "approved" ? "Approved" : "Selected";
+      return `<section class="option${option.selected ? " selected" : ""}"><div class="option-heading"><h2>${escapeHtml(option.label)}</h2>${option.selected ? `<span>${selectedLabel}</span>` : ""}</div><table><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead><tbody>${optionRows}</tbody></table><p class="option-total">Option total <strong>${formatCents(optionTotal)}</strong></p></section>`;
     }).join("")
     : null;
+  const businessContact = [data.branding.publicPhone, data.branding.publicEmail, data.branding.publicAddress]
+    .filter(Boolean)
+    .map((value) => escapeHtml(value!))
+    .join("<br />");
+  const brandBlock = showBusinessInfo
+    ? `<div class="brand-block">${logo}<div><div class="brand">${escapeHtml(data.branding.companyName)}</div>${businessContact ? `<p class="muted contact">${businessContact}</p>` : ""}</div></div>`
+    : `<div class="brand-block"><div><div class="brand muted">Customer document</div></div></div>`;
+  const formatClass = presentation.format === "envelope" ? " format-envelope" : "";
 
   return `<!doctype html>
 <html>
@@ -113,19 +128,21 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
 <meta charset="utf-8" />
 <title>${escapeHtml(title)} ${escapeHtml(data.number)}</title>
 <style>
-  body{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;margin:0;background:#f7f3ea;color:#111827;}
-  .page{max-width:820px;margin:40px auto;background:white;border:1px solid #d1d5db;border-radius:24px;padding:42px;box-shadow:0 20px 60px rgba(16,24,32,.12)}
-  .top{display:flex;justify-content:space-between;gap:24px;border-bottom:4px solid ${color};padding-bottom:24px;margin-bottom:28px}
-  .brand-block{display:flex;align-items:center;gap:14px}.logo{width:52px;height:52px;object-fit:contain;border-radius:14px;border:1px solid #e5e7eb}.logo-mark{width:52px;height:52px;display:grid;place-items:center;border-radius:14px;background:${color};color:#101820;font-weight:900;letter-spacing:-.04em}.brand{font-size:24px;font-weight:900;letter-spacing:-.04em}.kind{text-align:right}.kind h1{margin:0;font-size:42px;letter-spacing:-.06em}.muted{color:#6b7280}.pill{display:inline-block;background:${color};color:#101820;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}.box{border:1px solid #e5e7eb;border-radius:16px;padding:16px}.box h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#6b7280;margin:0 0 8px}
-  table{width:100%;border-collapse:collapse;margin-top:24px}th{text-align:left;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid #e5e7eb;padding:10px 8px}td{border-bottom:1px solid #f1f5f9;padding:12px 8px}.num{text-align:right}.option{margin-top:20px;border:1px solid #e5e7eb;border-radius:16px;padding:18px}.option.selected{border:2px solid ${color}}.option h2{margin:0;font-size:20px}.option table{margin-top:8px}.option-total{text-align:right;font-size:16px}.totals{margin-left:auto;margin-top:24px;max-width:320px}.total-row{display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding:10px 0}.total-row.strong{font-size:20px;font-weight:900;color:#111827}.notes{margin-top:28px;border-left:4px solid ${color};padding-left:14px;color:#4b5563;white-space:pre-line}.footer{margin-top:36px;padding-top:16px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px}.attribution{font-weight:700;color:#111827}
+  *{box-sizing:border-box}body{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#eef1ed;color:#17201b;line-height:1.45}
+  .page{max-width:820px;min-height:980px;margin:32px auto;background:#fff;border:1px solid #d9dfda;border-radius:18px;padding:44px;box-shadow:0 18px 50px rgba(23,32,27,.1)}
+  .page.format-envelope .top{padding-top:76px}.top{display:flex;justify-content:space-between;gap:28px;border-bottom:3px solid ${color};padding-bottom:26px;margin-bottom:28px}
+  .brand-block{display:flex;align-items:flex-start;gap:14px;min-width:0}.logo{width:56px;height:56px;object-fit:contain;border-radius:12px;border:1px solid #e5e9e6}.logo-mark{width:56px;height:56px;display:grid;place-items:center;border-radius:12px;background:${color};color:#fff;font-weight:900;letter-spacing:-.04em}.brand{font-size:23px;font-weight:850;letter-spacing:-.035em}.contact{margin:6px 0 0;font-size:12px;line-height:1.55}.kind{text-align:right;flex:none}.kind h1{margin:8px 0 0;font-size:38px;line-height:1;letter-spacing:-.045em}.kind .number{margin:8px 0 0;font-weight:700}.muted{color:#647168}.pill{display:inline-block;border:1px solid ${color};color:${color};border-radius:999px;padding:5px 9px;font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.08em}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0}.box{border:1px solid #dfe5e0;border-radius:12px;padding:16px;background:#fafcf9}.box h2{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#6b776f;margin:0 0 8px}.box p{margin:6px 0 0;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin-top:24px;font-size:14px}th{text-align:left;color:#69756d;font-size:10px;text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid #ccd5ce;padding:10px 8px}td{border-bottom:1px solid #edf0ed;padding:13px 8px;vertical-align:top}.num{text-align:right;white-space:nowrap}.option{margin-top:18px;border:1px solid #dfe5e0;border-radius:14px;padding:18px;background:#fff}.option.selected{border:2px solid ${color};box-shadow:0 0 0 3px color-mix(in srgb, ${color} 12%, transparent)}.option-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.option-heading h2{margin:0;font-size:19px}.option-heading span{border-radius:999px;background:${color};color:#fff;padding:4px 8px;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.08em}.option table{margin-top:8px}.option-total{text-align:right;font-size:15px}.totals{margin-left:auto;margin-top:24px;max-width:320px}.total-row{display:flex;justify-content:space-between;border-top:1px solid #e0e5e1;padding:10px 0}.total-row.strong{font-size:20px;font-weight:900;color:#17201b}.notes{margin-top:28px;border-left:3px solid ${color};padding:4px 0 4px 16px;color:#4f5d54;white-space:pre-line;font-size:13px}.footer{display:flex;justify-content:space-between;gap:16px;margin-top:38px;padding-top:16px;border-top:1px solid #dfe5e0;color:#6b776f;font-size:11px}.attribution{margin:0;font-weight:750;color:#364139}
+  @media(max-width:680px){body{background:#fff}.page{min-height:100vh;margin:0;border:0;border-radius:0;padding:24px 18px;box-shadow:none}.page.format-envelope .top{padding-top:24px}.top{display:grid;gap:20px}.kind{text-align:left}.kind h1{font-size:32px}.grid{grid-template-columns:1fr}table{font-size:12px}th,td{padding:10px 5px}.brand{font-size:20px}.contact{overflow-wrap:anywhere}}
+  @media print{body{background:#fff}.page{max-width:none;min-height:auto;margin:0;border:0;border-radius:0;padding:0;box-shadow:none}.option{break-inside:avoid}.footer{margin-top:24px}}
 </style>
 </head>
 <body>
-  <main class="page">
+  <main class="page${formatClass}">
     <section class="top">
-      <div class="brand-block">${logo}<div><div class="brand">${escapeHtml(data.branding.companyName)}</div><p class="muted">${escapeHtml(data.branding.footerText ?? "Field service document")}</p></div></div>
-      <div class="kind"><span class="pill">${escapeHtml(data.status ?? "draft")}</span><h1>${escapeHtml(title)}</h1><p class="muted">#${escapeHtml(data.number)}</p></div>
+      ${brandBlock}
+      <div class="kind"><span class="pill">${escapeHtml(data.status ?? "draft")}</span><h1>${escapeHtml(title)}</h1><p class="muted number">#${escapeHtml(data.number)}</p></div>
     </section>
     <section class="grid">
       <div class="box"><h2>Customer</h2><strong>${escapeHtml(data.customerName)}</strong><p class="muted">${escapeHtml([data.customerEmail, data.customerPhone].filter(Boolean).join(" · ") || "No contact details")}</p></div>
@@ -141,7 +158,7 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
       ${showBalance ? `<div class="total-row strong"><span>Balance</span><strong>${formatCents(totals.balanceCents)}</strong></div>` : ""}
     </section>`}
     ${data.notes ? `<section class="notes">${escapeHtml(data.notes)}</section>` : ""}
-    <footer class="footer">${attribution}</footer>
+    <footer class="footer"><span>${escapeHtml(data.branding.footerText ?? "Field service document")}</span>${attribution}</footer>
   </main>
 </body>
 </html>`;

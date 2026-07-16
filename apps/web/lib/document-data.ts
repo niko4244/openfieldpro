@@ -50,6 +50,9 @@ function brandingForDocument(org?: OrgSettingsDTO | null, fallbackFooter = "Fiel
     logoUrl: org?.logoUrl ?? undefined,
     brandColor: org?.brandColor ?? "#22C55E",
     footerText: org?.documentFooter ?? fallbackFooter,
+    publicEmail: org?.publicEmail,
+    publicPhone: org?.publicPhone,
+    publicAddress: org?.publicAddress,
     removeOpenFieldProAttribution: org?.removeOpenFieldProAttribution ?? false,
   };
 }
@@ -111,6 +114,8 @@ export function invoiceDocumentHtml({
     paymentsCents: paid,
     branding: brandingForDocument(org),
     presentation: {
+      format: settings?.invoice.format,
+      showBusinessInfo: visibility?.showBusinessInfo ?? true,
       showLineItemPrices: visibility?.showLineItemPrices ?? true,
       showPayments: visibility?.showPayments ?? true,
       showBalance: visibility?.showBalance ?? true,
@@ -153,7 +158,7 @@ export function estimateDocumentHtml({
     lineItems: visibleLineItems(lineItems, estimate.total, {
       showLineItems: visibility?.showLineItems ?? true,
     }),
-    options: estimate.options?.map((option) => ({
+    options: visibility?.showOptionSummary === false ? undefined : estimate.options?.map((option) => ({
       id: option.id,
       label: option.label,
       selected: option.id === estimate.selectedOptionId,
@@ -162,6 +167,8 @@ export function estimateDocumentHtml({
     paymentsCents: 0,
     branding: brandingForDocument(org, "Estimate generated from OpenFieldPro"),
     presentation: {
+      format: settings?.estimate.format,
+      showBusinessInfo: visibility?.showBusinessInfo ?? true,
       showLineItemPrices: visibility?.showLineItemPrices ?? true,
     },
   });

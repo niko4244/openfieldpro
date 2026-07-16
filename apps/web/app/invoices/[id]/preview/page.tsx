@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
-import { DocumentActions } from "@/app/documents/document-actions";
+import { DocumentPreviewWorkbench } from "@/components/document-preview-workbench";
 
 export default async function InvoicePreviewPage({
   params,
@@ -42,9 +42,8 @@ export default async function InvoicePreviewPage({
         description="Customer-facing invoice/receipt document preview."
         actions={
           <div className="flex flex-wrap gap-2">
-            <DocumentActions html={html} fileName={`${invoice.number}.html`} />
             <Link href={`/invoices/${invoice.id}/document.html`} target="_blank">
-              <Button size="sm" variant="secondary">Open HTML</Button>
+              <Button size="sm" variant="secondary">Open customer view</Button>
             </Link>
             <Link href={`/invoices/${invoice.id}`}>
               <Button size="sm" variant="secondary">Back to invoice</Button>
@@ -52,15 +51,9 @@ export default async function InvoicePreviewPage({
           </div>
         }
       />
-      <Card className="mb-5 border-accent/30 bg-accent/5">
-        <p className="text-sm text-fg-muted">
-          This uses the shared document renderer with real invoice, payment, job, customer, line-item, and organization-branding data. Use Print / Save as PDF for now; a server-side PDF/email pipeline can plug into the same renderer.
-        </p>
-      </Card>
-      <iframe
-        title={`Invoice preview ${invoice.number}`}
-        srcDoc={html}
-        className="h-[980px] w-full rounded-2xl border border-border bg-white"
+      <DocumentPreviewWorkbench
+        documents={[{ id: "invoice", label: "Invoice", html }]}
+        fileName={`${invoice.number}.html`}
       />
     </div>
   );

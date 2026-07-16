@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type BusinessSettingsDTO, type OrgSettingsDTO } from "@/lib/api";
 import { normalizeServiceAreas, validateBusinessHours } from "@/lib/business-settings-form";
+import { estimateDocumentHtml, invoiceDocumentHtml } from "@/lib/document-data";
+import { DocumentPreviewWorkbench, type DocumentPreviewItem } from "@/components/document-preview-workbench";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -210,7 +212,7 @@ function BusinessSettingsTab({ tab, onDirtyChange }: { tab: Exclude<Tab, "team">
   const settings = form.businessSettings;
 
   return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
+    <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[minmax(0,1fr)_480px]">
       <Card>
         <CardHeader>
           <CardTitle>{TABS.find((item) => item.id === tab)?.label}</CardTitle>
@@ -616,6 +618,59 @@ interface SettingsProps {
 }
 
 function SettingsPreview({ form, tab }: { form: OrgSettingsDTO; tab: Exclude<Tab, "team"> }) {
+  if (tab === "invoice" || tab === "estimate") {
+    const invoiceHtml = invoiceDocumentHtml({
+      invoice: {
+        number: `${form.businessSettings.numbering.invoicePrefix}-${form.businessSettings.numbering.invoiceNextNumber}`,
+        status: "sent",
+        total: 42_700,
+        dueAt: new Date(Date.now() + form.businessSettings.invoice.netDays * 86_400_000).toISOString(),
+        createdAt: new Date().toISOString(),
+        payments: [{ amount: 10_000 }],
+      },
+      customer: { name: "Taylor Morgan", email: "taylor@example.test", phone: "(515) 555-0142" },
+      job: { title: "Refrigerator cooling repair", description: "Replaced the failed evaporator fan and confirmed normal cabinet temperature." },
+      lineItems: [
+        { description: "Diagnostic visit", quantity: 1, unitPrice: 12_900 },
+        { description: "Evaporator fan motor", quantity: 1, unitPrice: 21_900 },
+        { description: "Installation labor", quantity: 1, unitPrice: 7_900 },
+      ],
+      org: form,
+    });
+    const optionLabels = form.businessSettings.estimate.optionLabels;
+    const estimateOptions = [
+      { id: "good", label: optionLabels[0] || "Good", lineItems: [{ description: "Repair failed fan motor", quantity: 1, unitPrice: 34_800 }] },
+      { id: "better", label: optionLabels[1] || "Better", lineItems: [{ description: "Fan motor repair plus maintenance", quantity: 1, unitPrice: 42_700 }] },
+      { id: "best", label: optionLabels[2] || "Best", lineItems: [{ description: "Premium repair with extended coverage", quantity: 1, unitPrice: 58_900 }] },
+    ];
+    const estimateBase = {
+      id: "settings-preview-estimate",
+      number: `${form.businessSettings.numbering.estimatePrefix}-${form.businessSettings.numbering.estimateNextNumber}`,
+      total: estimateOptions[0].lineItems[0].unitPrice,
+      accepted: false,
+      status: "sent",
+      expiresAt: new Date(Date.now() + form.businessSettings.estimate.expirationDays * 86_400_000).toISOString(),
+      createdAt: new Date().toISOString(),
+      options: estimateOptions,
+    };
+    const estimateVariants = estimateOptions.map((option) => ({
+      id: option.id,
+      label: option.label,
+      html: estimateDocumentHtml({
+        estimate: { ...estimateBase, selectedOptionId: option.id },
+        customer: { name: "Taylor Morgan", email: "taylor@example.test", phone: "(515) 555-0142" },
+        job: { title: "Refrigerator cooling repair", description: "Choose the repair scope that fits the customer’s needs." },
+        lineItems: estimateOptions[0].lineItems,
+        org: form,
+      }),
+    }));
+    const documents: DocumentPreviewItem[] = [
+      { id: "invoice", label: "Invoice", html: invoiceHtml },
+      { id: "estimate", label: "Estimate", html: estimateVariants[0].html, variants: estimateVariants },
+    ];
+    return <DocumentPreviewWorkbench documents={documents} initialDocumentId={tab} compact fileName={`${tab}-preview.html`} />;
+  }
+
   const workDays = WORK_DAYS.filter(([value]) => form.businessSettings.businessHours.workDays.includes(value)).map(([, label]) => label).join(", ");
   return (
     <Card>

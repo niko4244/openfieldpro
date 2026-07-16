@@ -30,7 +30,7 @@ async function json(route: Route, body: unknown, status = 200) {
 }
 
 async function mockSettingsApi(page: Page, patches: unknown[]) {
-  await page.route("http://127.0.0.1:3001/api/**", async (route) => {
+  await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === "/api/auth/me") return json(route, user);
@@ -73,6 +73,32 @@ test("company operations settings deep-link, validate, save, and fit mobile", as
   await expect(page.getByRole("list", { name: "Configured service areas" }).getByRole("listitem")).toHaveCount(2);
   await expect(page).toHaveURL(/section=areas/);
 
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test("invoice and estimate settings provide an interactive live customer preview", async ({ page }) => {
+  await mockSettingsApi(page, []);
+  await page.context().addCookies([{ name: "ofp_session", value: "session", domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" }]);
+  await page.goto("/settings?section=invoice");
+
+  const preview = page.getByTestId("document-preview-workbench");
+  await expect(preview.getByText("Live preview", { exact: true })).toBeVisible();
+  await expect(preview.getByRole("tab", { name: "Invoice" })).toHaveAttribute("aria-selected", "true");
+
+  const invoiceFrame = page.frameLocator('iframe[title="Invoice customer preview"]');
+  await expect(invoiceFrame.getByText("Marco's Appliance Repair Company", { exact: true })).toBeVisible();
+  await page.getByLabel("Default invoice message").fill("Preview updates immediately.");
+  await expect(page.frameLocator('iframe[title="Invoice customer preview"]').locator("body")).toContainText("Preview updates immediately.");
+
+  await preview.getByRole("tab", { name: "Estimate" }).click();
+  await expect(preview.getByRole("radio", { name: "Good" })).toHaveAttribute("aria-checked", "true");
+  await preview.getByRole("radio", { name: "Better" }).click();
+  await expect(preview.getByRole("radio", { name: "Better" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator('iframe[title="Estimate customer preview - Better"]')).toBeVisible();
+
+  await preview.getByRole("button", { name: "Phone" }).click();
+  await expect(preview.getByRole("button", { name: "Phone" })).toHaveAttribute("aria-pressed", "true");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
