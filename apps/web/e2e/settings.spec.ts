@@ -36,6 +36,8 @@ async function mockSettingsApi(page: Page, patches: unknown[]) {
     if (path === "/api/auth/me") return json(route, user);
     if (path === "/api/notifications/unread-count") return json(route, { count: 0 });
     if (path === "/api/notifications") return json(route, []);
+    if (path === "/api/org/logo" && request.method() === "POST") return json(route, { ...org, logoUrl: "http://127.0.0.1:3001/api/public/org-1/logo?v=1" }, 201);
+    if (path === "/api/org/logo" && request.method() === "DELETE") return json(route, { ...org, logoUrl: null });
     if (path === "/api/org/me" && request.method() === "PATCH") {
       const patch = request.postDataJSON();
       patches.push(patch);
@@ -101,4 +103,22 @@ test("invoice and estimate settings provide an interactive live customer preview
   await expect(preview.getByRole("button", { name: "Phone" })).toHaveAttribute("aria-pressed", "true");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test("company settings upload, preview, and remove a logo", async ({ page }) => {
+  await mockSettingsApi(page, []);
+  await page.context().addCookies([{ name: "ofp_session", value: "session", domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" }]);
+  await page.goto("/settings?section=company");
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "marcos-logo.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+  });
+  await expect(page.getByRole("status")).toHaveText("Company logo uploaded and added to customer documents.");
+  await expect(page.getByAltText("Marco's Appliance Repair Company logo preview")).toHaveAttribute("src", /\/api\/public\/org-1\/logo/);
+
+  await page.getByRole("button", { name: "Remove logo" }).click();
+  await expect(page.getByRole("status")).toHaveText("Company logo removed. Customer documents will use the branded initials.");
+  await expect(page.getByRole("button", { name: "Remove logo" })).toHaveCount(0);
 });

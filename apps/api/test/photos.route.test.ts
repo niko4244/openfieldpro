@@ -25,12 +25,18 @@ const fakePhoto = {
 const mockSavePhoto = mock.fn();
 const mockGetPhotoFile = mock.fn();
 const mockListJobPhotos = mock.fn();
+const mockSaveOrgLogo = mock.fn();
+const mockGetOrgLogo = mock.fn();
+const mockDeleteOrgLogo = mock.fn();
 
 mock.module("../src/uploads.js", {
   namedExports: {
     savePhoto: mockSavePhoto,
     getPhotoFile: mockGetPhotoFile,
     listJobPhotos: mockListJobPhotos,
+    saveOrgLogo: mockSaveOrgLogo,
+    getOrgLogo: mockGetOrgLogo,
+    deleteOrgLogo: mockDeleteOrgLogo,
   },
 });
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, orgs, customers, jobs } from "@ofp/db";
 import { createFixedWindowRateLimit, requestIpKey } from "../rate-limit.js";
+import { getOrgLogo } from "../uploads.js";
 
 const bookBody = z.object({
   name: z.string().trim().min(1).max(200),
@@ -22,6 +23,14 @@ const bookingRateLimit = createFixedWindowRateLimit({
 });
 
 export async function publicRoutes(app: FastifyInstance) {
+  app.get("/:orgId/logo", async (req, reply) => {
+    const { orgId } = req.params as { orgId: string };
+    const logo = await getOrgLogo(orgId);
+    if (!logo) return reply.code(404).send({ error: "logo not found" });
+    reply.header("Cache-Control", "public, max-age=300, immutable");
+    return reply.type(logo.contentType).send(logo.buffer);
+  });
+
   app.get("/:orgId", async (req, reply) => {
     const { orgId } = req.params as { orgId: string };
     const [org] = await db.select({ id: orgs.id, name: orgs.name }).from(orgs).where(eq(orgs.id, orgId));

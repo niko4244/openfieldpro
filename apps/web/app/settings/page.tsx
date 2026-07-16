@@ -113,6 +113,7 @@ function BusinessSettingsTab({ tab, onDirtyChange }: { tab: Exclude<Tab, "team">
   const [form, setForm] = useState<OrgSettingsDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ReturnType<typeof validateBusinessHours>>({});
@@ -156,6 +157,48 @@ function BusinessSettingsTab({ tab, onDirtyChange }: { tab: Exclude<Tab, "team">
 
   const updateSettings = (next: BusinessSettingsDTO) => {
     setForm((prev) => prev ? { ...prev, businessSettings: next } : prev);
+  };
+
+  const uploadLogo = async (file: File) => {
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("Choose a PNG, JPEG, or WebP logo image.");
+      return false;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError("Choose a logo smaller than 2 MB.");
+      return false;
+    }
+    setLogoBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const row = await api.uploadOrgLogo(file);
+      setOrg((current) => current ? { ...current, logoUrl: row.logoUrl } : row);
+      setForm((current) => current ? { ...current, logoUrl: row.logoUrl } : row);
+      setMessage("Company logo uploaded and added to customer documents.");
+      return true;
+    } catch {
+      setError("The logo could not be uploaded. Check the image and try again.");
+      return false;
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const removeLogo = async () => {
+    setLogoBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const row = await api.deleteOrgLogo();
+      setOrg((current) => current ? { ...current, logoUrl: null } : row);
+      setForm((current) => current ? { ...current, logoUrl: null } : row);
+      setMessage("Company logo removed. Customer documents will use the branded initials.");
+    } catch {
+      setError("The logo could not be removed. Please try again.");
+    } finally {
+      setLogoBusy(false);
+    }
   };
 
   const save = async () => {
@@ -218,7 +261,7 @@ function BusinessSettingsTab({ tab, onDirtyChange }: { tab: Exclude<Tab, "team">
           <CardTitle>{TABS.find((item) => item.id === tab)?.label}</CardTitle>
         </CardHeader>
         <CardContent>
-          {tab === "company" && <CompanySection form={form} updateOrg={updateOrg} updateSettings={updateSettings} />}
+          {tab === "company" && <CompanySection form={form} updateOrg={updateOrg} updateSettings={updateSettings} logoBusy={logoBusy} onUploadLogo={uploadLogo} onRemoveLogo={removeLogo} />}
           {tab === "hours" && <BusinessHoursSection settings={settings} updateSettings={updateSettings} errors={fieldErrors} />}
           {tab === "areas" && <ServiceAreasSection settings={settings} updateSettings={updateSettings} />}
           {tab === "invoice" && <InvoiceSection settings={settings} updateSettings={updateSettings} />}
@@ -243,14 +286,52 @@ function BusinessSettingsTab({ tab, onDirtyChange }: { tab: Exclude<Tab, "team">
   );
 }
 
-function CompanySection({ form, updateOrg, updateSettings }: {
+function CompanySection({ form, updateOrg, updateSettings, logoBusy, onUploadLogo, onRemoveLogo }: {
   form: OrgSettingsDTO;
   updateOrg: <K extends keyof OrgSettingsDTO>(key: K, value: OrgSettingsDTO[K]) => void;
   updateSettings: (settings: BusinessSettingsDTO) => void;
+  logoBusy: boolean;
+  onUploadLogo: (file: File) => Promise<boolean>;
+  onRemoveLogo: () => Promise<void>;
 }) {
   const settings = form.businessSettings;
+  const [localLogo, setLocalLogo] = useState<string | null>(null);
+
+  useEffect(() => () => {
+    if (localLogo) URL.revokeObjectURL(localLogo);
+  }, [localLogo]);
+
+  const chooseLogo = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setLocalLogo(previewUrl);
+    const uploaded = await onUploadLogo(file);
+    if (uploaded) setLocalLogo(null);
+  };
+
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-surface-200 p-4 md:col-span-2">
+        {localLogo || form.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={localLogo ?? form.logoUrl ?? ""} alt={`${form.name} logo preview`} className="h-20 w-20 rounded-xl border border-border bg-white object-contain p-2" />
+        ) : (
+          <div className="grid h-20 w-20 place-items-center rounded-xl text-xl font-black text-white" style={{ backgroundColor: form.brandColor }}>{form.name.slice(0, 2).toUpperCase()}</div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-fg">Company logo</p>
+          <p className="mt-1 text-xs text-fg-muted">PNG, JPEG, or WebP up to 2 MB. It appears on invoices and estimates automatically.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <label className="inline-flex min-h-9 cursor-pointer items-center rounded-lg bg-accent px-3 text-sm font-semibold text-white hover:opacity-90">
+              {logoBusy ? "Uploading…" : form.logoUrl ? "Replace logo" : "Upload logo"}
+              <input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseLogo} disabled={logoBusy} />
+            </label>
+            {form.logoUrl ? <Button type="button" size="sm" variant="secondary" onClick={onRemoveLogo} disabled={logoBusy}>Remove logo</Button> : null}
+          </div>
+        </div>
+      </div>
       <TextField label="Company name" name="organization" autoComplete="organization" value={form.name} onChange={(value) => updateOrg("name", value)} />
       <TextField label="Timezone" name="timezone" value={form.timezone} onChange={(value) => {
         updateOrg("timezone", value);
@@ -270,8 +351,8 @@ function CompanySection({ form, updateOrg, updateSettings }: {
         </div>
       </label>
       <div>
-        <TextField label="Company logo URL" name="logoUrl" type="url" autoComplete="url" value={form.logoUrl ?? ""} onChange={(value) => updateOrg("logoUrl", value || null)} placeholder="https://example.com/logo.png" />
-        <p className="mt-1 text-xs text-fg-dim">Displayed automatically on customer invoices and estimates.</p>
+        <TextField label="Hosted logo URL (optional)" name="logoUrl" type="url" autoComplete="url" value={form.logoUrl ?? ""} onChange={(value) => updateOrg("logoUrl", value || null)} placeholder="https://example.com/logo.png" />
+        <p className="mt-1 text-xs text-fg-dim">You can paste an existing hosted image instead of uploading a file.</p>
       </div>
       <TextField label="Public email" name="email" type="email" autoComplete="email" value={form.publicEmail ?? ""} onChange={(value) => updateOrg("publicEmail", value || null)} />
       <TextField label="Public phone" name="tel" type="tel" autoComplete="tel" value={form.publicPhone ?? ""} onChange={(value) => updateOrg("publicPhone", value || null)} />

@@ -15,10 +15,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...(init?.headers as Record<string, string>),
   };
 
+  if (!(typeof FormData !== "undefined" && init?.body instanceof FormData)) {
+    headers["content-type"] = "application/json";
+  }
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     credentials: init?.credentials ?? "include",
-    headers: { "content-type": "application/json", ...headers },
+    headers,
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -301,6 +304,12 @@ export const api = {
   org: () => request<OrgSettingsDTO>("/api/org/me"),
   patchOrg: (body: Partial<Pick<OrgSettingsDTO, "name" | "timezone" | "logoUrl" | "brandColor" | "documentFooter" | "publicEmail" | "publicPhone" | "publicAddress" | "removeOpenFieldProAttribution" | "businessSettings">>) =>
     request<OrgSettingsDTO>("/api/org/me", { method: "PATCH", body: JSON.stringify(body) }),
+  uploadOrgLogo: (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<OrgSettingsDTO>("/api/org/logo", { method: "POST", body });
+  },
+  deleteOrgLogo: () => request<OrgSettingsDTO>("/api/org/logo", { method: "DELETE" }),
 
   jobs: () => request<JobDTO[]>("/api/jobs"),
   job: (id: string) => request<JobDTO>(`/api/jobs/${id}`),
