@@ -34,6 +34,10 @@ interface EstimateLike {
   acceptedAt?: string | null;
   acceptedByName?: string | null;
   createdAt?: string | null;
+  status?: string;
+  selectedOptionId?: string | null;
+  signatureName?: string | null;
+  options?: Array<{ id: string; label: string; lineItems: LineItemLike[] }>;
 }
 
 function issuedDate(value?: string | null) {
@@ -132,7 +136,7 @@ export function estimateDocumentHtml({
   return renderFieldDocumentHtml({
     kind: "estimate",
     number: estimate.number ?? `${settings?.numbering.estimatePrefix ?? "EST"}-${estimate.id.slice(0, 8).toUpperCase()}`,
-    status: estimate.accepted ? "accepted" : "pending",
+    status: estimate.status ?? (estimate.accepted ? "approved" : "pending"),
     issuedAt: issuedDate(estimate.createdAt),
     dueAt: estimate.expiresAt ? new Date(estimate.expiresAt).toLocaleDateString() : null,
     customerName: visibility?.showCustomerInfo === false ? "Customer" : customer?.name ?? "Customer",
@@ -149,6 +153,12 @@ export function estimateDocumentHtml({
     lineItems: visibleLineItems(lineItems, estimate.total, {
       showLineItems: visibility?.showLineItems ?? true,
     }),
+    options: estimate.options?.map((option) => ({
+      id: option.id,
+      label: option.label,
+      selected: option.id === estimate.selectedOptionId,
+      lineItems: visibleLineItems(option.lineItems, 0, { showLineItems: visibility?.showLineItems ?? true }),
+    })),
     paymentsCents: 0,
     branding: brandingForDocument(org, "Estimate generated from OpenFieldPro"),
     presentation: {

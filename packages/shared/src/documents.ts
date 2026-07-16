@@ -15,6 +15,13 @@ export interface FieldDocumentLineItem {
   unitPriceCents: DocumentMoney;
 }
 
+export interface FieldDocumentOption {
+  id: string;
+  label: string;
+  selected?: boolean;
+  lineItems: FieldDocumentLineItem[];
+}
+
 export interface FieldDocumentData {
   kind: FieldDocumentKind;
   number: string;
@@ -27,6 +34,7 @@ export interface FieldDocumentData {
   jobTitle?: string;
   notes?: string | null;
   lineItems: FieldDocumentLineItem[];
+  options?: FieldDocumentOption[];
   paymentsCents?: DocumentMoney;
   branding: FieldDocumentBranding;
   presentation?: {
@@ -90,6 +98,14 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
         </tr>`,
     )
     .join("");
+  const optionSections = data.options?.length
+    ? data.options.map((option) => {
+      const optionTotal = option.lineItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0);
+      const optionRows = option.lineItems.map((item) => `
+        <tr><td>${escapeHtml(item.description)}</td><td class="num">${item.quantity}</td><td class="num">${showLineItemPrices ? formatCents(item.unitPriceCents) : "—"}</td><td class="num">${showLineItemPrices ? formatCents(item.quantity * item.unitPriceCents) : "—"}</td></tr>`).join("");
+      return `<section class="option${option.selected ? " selected" : ""}"><h2>${escapeHtml(option.label)}${option.selected ? " · Approved" : ""}</h2><table><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead><tbody>${optionRows}</tbody></table><p class="option-total">Option total <strong>${formatCents(optionTotal)}</strong></p></section>`;
+    }).join("")
+    : null;
 
   return `<!doctype html>
 <html>
@@ -102,7 +118,7 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
   .top{display:flex;justify-content:space-between;gap:24px;border-bottom:4px solid ${color};padding-bottom:24px;margin-bottom:28px}
   .brand-block{display:flex;align-items:center;gap:14px}.logo{width:52px;height:52px;object-fit:contain;border-radius:14px;border:1px solid #e5e7eb}.logo-mark{width:52px;height:52px;display:grid;place-items:center;border-radius:14px;background:${color};color:#101820;font-weight:900;letter-spacing:-.04em}.brand{font-size:24px;font-weight:900;letter-spacing:-.04em}.kind{text-align:right}.kind h1{margin:0;font-size:42px;letter-spacing:-.06em}.muted{color:#6b7280}.pill{display:inline-block;background:${color};color:#101820;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}.box{border:1px solid #e5e7eb;border-radius:16px;padding:16px}.box h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#6b7280;margin:0 0 8px}
-  table{width:100%;border-collapse:collapse;margin-top:24px}th{text-align:left;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid #e5e7eb;padding:10px 8px}td{border-bottom:1px solid #f1f5f9;padding:12px 8px}.num{text-align:right}.totals{margin-left:auto;margin-top:24px;max-width:320px}.total-row{display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding:10px 0}.total-row.strong{font-size:20px;font-weight:900;color:#111827}.notes{margin-top:28px;border-left:4px solid ${color};padding-left:14px;color:#4b5563}.footer{margin-top:36px;padding-top:16px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px}.attribution{font-weight:700;color:#111827}
+  table{width:100%;border-collapse:collapse;margin-top:24px}th{text-align:left;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid #e5e7eb;padding:10px 8px}td{border-bottom:1px solid #f1f5f9;padding:12px 8px}.num{text-align:right}.option{margin-top:20px;border:1px solid #e5e7eb;border-radius:16px;padding:18px}.option.selected{border:2px solid ${color}}.option h2{margin:0;font-size:20px}.option table{margin-top:8px}.option-total{text-align:right;font-size:16px}.totals{margin-left:auto;margin-top:24px;max-width:320px}.total-row{display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding:10px 0}.total-row.strong{font-size:20px;font-weight:900;color:#111827}.notes{margin-top:28px;border-left:4px solid ${color};padding-left:14px;color:#4b5563;white-space:pre-line}.footer{margin-top:36px;padding-top:16px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px}.attribution{font-weight:700;color:#111827}
 </style>
 </head>
 <body>
@@ -115,15 +131,15 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
       <div class="box"><h2>Customer</h2><strong>${escapeHtml(data.customerName)}</strong><p class="muted">${escapeHtml([data.customerEmail, data.customerPhone].filter(Boolean).join(" · ") || "No contact details")}</p></div>
       <div class="box"><h2>Job</h2><strong>${escapeHtml(data.jobTitle ?? title)}</strong><p class="muted">Issued ${escapeHtml(data.issuedAt ?? new Date().toLocaleDateString())}${data.dueAt ? ` · Due ${escapeHtml(data.dueAt)}` : ""}</p></div>
     </section>
-    <table>
+    ${optionSections ?? `<table>
       <thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr></thead>
       <tbody>${rows}</tbody>
-    </table>
-    <section class="totals">
+    </table>`}
+    ${optionSections ? "" : `<section class="totals">
       <div class="total-row"><span>Subtotal</span><strong>${formatCents(totals.subtotalCents)}</strong></div>
       ${showPayments ? `<div class="total-row"><span>Paid</span><strong>${formatCents(totals.paidCents)}</strong></div>` : ""}
       ${showBalance ? `<div class="total-row strong"><span>Balance</span><strong>${formatCents(totals.balanceCents)}</strong></div>` : ""}
-    </section>
+    </section>`}
     ${data.notes ? `<section class="notes">${escapeHtml(data.notes)}</section>` : ""}
     <footer class="footer">${attribution}</footer>
   </main>

@@ -238,6 +238,7 @@ export default function DispatchPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
   const [savingIds, setSavingIds] = useState<Set<string>>(() => new Set());
   const [dragLaneId, setDragLaneId] = useState<string | null>(null);
 
@@ -334,14 +335,16 @@ export default function DispatchPage() {
         const job = jobsById.get(item.jobId);
         return `${job?.title ?? "another visit"} (${formatTime(item.startsAt)}–${formatTime(item.endsAt)})`;
       });
-      setError(
-        `Cannot assign ${jobsById.get(appointment.jobId)?.title ?? "this visit"} to ${technician?.name ?? "that technician"} because it overlaps ${conflictLabels.join(", ")}.`,
-      );
+      const message = `Cannot assign ${jobsById.get(appointment.jobId)?.title ?? "this visit"} to ${technician?.name ?? "that technician"} because it overlaps ${conflictLabels.join(", ")}.`;
+      setError(message);
+      setAnnouncement(message);
       return;
     }
 
     const previous = appointment.technicianId;
+    const title = jobsById.get(appointment.jobId)?.title ?? "Visit";
     setError(null);
+    setAnnouncement(`Assigning ${title}.`);
     setSavingIds((current) => new Set(current).add(appointment.id));
     setAppointments((current) =>
       current.map((item) => (item.id === appointment.id ? { ...item, technicianId } : item)),
@@ -350,11 +353,14 @@ export default function DispatchPage() {
     try {
       const saved = await dispatchApi.assignAppointment(appointment.id, technicianId);
       setAppointments((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+      setAnnouncement(`${title} assigned to ${technician?.name ?? "Unassigned"}.`);
     } catch (caught) {
       setAppointments((current) =>
         current.map((item) => (item.id === appointment.id ? { ...item, technicianId: previous } : item)),
       );
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setError(message);
+      setAnnouncement(`${title} was not reassigned. ${message}`);
     } finally {
       setSavingIds((current) => {
         const next = new Set(current);
@@ -394,6 +400,9 @@ export default function DispatchPage() {
 
   return (
     <div>
+      <p className="sr-only" aria-live="polite" aria-atomic="true" data-testid="dispatch-live-status">
+        {announcement}
+      </p>
       <PageHeader
         title="Dispatch board"
         description="Assign today’s visits, balance technician workload, and prevent double-booking."

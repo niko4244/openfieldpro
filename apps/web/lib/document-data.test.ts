@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_BUSINESS_SETTINGS, type BusinessSettings } from "@ofp/shared";
 import type { OrgSettingsDTO } from "./api";
-import { invoiceDocumentHtml } from "./document-data";
+import { estimateDocumentHtml, invoiceDocumentHtml } from "./document-data";
 
 function orgWith(settings: Partial<BusinessSettings>): OrgSettingsDTO {
   return {
@@ -52,4 +52,24 @@ test("invoice document uses configured message and hides customer info when disa
   assert.match(html, />—<\/td>/);
   assert.doesNotMatch(html, /Private Customer/);
   assert.doesNotMatch(html, /private@example\.test/);
+});
+
+test("estimate document renders Good, Better, Best and marks the approved option", () => {
+  const options = [
+    { id: "good", label: "Good", lineItems: [{ description: "Repair", quantity: 1, unitPrice: 20_000 }] },
+    { id: "better", label: "Better", lineItems: [{ description: "Repair plus maintenance", quantity: 1, unitPrice: 30_000 }] },
+    { id: "best", label: "Best", lineItems: [{ description: "Replacement", quantity: 1, unitPrice: 80_000 }] },
+  ];
+  const html = estimateDocumentHtml({
+    estimate: { id: "estimate-1", number: "EST-1001", total: 30_000, accepted: true, status: "approved", selectedOptionId: "better", options },
+    customer: { name: "Customer" },
+    job: { title: "Cooling repair" },
+    lineItems: options[0].lineItems,
+    org: orgWith({}),
+  });
+
+  assert.match(html, /Good/);
+  assert.match(html, /Better · Approved/);
+  assert.match(html, /Best/);
+  assert.match(html, /\$300\.00/);
 });

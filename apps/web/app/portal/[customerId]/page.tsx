@@ -12,13 +12,15 @@ export default async function CustomerPortalPage({
   params: Promise<{ customerId: string }>;
 }) {
   const { customerId } = await params;
-  const [customer, jobs, invoices, estimates, org] = await Promise.all([
-    api.customer(customerId).catch(() => null),
-    api.jobs().catch(() => []),
-    api.invoices().catch(() => []),
-    api.estimates().catch(() => []),
-    api.org().catch(() => null),
-  ]);
+  const portalData = await Promise.all([
+    api.customer(customerId),
+    api.jobs(),
+    api.invoices(),
+    api.estimates(),
+    api.org(),
+  ]).catch(() => null);
+
+  const [customer, jobs, invoices, estimates, org] = portalData ?? [null, [], [], [], null];
 
   const portalSettings = org?.businessSettings.portal;
   if (!customer || !org || portalSettings?.enabled === false) {
@@ -37,10 +39,11 @@ export default async function CustomerPortalPage({
   const customerJobs = jobs.filter((job) => job.customerId === customerId);
   const customerJobIds = new Set(customerJobs.map((job) => job.id));
   const customerInvoices = invoices.filter((invoice) => customerJobIds.has(invoice.jobId));
-  const customerEstimates = estimates.filter((estimate) => customerJobIds.has(estimate.jobId));
+  const customerEstimateSummaries = estimates.filter((estimate) => customerJobIds.has(estimate.jobId));
+  const customerEstimates = await Promise.all(customerEstimateSummaries.map((estimate) => api.estimate(estimate.id)));
   const pendingEstimates = customerEstimates.filter((estimate) => {
     const active = !estimate.expiresAt || new Date(estimate.expiresAt).getTime() >= Date.now();
-    return !estimate.accepted && active;
+    return estimate.status === "sent" && active;
   });
   const openInvoices = customerInvoices.filter((invoice) => invoice.status === "sent" || invoice.status === "draft");
   const paidInvoices = customerInvoices.filter((invoice) => invoice.status === "paid");
@@ -147,12 +150,27 @@ export default async function CustomerPortalPage({
                     <div key={estimate.id} className="grid gap-3 rounded-lg bg-surface-200 p-4 md:grid-cols-[1fr_auto] md:items-center">
                       <div>
                         <p className="text-sm font-semibold text-fg">Estimate {estimate.number}</p>
-                        <p className="text-xs text-fg-muted">{job?.title ?? "Service work"} · {formatMoney(estimate.total)}</p>
+                        <p className="text-xs text-fg-muted">{job?.title ?? "Service work"}</p>
                         {estimate.expiresAt ? (
                           <p className="mt-1 text-xs text-fg-dim">Expires {new Date(estimate.expiresAt).toLocaleDateString()}</p>
                         ) : null}
+                        <div className="mt-3 grid gap-2">
+                          {estimate.options.map((option) => (
+                            <div key={option.id} className="rounded-lg border border-border bg-surface-100 p-3">
+                              <div className="flex justify-between gap-3 text-sm"><strong>{option.label}</strong><strong>{formatMoney(option.total)}</strong></div>
+                              <ul className="mt-2 grid gap-1 text-xs text-fg-muted">
+                                {option.lineItems.map((line) => <li key={line.id}>{line.quantity} × {line.description}</li>)}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <EstimateApprovalForm estimateId={estimate.id} customerName={customer?.name ?? undefined} />
+                      <EstimateApprovalForm
+                        estimateId={estimate.id}
+                        options={estimate.options.map((option) => ({ id: option.id, label: option.label, total: option.total }))}
+                        customerName={customer?.name ?? undefined}
+                        signatureRequired={org.businessSettings.estimate.signatureRequired}
+                      />
                     </div>
                   );
                 })}

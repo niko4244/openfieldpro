@@ -36,6 +36,13 @@ export const invoiceStatus = pgEnum("invoice_status", [
   "paid",
   "void",
 ]);
+export const estimateStatus = pgEnum("estimate_status", [
+  "draft",
+  "sent",
+  "approved",
+  "declined",
+  "expired",
+]);
 export const userRole = pgEnum("user_role", ["owner", "dispatcher", "technician"]);
 
 const id = () => uuid("id").primaryKey().defaultRandom();
@@ -163,10 +170,54 @@ export const estimates = pgTable("estimates", {
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   acceptedAt: timestamp("accepted_at", { withTimezone: true }),
   acceptedByName: text("accepted_by_name"),
+  status: estimateStatus("status").default("draft").notNull(),
+  selectedOptionId: uuid("selected_option_id"),
+  signatureName: text("signature_name"),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  declinedAt: timestamp("declined_at", { withTimezone: true }),
+  copiedToJobAt: timestamp("copied_to_job_at", { withTimezone: true }),
   version: version(),
   updatedAt: updatedAt(),
   createdAt: ts(),
 });
+
+export const estimateOptions = pgTable(
+  "estimate_options",
+  {
+    id: id(),
+    orgId: orgId(),
+    estimateId: uuid("estimate_id")
+      .notNull()
+      .references(() => estimates.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    position: integer("position").default(0).notNull(),
+    total: integer("total").default(0).notNull(),
+    createdAt: ts(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    estimatePosition: uniqueIndex("estimate_options_position_idx").on(t.estimateId, t.position),
+    orgEstimate: index("estimate_options_org_estimate_idx").on(t.orgId, t.estimateId),
+  }),
+);
+
+export const estimateOptionLineItems = pgTable(
+  "estimate_option_line_items",
+  {
+    id: id(),
+    orgId: orgId(),
+    optionId: uuid("option_id")
+      .notNull()
+      .references(() => estimateOptions.id, { onDelete: "cascade" }),
+    description: text("description").notNull(),
+    quantity: integer("quantity").default(1).notNull(),
+    unitPrice: integer("unit_price").default(0).notNull(),
+    unitCost: integer("unit_cost").default(0).notNull(),
+    createdAt: ts(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({ orgOption: index("estimate_option_lines_org_option_idx").on(t.orgId, t.optionId) }),
+);
 
 export const invoices = pgTable(
   "invoices",

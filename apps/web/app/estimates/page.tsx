@@ -23,6 +23,7 @@ interface Estimate {
   expiresAt?: string | null;
   acceptedAt?: string | null;
   acceptedByName?: string | null;
+  status: "draft" | "sent" | "approved" | "declined" | "expired";
   createdAt: string;
 }
 
@@ -127,9 +128,9 @@ export default function EstimatesPage() {
     async function load() {
       try {
         const [est, jb, cust] = await Promise.all([
-          api.estimates().catch(() => [] as Estimate[]),
-          api.jobs().catch(() => [] as JobDTO[]),
-          api.customers().catch(() => [] as CustomerDTO[]),
+          api.estimates(),
+          api.jobs(),
+          api.customers(),
         ]);
         if (!cancelled) {
           setEstimates(est);
@@ -171,8 +172,8 @@ export default function EstimatesPage() {
     let list = [...estimates];
 
     // Status filter
-    if (statusFilter === "pending") list = list.filter((e) => !e.accepted);
-    if (statusFilter === "accepted") list = list.filter((e) => e.accepted);
+    if (statusFilter === "pending") list = list.filter((e) => e.status === "draft" || e.status === "sent");
+    if (statusFilter === "accepted") list = list.filter((e) => e.status === "approved");
 
     // Search
     if (search.trim()) {
@@ -391,7 +392,7 @@ export default function EstimatesPage() {
                     return (
                       <TableRow key={e.id}>
                         <td className="px-3 py-3">
-                          <Link href={`/estimates/${e.id}/preview`} className="text-sm font-medium text-fg-link hover:text-fg transition-colors no-underline">
+                          <Link href={`/estimates/${e.id}`} className="text-sm font-medium text-fg-link hover:text-fg transition-colors no-underline">
                             {e.number}
                           </Link>
                           {e.expiresAt ? <p className="text-[11px] text-fg-dim">Expires {new Date(e.expiresAt).toLocaleDateString()}</p> : null}
@@ -420,7 +421,7 @@ export default function EstimatesPage() {
                                 : "bg-yellow/15 text-yellow"
                             }`}
                           >
-                            {e.accepted ? "Accepted" : expired ? "Expired" : "Pending"}
+                            {e.status === "approved" ? "Approved" : expired ? "Expired" : e.status}
                           </span>
                           {e.acceptedByName ? <p className="mt-1 text-[11px] text-fg-dim">by {e.acceptedByName}</p> : null}
                         </td>
@@ -479,7 +480,7 @@ export default function EstimatesPage() {
                                   : "bg-yellow/15 text-yellow"
                             }`}
                           >
-                              {e.accepted ? "Accepted" : expired ? "Expired" : "Pending"}
+                              {e.status === "approved" ? "Approved" : expired ? "Expired" : e.status}
                             </span>
                             <span className="text-xs text-fg-dim">
                               {new Date(e.createdAt).toLocaleDateString()}

@@ -121,7 +121,26 @@ interface Invoice {
   createdAt?: string;
 }
 
-interface Estimate {
+export interface EstimateOptionLineItem {
+  id: string;
+  optionId: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  unitCost: number;
+  createdAt: string;
+}
+
+export interface EstimateOption {
+  id: string;
+  estimateId: string;
+  label: string;
+  position: number;
+  total: number;
+  lineItems: EstimateOptionLineItem[];
+}
+
+export interface Estimate {
   id: string;
   orgId: string;
   jobId: string;
@@ -131,6 +150,12 @@ interface Estimate {
   expiresAt?: string | null;
   acceptedAt?: string | null;
   acceptedByName?: string | null;
+  status: "draft" | "sent" | "approved" | "declined" | "expired";
+  selectedOptionId?: string | null;
+  signatureName?: string | null;
+  sentAt?: string | null;
+  declinedAt?: string | null;
+  copiedToJobAt?: string | null;
   createdAt: string;
 }
 
@@ -146,6 +171,7 @@ interface LineItem {
 
 interface EstimateDetail extends Estimate {
   lineItems: LineItem[];
+  options: EstimateOption[];
 }
 
 interface Review {
@@ -319,7 +345,20 @@ export const api = {
   estimates: () => request<Estimate[]>("/api/estimates"),
   estimate: (id: string) => request<EstimateDetail>(`/api/estimates/${id}`),
   createEstimate: (body: { jobId: string }) =>
-    request<Estimate>("/api/estimates", { method: "POST", body: JSON.stringify(body) }),
+    request<EstimateDetail>("/api/estimates", { method: "POST", body: JSON.stringify(body) }),
+  renameEstimateOption: (estimateId: string, optionId: string, label: string) =>
+    request<EstimateOption>(`/api/estimates/${estimateId}/options/${optionId}`, { method: "PATCH", body: JSON.stringify({ label }) }),
+  addEstimateOptionLine: (estimateId: string, optionId: string, body: { description: string; quantity: number; unitPrice: number; unitCost?: number }) =>
+    request<{ lineItem: EstimateOptionLineItem; total: number }>(`/api/estimates/${estimateId}/options/${optionId}/lines`, { method: "POST", body: JSON.stringify(body) }),
+  patchEstimateOptionLine: (estimateId: string, optionId: string, lineId: string, body: Partial<{ description: string; quantity: number; unitPrice: number; unitCost: number }>) =>
+    request<{ lineItem: EstimateOptionLineItem; total: number }>(`/api/estimates/${estimateId}/options/${optionId}/lines/${lineId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteEstimateOptionLine: (estimateId: string, optionId: string, lineId: string) =>
+    request<{ ok: boolean; total: number }>(`/api/estimates/${estimateId}/options/${optionId}/lines/${lineId}`, { method: "DELETE" }),
+  markEstimateSent: (id: string) => request<Estimate>(`/api/estimates/${id}/send`, { method: "POST" }),
+  approveEstimateOption: (id: string, body: { optionId: string; signatureName?: string }) =>
+    request<Estimate>(`/api/estimates/${id}/approve`, { method: "POST", body: JSON.stringify(body) }),
+  declineEstimate: (id: string) => request<Estimate>(`/api/estimates/${id}/decline`, { method: "POST" }),
+  copyApprovedEstimateToJob: (id: string) => request<{ ok: boolean; total: number; alreadyCopied: boolean }>(`/api/estimates/${id}/copy-approved-to-job`, { method: "POST" }),
   acceptEstimate: (id: string, body?: { customerName?: string }) =>
     request<Estimate & { jobStatus: string }>(`/api/estimates/${id}/accept`, {
       method: "POST",

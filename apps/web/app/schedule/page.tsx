@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import type { JobDTO } from "@ofp/shared";
 import { Card } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/empty-state";
+import { Button } from "@/components/ui/button";
 
 interface Appointment {
   id: string;
@@ -22,41 +24,71 @@ type ViewMode = "day" | "week" | "month";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+function dateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function dateFromKey(value: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date();
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
 export default function SchedulePage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [jobs, setJobs] = useState<JobDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [view, setView] = useState<ViewMode>("day");
-  const [monthBase, setMonthBase] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    d.setHours(0, 0, 0, 0);
-    return d;
+  const [jobDataWarning, setJobDataWarning] = useState(false);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [view, setView] = useState<ViewMode>(() => {
+    const value = searchParams.get("view");
+    return value === "week" || value === "month" ? value : "day";
   });
+  const [focusDate, setFocusDate] = useState(() => dateFromKey(searchParams.get("date")));
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set("view", view);
+    params.set("date", dateKey(focusDate));
+    if (search.trim()) params.set("q", search.trim());
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [focusDate, pathname, router, search, view]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      try {
-        const [ap, jb] = await Promise.all([
-          api.appointments().catch(() => [] as Appointment[]),
-          api.jobs().catch(() => [] as JobDTO[]),
-        ]);
-        if (!cancelled) {
-          setAppointments(ap);
-          setJobs(jb);
+      setLoading(true);
+      setError(null);
+      setJobDataWarning(false);
+      const [appointmentResult, jobResult] = await Promise.allSettled([
+        api.appointments(),
+        api.jobs(),
+      ]);
+      if (cancelled) return;
+      if (appointmentResult.status === "rejected") {
+        setAppointments([]);
+        setJobs([]);
+        setError("Schedule could not be loaded. Check the connection and try again.");
+      } else {
+        setAppointments(appointmentResult.value);
+        if (jobResult.status === "fulfilled") {
+          setJobs(jobResult.value);
+        } else {
+          setJobs([]);
+          setJobDataWarning(true);
         }
-      } catch (e) {
-        if (!cancelled) setError(String(e));
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+      setLoading(false);
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadVersion]);
 
   const jobMap = useMemo(() => {
     const m = new Map<string, JobDTO>();
@@ -77,20 +109,11 @@ export default function SchedulePage() {
     });
   }, [appointments, search, jobMap]);
 
-  // ── Day view: group by day ──
-  const byDay = useMemo(() => {
-    const map = new Map<string, Appointment[]>();
-    for (const a of filtered) {
-      const day = new Date(a.startsAt).toLocaleDateString(undefined, {
-        weekday: "long",
-        month: "short",
-        day: "numeric",
-      });
-      if (!map.has(day)) map.set(day, []);
-      map.get(day)!.push(a);
-    }
-    return map;
-  }, [filtered]);
+  const selectedKey = dateKey(focusDate);
+  const dayAppointments = useMemo(
+    () => filtered.filter((appointment) => dateKey(new Date(appointment.startsAt)) === selectedKey),
+    [filtered, selectedKey],
+  );
 
   // ── Appointments by date string for month view ──
   const apptsByDateString = useMemo(() => {
@@ -107,8 +130,8 @@ export default function SchedulePage() {
   // ── Week view: 7-day columns ──
   const weekColumns = useMemo(() => {
     const now = new Date();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay()); // Sunday
+    const startOfWeek = new Date(focusDate);
+    startOfWeek.setDate(focusDate.getDate() - focusDate.getDay()); // Sunday
     startOfWeek.setHours(0, 0, 0, 0);
 
     const endOfWeek = new Date(startOfWeek);
@@ -133,12 +156,12 @@ export default function SchedulePage() {
     }
 
     return cols;
-  }, [filtered]);
+  }, [filtered, focusDate]);
 
   // ── Month view: 42-cell grid ──
   const monthCells = useMemo(() => {
     const cells: { date: Date; isCurrentMonth: boolean; isToday: boolean; appts: Appointment[] }[] = [];
-    const firstOfMonth = new Date(monthBase);
+    const firstOfMonth = new Date(focusDate);
     firstOfMonth.setDate(1);
     const start = new Date(firstOfMonth);
     start.setDate(start.getDate() - start.getDay()); // rewind to Sunday
@@ -150,17 +173,25 @@ export default function SchedulePage() {
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
       cells.push({
         date: d,
-        isCurrentMonth: d.getMonth() === monthBase.getMonth(),
+        isCurrentMonth: d.getMonth() === focusDate.getMonth(),
         isToday: d.toDateString() === now.toDateString(),
         appts: apptsByDateString.get(key) ?? [],
       });
     }
     return cells;
-  }, [monthBase, apptsByDateString]);
+  }, [focusDate, apptsByDateString]);
 
-  const prevMonth = () => setMonthBase((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
-  const nextMonth = () => setMonthBase((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
-  const monthLabel = monthBase.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const moveDate = (direction: -1 | 1) => {
+    setFocusDate((current) => {
+      if (view === "month") return new Date(current.getFullYear(), current.getMonth() + direction, 1);
+      const next = new Date(current);
+      next.setDate(current.getDate() + direction * (view === "week" ? 7 : 1));
+      return next;
+    });
+  };
+  const dateLabel = focusDate.toLocaleDateString(undefined, {
+    ...(view === "month" ? { month: "long" as const, year: "numeric" as const } : { weekday: "long" as const, month: "long" as const, day: "numeric" as const }),
+  });
 
   // ── Loading ──
   if (loading) {
@@ -197,13 +228,31 @@ export default function SchedulePage() {
       <PageHeader
         title="Schedule"
         description={`${appointments.length} appointment${appointments.length !== 1 ? "s" : ""}${search.trim() ? ` · ${filtered.length} match` : ""}`}
-
+        actions={
+          <div className="flex gap-2">
+            <Link href="/jobs/new"><Button variant="secondary" size="sm">New job</Button></Link>
+            <Link href="/dispatch"><Button size="sm">Open dispatch</Button></Link>
+          </div>
+        }
       />
 
       {/* ── Error ── */}
       {error && (
-        <Card className="mb-6 border-red/30 bg-red/5">
-          <p className="text-red text-sm">API unreachable ({error}).</p>
+        <Card className="mb-6 border-red/30 bg-red/5" role="alert">
+          <p className="text-sm font-semibold text-red">{error}</p>
+          <Button className="mt-3" variant="secondary" size="sm" onClick={() => setReloadVersion((value) => value + 1)}>
+            Retry schedule
+          </Button>
+        </Card>
+      )}
+
+      {jobDataWarning && !error && (
+        <Card className="mb-6 border-yellow/30 bg-yellow/5" role="status">
+          <p className="text-sm font-semibold text-yellow">Job details are temporarily unavailable.</p>
+          <p className="mt-1 text-xs text-fg-muted">Visit times are still shown. Retry to restore job titles.</p>
+          <Button className="mt-3" variant="secondary" size="sm" onClick={() => setReloadVersion((value) => value + 1)}>
+            Retry job details
+          </Button>
         </Card>
       )}
 
@@ -211,16 +260,25 @@ export default function SchedulePage() {
       {appointments.length === 0 && !error ? (
         <Card>
           <EmptyState
-            title="No appointments yet"
-            description="Create one with POST /api/appointments (jobId + startsAt + endsAt)"
+            title="No visits scheduled"
+            description="Create a job with a visit time, or open dispatch to review unassigned work."
+            actions={
+              <>
+                <Link href="/jobs/new"><Button variant="secondary" size="sm">New job</Button></Link>
+                <Link href="/dispatch"><Button size="sm">Open dispatch</Button></Link>
+              </>
+            }
           />
         </Card>
       ) : (
         <>
           {/* ── View toggle + search ── */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
-            <div className="flex rounded-lg border border-border overflow-hidden w-fit">
+          <div className="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="flex w-fit overflow-hidden rounded-lg border border-border" role="tablist" aria-label="Schedule view">
               <button
+                type="button"
+                role="tab"
+                aria-selected={view === "day"}
                 onClick={() => setView("day")}
                 className={`px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer border-none ${
                   view === "day"
@@ -231,6 +289,9 @@ export default function SchedulePage() {
                 Day
               </button>
               <button
+                type="button"
+                role="tab"
+                aria-selected={view === "week"}
                 onClick={() => setView("week")}
                 className={`px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer border-none ${
                   view === "week"
@@ -241,6 +302,9 @@ export default function SchedulePage() {
                 Week
               </button>
               <button
+                type="button"
+                role="tab"
+                aria-selected={view === "month"}
                 onClick={() => setView("month")}
                 className={`px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer border-none ${
                   view === "month"
@@ -251,42 +315,47 @@ export default function SchedulePage() {
                 Month
               </button>
             </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => moveDate(-1)} aria-label={`Previous ${view}`}>← Previous</Button>
+              <Button variant="secondary" size="sm" onClick={() => setFocusDate(new Date())}>Today</Button>
+              <Button variant="secondary" size="sm" onClick={() => moveDate(1)} aria-label={`Next ${view}`}>Next →</Button>
+              <p className="min-w-0 text-sm font-semibold text-fg" aria-live="polite">{dateLabel}</p>
+            </div>
             <Input
               type="search"
-              placeholder="Search by job title or technician..."
+              aria-label="Search schedule"
+              name="schedule-search"
+              autoComplete="off"
+              placeholder="Search by job title or technician…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="max-w-xs flex-1"
+              className="w-full min-w-0 lg:ml-auto lg:max-w-xs"
             />
           </div>
 
           {/* ═══ Day view ═══ */}
           {view === "day" && (
             <>
-              {filtered.length === 0 ? (
+              {dayAppointments.length === 0 ? (
                 <Card>
                   <div className="text-center py-10">
-                    <p className="text-sm text-fg-muted">No appointments match your search</p>
-                    <button
-                      onClick={() => setSearch("")}
-                      className="text-xs text-fg-link hover:text-fg mt-1 cursor-pointer bg-transparent border-none"
-                    >
-                      Clear search
-                    </button>
+                    <p className="text-sm text-fg-muted">
+                      {search.trim() ? "No visits match your search on this day" : "No visits scheduled on this day"}
+                    </p>
+                    {search.trim() && (
+                      <button onClick={() => setSearch("")} className="text-xs text-fg-link hover:text-fg mt-1 cursor-pointer bg-transparent border-none">
+                        Clear search
+                      </button>
+                    )}
                   </div>
                 </Card>
               ) : (
                 <div className="max-w-2xl">
-                  {[...byDay.entries()].map(([day, list]) => (
-                    <section key={day} className="mb-6">
-                      <h3 className="text-sm font-semibold text-fg mb-3">{day}</h3>
-                      <div className="flex flex-col gap-2">
-                        {list.map((a) => (
-                          <AppointmentRow key={a.id} appt={a} jobTitle={jobMap.get(a.jobId)?.title ?? a.jobId.slice(0, 8)} />
-                        ))}
-                      </div>
-                    </section>
-                  ))}
+                  <div className="flex flex-col gap-2">
+                    {dayAppointments.map((appointment) => (
+                      <AppointmentRow key={appointment.id} appt={appointment} jobTitle={jobMap.get(appointment.jobId)?.title ?? appointment.jobId.slice(0, 8)} />
+                    ))}
+                  </div>
                 </div>
               )}
             </>
@@ -367,23 +436,6 @@ export default function SchedulePage() {
           {/* ═══ Month view ═══ */}
           {view === "month" && (
             <>
-              {/* Month nav */}
-              <div className="flex items-center justify-between mb-3 max-w-5xl">
-                <button
-                  onClick={prevMonth}
-                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-300 text-fg-muted hover:text-fg hover:bg-surface-400 transition-colors cursor-pointer border-none"
-                >
-                  ← Prev
-                </button>
-                <h3 className="text-sm font-semibold text-fg">{monthLabel}</h3>
-                <button
-                  onClick={nextMonth}
-                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-300 text-fg-muted hover:text-fg hover:bg-surface-400 transition-colors cursor-pointer border-none"
-                >
-                  Next →
-                </button>
-              </div>
-
               {filtered.length === 0 ? (
                 <Card>
                   <div className="text-center py-10">

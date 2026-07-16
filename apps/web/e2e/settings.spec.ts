@@ -1,0 +1,78 @@
+import { expect, test, type Page, type Route } from "@playwright/test";
+
+const user = { id: "owner-1", name: "Morgan Owner", email: "owner@example.test", role: "owner" };
+const org = {
+  id: "org-1",
+  name: "Marco's Appliance Repair Company",
+  timezone: "America/Chicago",
+  logoUrl: null,
+  brandColor: "#047857",
+  documentFooter: null,
+  publicEmail: "office@example.test",
+  publicPhone: "515-555-0101",
+  publicAddress: "100 Service Ave",
+  removeOpenFieldProAttribution: false,
+  businessSettings: {
+    businessHours: { timezone: "America/Chicago", workDays: ["mon", "tue", "wed", "thu", "fri"], startTime: "08:00", endTime: "17:00" },
+    serviceAreas: [],
+    invoice: { dueTerm: "net_days", netDays: 14, format: "email", defaultMessage: "Thank you.", paymentInstructions: "Pay online.", reminderDays: [3, 7, 14], visibility: { showBusinessInfo: true, showCustomerInfo: true, showJobInfo: true, showLineItems: true, showLineItemPrices: true, showPayments: true, showBalance: true } },
+    estimate: { expirationDays: 30, approvalMode: "single_option", signatureRequired: true, depositMode: "none", depositValue: 0, format: "email", defaultMessage: "Please review.", optionLabels: ["Good", "Better", "Best"], visibility: { showBusinessInfo: true, showCustomerInfo: true, showJobInfo: true, showLineItems: true, showLineItemPrices: true, showOptionSummary: true } },
+    payments: { onlinePaymentsEnabled: false, allowManualCash: true, allowManualCheck: true, allowManualCard: true, allowPartialPayments: true, tipsEnabled: false },
+    taxes: { taxEnabled: false, taxLabel: "Sales tax", defaultTaxRateBps: 0, discountsEnabled: true, defaultDiscountLabel: "Discount" },
+    messages: { invoiceEmailSubject: "Invoice", invoiceEmailBody: "Invoice ready.", estimateEmailSubject: "Estimate", estimateEmailBody: "Estimate ready.", reviewRequestBody: "Please review us." },
+    numbering: { invoicePrefix: "INV", invoiceNextNumber: 1000, estimatePrefix: "EST", estimateNextNumber: 1000 },
+    portal: { enabled: true, showSponsorSlot: true, allowEstimateApproval: true, allowInvoicePayment: true, allowServiceHistory: true },
+  },
+};
+
+async function json(route: Route, body: unknown, status = 200) {
+  await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+}
+
+async function mockSettingsApi(page: Page, patches: unknown[]) {
+  await page.route("http://127.0.0.1:3001/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/auth/me") return json(route, user);
+    if (path === "/api/notifications/unread-count") return json(route, { count: 0 });
+    if (path === "/api/notifications") return json(route, []);
+    if (path === "/api/org/me" && request.method() === "PATCH") {
+      const patch = request.postDataJSON();
+      patches.push(patch);
+      return json(route, { ...org, ...patch });
+    }
+    if (path === "/api/org/me") return json(route, org);
+    if (path === "/api/users") return json(route, [user]);
+    return json(route, []);
+  });
+}
+
+test("company operations settings deep-link, validate, save, and fit mobile", async ({ page }) => {
+  const patches: unknown[] = [];
+  await mockSettingsApi(page, patches);
+  await page.context().addCookies([{ name: "ofp_session", value: "session", domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" }]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings?section=hours");
+
+  await expect(page.getByRole("button", { name: "Business Hours" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("button", { name: "Save settings" })).toBeDisabled();
+  await page.getByText("Sun", { exact: true }).click();
+  await page.getByLabel("Closing time").fill("07:00");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(page.getByText("Closing time must be later than opening time.", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Closing time").fill("18:00");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(page.getByRole("status")).toHaveText("Business settings saved.");
+  expect(patches).toHaveLength(1);
+  expect((patches[0] as typeof org).businessSettings.businessHours).toMatchObject({ endTime: "18:00", workDays: expect.arrayContaining(["sun"]) });
+
+  await page.getByRole("button", { name: "Service Areas" }).click();
+  await page.getByLabel("Service area").fill("50309, 50309, Des Moines");
+  await page.getByRole("button", { name: "Add area" }).click();
+  await expect(page.getByRole("list", { name: "Configured service areas" }).getByRole("listitem")).toHaveCount(2);
+  await expect(page).toHaveURL(/section=areas/);
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});

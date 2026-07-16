@@ -218,6 +218,21 @@ test("a non-conflicting assignment succeeds and updates the lane", async ({ page
   expect(runtimeErrors).toEqual([]);
 });
 
+test("native assignment control supports keyboard use and announces the saved lane", async ({ page }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  await mockOperationsApi(page);
+  await page.goto("/dispatch");
+
+  const assignment = page.getByLabel("Assign Dryer no heat");
+  await assignment.focus();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+
+  await expect(assignment).toHaveValue("tech-jamie");
+  await expect(page.getByTestId("dispatch-live-status")).toHaveText("Dryer no heat assigned to Jamie Chen.");
+  expect(runtimeErrors).toEqual([]);
+});
+
 test("mobile dispatch board stacks lanes without document overflow", async ({ page }) => {
   const runtimeErrors = collectRuntimeErrors(page);
   await mockOperationsApi(page);
