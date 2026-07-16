@@ -9,6 +9,7 @@ function orgWith(settings: Partial<BusinessSettings>): OrgSettingsDTO {
     id: "org-1",
     name: "Marco's Appliance Repair Company",
     timezone: "America/Chicago",
+    logoUrl: "https://cdn.example.test/marcos-logo.png",
     brandColor: "#2563EB",
     removeOpenFieldProAttribution: false,
     businessSettings: {
@@ -47,6 +48,7 @@ test("invoice document uses configured message and hides customer info when disa
   });
 
   assert.match(html, /Configured invoice message/);
+  assert.match(html, /<img class="logo"[^>]+marcos-logo\.png[^>]+Marco&#039;s Appliance Repair Company logo/);
   assert.match(html, /Configured payment instructions/);
   assert.match(html, /\$189\.00/);
   assert.match(html, />Hidden<\/td>/);

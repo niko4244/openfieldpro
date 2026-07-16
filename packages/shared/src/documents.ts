@@ -117,9 +117,7 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
     .filter(Boolean)
     .map((value) => escapeHtml(value!))
     .join("<br />");
-  const brandBlock = showBusinessInfo
-    ? `<div class="brand-block">${logo}<div><div class="brand">${escapeHtml(data.branding.companyName)}</div>${businessContact ? `<p class="muted contact">${businessContact}</p>` : ""}</div></div>`
-    : `<div class="brand-block"><div><div class="brand muted">Customer document</div></div></div>`;
+  const brandBlock = `<div class="brand-block">${logo}<div><div class="brand">${escapeHtml(data.branding.companyName)}</div>${showBusinessInfo && businessContact ? `<p class="muted contact">${businessContact}</p>` : ""}</div></div>`;
   const formatClass = presentation.format === "envelope" ? " format-envelope" : "";
 
   return `<!doctype html>

@@ -269,7 +269,10 @@ function CompanySection({ form, updateOrg, updateSettings }: {
           />
         </div>
       </label>
-      <TextField label="Logo URL" name="logoUrl" type="url" autoComplete="url" value={form.logoUrl ?? ""} onChange={(value) => updateOrg("logoUrl", value || null)} placeholder="https://example.com/logo.png" />
+      <div>
+        <TextField label="Company logo URL" name="logoUrl" type="url" autoComplete="url" value={form.logoUrl ?? ""} onChange={(value) => updateOrg("logoUrl", value || null)} placeholder="https://example.com/logo.png" />
+        <p className="mt-1 text-xs text-fg-dim">Displayed automatically on customer invoices and estimates.</p>
+      </div>
       <TextField label="Public email" name="email" type="email" autoComplete="email" value={form.publicEmail ?? ""} onChange={(value) => updateOrg("publicEmail", value || null)} />
       <TextField label="Public phone" name="tel" type="tel" autoComplete="tel" value={form.publicPhone ?? ""} onChange={(value) => updateOrg("publicPhone", value || null)} />
       <div className="md:col-span-2">
@@ -382,6 +385,7 @@ function ServiceAreasSection({ settings, updateSettings }: SettingsProps) {
 function InvoiceSection({ settings, updateSettings }: SettingsProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <p className="rounded-lg border border-border bg-surface-200 px-3 py-2 text-xs text-fg-muted md:col-span-2">Your company logo and name are always included. Change the logo under Company settings.</p>
       <SelectField label="Due term" value={settings.invoice.dueTerm} onChange={(value) => updateSettings({ ...settings, invoice: { ...settings.invoice, dueTerm: value as BusinessSettingsDTO["invoice"]["dueTerm"] } })}>
         <option value="on_receipt">Due on receipt</option>
         <option value="work_start">Due at start of work</option>
@@ -400,7 +404,7 @@ function InvoiceSection({ settings, updateSettings }: SettingsProps) {
         title="Customer invoice view"
         values={settings.invoice.visibility}
         labels={{
-          showBusinessInfo: "Business info",
+          showBusinessInfo: "Business contact details",
           showCustomerInfo: "Customer info",
           showJobInfo: "Job info",
           showLineItems: "Line items",
@@ -417,6 +421,7 @@ function InvoiceSection({ settings, updateSettings }: SettingsProps) {
 function EstimateSection({ settings, updateSettings }: SettingsProps) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <p className="rounded-lg border border-border bg-surface-200 px-3 py-2 text-xs text-fg-muted md:col-span-2">Your company logo and name are always included. Change the logo under Company settings.</p>
       <NumberField label="Default expiration days" value={settings.estimate.expirationDays} onChange={(value) => updateSettings({ ...settings, estimate: { ...settings.estimate, expirationDays: value } })} />
       <SelectField label="Approval mode" value={settings.estimate.approvalMode} onChange={(value) => updateSettings({ ...settings, estimate: { ...settings.estimate, approvalMode: value as BusinessSettingsDTO["estimate"]["approvalMode"] } })}>
         <option value="single_option">Single option approval</option>
@@ -445,7 +450,7 @@ function EstimateSection({ settings, updateSettings }: SettingsProps) {
         title="Customer estimate view"
         values={settings.estimate.visibility}
         labels={{
-          showBusinessInfo: "Business info",
+          showBusinessInfo: "Business contact details",
           showCustomerInfo: "Customer info",
           showJobInfo: "Job info",
           showLineItems: "Line items",
