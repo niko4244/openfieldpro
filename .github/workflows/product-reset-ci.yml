@@ -34,15 +34,15 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf /tmp/ofp-license-smoke
-          pnpm --filter @ofp/api license:keypair -- --output-dir /tmp/ofp-license-smoke
-          pnpm --filter @ofp/api license:generate -- \
+          pnpm --filter @ofp/api license:keypair --output-dir /tmp/ofp-license-smoke
+          pnpm --filter @ofp/api license:generate \
             --private-key /tmp/ofp-license-smoke/license-signing-key.pem \
             --organization "OpenFieldPro CI" \
             --tier supporter \
             --seats 1 \
             --expires-at "2030-01-01T00:00:00.000Z" \
             --output /tmp/ofp-license-smoke/ci.ofp-license
-          pnpm --filter @ofp/api license:verify -- \
+          pnpm --filter @ofp/api license:verify \
             --public-key /tmp/ofp-license-smoke/license-signing-public.pem \
             --license-file /tmp/ofp-license-smoke/ci.ofp-license
           test "$(stat -c '%a' /tmp/ofp-license-smoke/license-signing-key.pem)" = "600"
