@@ -27,6 +27,7 @@ import { pluginRoutes } from "./routes/plugins.js";
 import { pluginApiRoutes } from "./routes/plugin-api.js";
 import { servicePlanRoutes } from "./routes/service-plans.js";
 import { orgSettingsRoutes } from "./routes/org-settings.js";
+import { operationRoutes } from "./routes/operations.js";
 import { diagnosticRoutes } from "./routes/diagnostics.js";
 import { diagnosticOfflineRoutes } from "./routes/diagnostic-offline.js";
 import { diagnosticOutputRoutes } from "./routes/diagnostic-outputs.js";
@@ -36,8 +37,18 @@ import { resolveCorsOrigin, resolveJwtSecret } from "./runtime-security.js";
 import { applyApiSecurityHeaders } from "./security-headers.js";
 import { sessionCookieAuthenticationHook } from "./session-cookie.js";
 import type { HealthProbes } from "./health.js";
+import {
+  createOperationsClient,
+  type OperationsClient,
+} from "./operations-client.js";
 
-export function buildServer(options: { healthProbes?: HealthProbes; healthProbeTimeoutMs?: number } = {}) {
+export function buildServer(
+  options: {
+    healthProbes?: HealthProbes;
+    healthProbeTimeoutMs?: number;
+    operationsClient?: OperationsClient;
+  } = {},
+) {
   const app = Fastify({
     logger: true,
     bodyLimit: 1_048_576,
@@ -83,6 +94,18 @@ export function buildServer(options: { healthProbes?: HealthProbes; healthProbeT
   app.register(pluginApiRoutes, { prefix: "/api/plugin" });
   app.register(servicePlanRoutes, { prefix: "/api/service-plans" });
   app.register(orgSettingsRoutes, { prefix: "/api/org" });
+  app.register(operationRoutes, {
+    prefix: "/api/operations",
+    client:
+      options.operationsClient ??
+      createOperationsClient({
+        baseUrl:
+          process.env.OPERATIONS_CONTROLLER_URL ?? "http://operations-controller:3010",
+        secretFile:
+          process.env.OPERATIONS_CONTROLLER_SECRET_FILE ??
+          "/run/secrets/openfieldpro_operations_controller",
+      }),
+  });
   return app;
 }
 

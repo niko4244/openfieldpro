@@ -21,8 +21,9 @@ const OFFICE_WRITE_PREFIXES = [
 ];
 
 export function requiredRolesForRequest(method: string, rawUrl: string): UserRole[] | null {
-  if (["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) return null;
   const path = rawUrl.split("?")[0] ?? rawUrl;
+  if (path === "/api/operations" || path.startsWith("/api/operations/")) return ["owner"];
+  if (["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) return null;
 
   if (OWNER_ONLY_WRITE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
     return ["owner"];

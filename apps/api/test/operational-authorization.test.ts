@@ -9,6 +9,8 @@ import {
 test("owner-only and office write routes are classified explicitly", () => {
   assert.deepEqual(requiredRolesForRequest("PATCH", "/api/users/user-1"), ["owner"]);
   assert.deepEqual(requiredRolesForRequest("PATCH", "/api/org/me"), ["owner"]);
+  assert.deepEqual(requiredRolesForRequest("GET", "/api/operations/status"), ["owner"]);
+  assert.deepEqual(requiredRolesForRequest("POST", "/api/operations/backups"), ["owner"]);
   assert.deepEqual(requiredRolesForRequest("POST", "/api/invoices"), ["owner", "dispatcher"]);
   assert.deepEqual(requiredRolesForRequest("POST", "/api/appointments"), ["owner", "dispatcher"]);
   assert.deepEqual(requiredRolesForRequest("POST", "/api/jobs"), ["owner", "dispatcher"]);
