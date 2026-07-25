@@ -35,8 +35,9 @@ import { operationalAuthorizationGuard } from "./operational-authorization.js";
 import { resolveCorsOrigin, resolveJwtSecret } from "./runtime-security.js";
 import { applyApiSecurityHeaders } from "./security-headers.js";
 import { sessionCookieAuthenticationHook } from "./session-cookie.js";
+import type { HealthProbes } from "./health.js";
 
-export function buildServer() {
+export function buildServer(options: { healthProbes?: HealthProbes; healthProbeTimeoutMs?: number } = {}) {
   const app = Fastify({
     logger: true,
     bodyLimit: 1_048_576,
@@ -54,7 +55,7 @@ export function buildServer() {
   });
   app.addHook("preHandler", operationalAuthorizationGuard);
   app.addHook("preHandler", diagnosticAuthoringGuard);
-  app.register(healthRoutes);
+  app.register(healthRoutes, { probes: options.healthProbes, timeoutMs: options.healthProbeTimeoutMs });
   app.register(authRoutes, { prefix: "/api/auth" });
   app.register(customerRoutes, { prefix: "/api/customers" });
   app.register(jobRoutes, { prefix: "/api/jobs" });

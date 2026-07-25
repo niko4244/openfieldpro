@@ -36,7 +36,7 @@ Appliance-service organizations can attach equipment-specific technical records 
 | Mobile | React Native (Expo) |
 | Database | PostgreSQL 16 + PostGIS |
 | Queue | Redis + BullMQ |
-| Storage | MinIO / S3-compatible storage |
+| Storage | Local filesystem uploads; optional S3-compatible off-site backup replication |
 | Infra | Podman/Docker Compose + Caddy |
 
 Monorepo via pnpm workspaces: `apps/{api,web,mobile}`, `packages/{db,shared}`.
@@ -150,3 +150,5 @@ After the GitHub Sponsors profile is approved, enable the repository Sponsor but
 ## Deploy
 
 Use the repository deployment and self-hosting scripts under `scripts/` together with the compose configuration. Production deployments must validate migrations, backups, restore procedures, secrets, storage, TLS, CORS, payment webhooks, outbound communication adapters, and the complete release checklist before serving real customers.
+
+Production uploads are stored on the mounted filesystem volume. S3-compatible storage is optional off-site backup replication, not the live upload path.

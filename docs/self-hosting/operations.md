@@ -8,7 +8,7 @@ This guide covers the first production-grade operator tasks for a self-hosted Op
 scripts/install.sh
 ```
 
-The script creates `.env` if needed, detects Podman or Docker, builds the production stack, and starts Caddy, web, API, worker, Postgres, Redis, and MinIO.
+The script creates `.env` if needed, detects Podman or Docker, builds the production stack, and starts Caddy, web, API, worker, Postgres, and Redis. Production uploads are stored on the mounted filesystem volume; optional S3-compatible storage is for off-site backup replication only.
 
 ## Update
 
@@ -24,25 +24,27 @@ The script pulls the latest code, rebuilds containers, and restarts the producti
 scripts/backup.sh
 ```
 
-Backups are written to `backups/YYYYMMDD-HHMMSS/` and include:
+Backups are written as encrypted `backups/openfieldpro-YYYYMMDDTHHMMSSZ.tar.gz.age` archives and include:
 
-- `ofp.sql` PostgreSQL dump
-- MinIO data archive if present
-- `.env.copy` if present
+- PostgreSQL custom-format dump
+- Upload filesystem archive when present
+- Integrity manifest and checksums; secrets and `.env` are excluded
 
 ## Restore
 
 ```bash
-scripts/restore.sh backups/YYYYMMDD-HHMMSS
+scripts/restore.sh backups/openfieldpro-YYYYMMDDTHHMMSSZ.tar.gz.age --confirm-destroy-current-data
 ```
 
-Restore drops and recreates the public schema, imports the SQL dump, restores MinIO data if present, and restarts the stack.
+Restore drops and recreates the public schema, imports the SQL dump, restores the upload filesystem archive if present, and restarts the stack.
 
 ## Health checks
 
 - App: `http://localhost:8080`
 - Landing: `http://localhost:8080/welcome`
-- API: `http://localhost:8080/api/health`
+- API liveness: `http://localhost:8080/api/health/live`
+- API readiness: `http://localhost:8080/api/health/ready`
+- API compatibility status: `http://localhost:8080/api/health` (readiness-derived)
 
 ## Production checklist
 
@@ -53,5 +55,6 @@ Before public deployment:
 - Point Caddy at a real domain.
 - Configure Stripe secrets only if online card payments are enabled.
 - Schedule recurring backups.
+- Replicate encrypted backups off-site if required; do not configure S3 as the live upload store.
 - Test restore on a separate machine or VM.
 - Keep sponsor config local, labeled, and free of tracking scripts.

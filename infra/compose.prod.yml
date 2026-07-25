@@ -68,6 +68,7 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       OFP_UPLOAD_DIR: /uploads
       OFP_UPLOAD_MAX_BYTES: ${OFP_UPLOAD_MAX_BYTES:-26214400}
+      OFP_HEALTH_PROBE_TIMEOUT_MS: ${OFP_HEALTH_PROBE_TIMEOUT_MS:-2000}
     volumes:
       - ../data/uploads:/uploads
     depends_on:
@@ -76,7 +77,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3001/api/health"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3001/api/health/ready"]
       interval: 15s
       timeout: 5s
       start_period: 20s
