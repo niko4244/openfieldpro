@@ -69,8 +69,10 @@ services:
       OFP_UPLOAD_DIR: /uploads
       OFP_UPLOAD_MAX_BYTES: ${OFP_UPLOAD_MAX_BYTES:-26214400}
       OFP_HEALTH_PROBE_TIMEOUT_MS: ${OFP_HEALTH_PROBE_TIMEOUT_MS:-2000}
+      OFP_MAINTENANCE_FILE: /var/lib/openfieldpro-ops/state/maintenance.json
     volumes:
       - ../data/uploads:/uploads
+      - operations_state:/var/lib/openfieldpro-ops/state:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,6 +117,12 @@ services:
       DATABASE_URL: postgres://ofp:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/ofp
       REDIS_URL: redis://redis:6379
       NTFY_URL: ${NTFY_URL:-}
+      OFP_MAINTENANCE_FILE: /var/lib/openfieldpro-ops/state/maintenance.json
+      WORKER_STATUS_PORT: 3020
+    expose:
+      - "3020"
+    volumes:
+      - operations_state:/var/lib/openfieldpro-ops/state:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -143,5 +151,11 @@ services:
     restart: unless-stopped
 
 volumes:
+  operations_state:
+    name: ${OFP_OPERATIONS_STATE_VOLUME:-openfieldpro_operations_state}
   caddy_data:
   caddy_config:
+
+networks:
+  default:
+    name: ${OFP_INTERNAL_NETWORK:-openfieldpro_internal}

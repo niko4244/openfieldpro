@@ -3,12 +3,19 @@
 // every WORKER_INTERVAL_MS. ponytail: polling is fine at this cadence; the
 // upgrade path is BullMQ + Redis (already in the infra) when volume demands it.
 import { and, eq, lte, gte } from "drizzle-orm";
+import { createServer } from "node:http";
 import { db, recurringJobs, jobs, appointments } from "@ofp/db";
 import { catchUp } from "../../api/src/recurrence.ts";
+import {
+  WorkerDrainTracker,
+  maintenanceReaderFromEnvironment,
+} from "../../api/src/maintenance.ts";
 import { retryDueDeliveries } from "../../api/src/plugins/retry.ts";
 import { notify } from "./notify.ts";
 
 const INTERVAL = Number(process.env.WORKER_INTERVAL_MS ?? 60_000);
+const STATUS_PORT = Number(process.env.WORKER_STATUS_PORT ?? 3020);
+const drain = new WorkerDrainTracker(maintenanceReaderFromEnvironment());
 
 async function materializeRecurring(now: Date) {
   const due = await db
@@ -44,6 +51,8 @@ async function sendReminders(now: Date) {
 }
 
 async function tick() {
+  const finish = drain.begin();
+  if (!finish) return;
   const now = new Date();
   try {
     await materializeRecurring(now);
@@ -52,9 +61,28 @@ async function tick() {
     if (r.due > 0) console.log(`[worker] webhook retries: ${r.delivered} delivered, ${r.dead} dead of ${r.due} due`);
   } catch (e) {
     console.error(`[worker] tick error: ${(e as Error).message}`);
+  } finally {
+    finish();
   }
 }
 
+if (!Number.isInteger(STATUS_PORT) || STATUS_PORT < 1 || STATUS_PORT > 65_535) {
+  throw new Error("WORKER_STATUS_PORT must be an integer from 1 to 65535");
+}
+createServer((request, response) => {
+  if (request.method !== "GET" || request.url !== "/internal/drain") {
+    response.writeHead(404).end();
+    return;
+  }
+  const body = JSON.stringify(drain.status());
+  response.writeHead(200, {
+    "cache-control": "no-store",
+    "content-length": Buffer.byteLength(body),
+    "content-type": "application/json; charset=utf-8",
+  });
+  response.end(body);
+}).listen(STATUS_PORT, "0.0.0.0");
+
 console.log(`[worker] started, interval ${INTERVAL}ms`);
 await tick();
-setInterval(tick, INTERVAL);
+setInterval(() => void tick(), INTERVAL);

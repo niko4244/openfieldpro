@@ -41,12 +41,20 @@ import {
   createOperationsClient,
   type OperationsClient,
 } from "./operations-client.js";
+import {
+  isMaintenanceExempt,
+  isMutatingMethod,
+  maintenanceReaderFromEnvironment,
+  type MaintenanceReader,
+  WorkerDrainTracker,
+} from "./maintenance.js";
 
 export function buildServer(
   options: {
     healthProbes?: HealthProbes;
     healthProbeTimeoutMs?: number;
     operationsClient?: OperationsClient;
+    maintenanceReader?: MaintenanceReader;
   } = {},
 ) {
   const app = Fastify({
@@ -64,9 +72,36 @@ export function buildServer(
     applyApiSecurityHeaders(reply);
     return payload;
   });
+  const maintenance = options.maintenanceReader ?? maintenanceReaderFromEnvironment();
+  const apiDrain = new WorkerDrainTracker(maintenance);
+  const activeMutations = new WeakMap<object, () => void>();
+  const releaseMutation = (request: object) => {
+    activeMutations.get(request)?.();
+    activeMutations.delete(request);
+  };
+  app.addHook("preHandler", async (request, reply) => {
+    if (!isMutatingMethod(request.method)) return;
+    const pathname = new URL(request.raw.url ?? request.url, "http://api.internal").pathname;
+    if (isMaintenanceExempt(request.method, pathname)) return;
+    const finish = apiDrain.begin();
+    if (!finish) {
+      return reply
+        .header("Cache-Control", "no-store")
+        .header("Retry-After", "30")
+        .code(503)
+        .send({
+          error: "OpenFieldPro is temporarily in maintenance mode. Please try again shortly.",
+          retryable: true,
+        });
+    }
+    activeMutations.set(request, finish);
+  });
+  app.addHook("onResponse", async (request) => releaseMutation(request));
+  app.addHook("onRequestAbort", async (request) => releaseMutation(request));
   app.addHook("preHandler", operationalAuthorizationGuard);
   app.addHook("preHandler", diagnosticAuthoringGuard);
   app.register(healthRoutes, { probes: options.healthProbes, timeoutMs: options.healthProbeTimeoutMs });
+  app.get("/internal/drain", async () => apiDrain.status());
   app.register(authRoutes, { prefix: "/api/auth" });
   app.register(customerRoutes, { prefix: "/api/customers" });
   app.register(jobRoutes, { prefix: "/api/jobs" });
