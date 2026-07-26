@@ -17,7 +17,7 @@
     "db:seed": "pnpm --filter @ofp/db seed",
     "test": "pnpm -r test",
     "audit:dependencies": "node scripts/audit-dependencies.mjs",
-    "test:release": "node --test scripts/audit-dependencies.test.mjs",
+    "test:release": "node --test scripts/*.test.mjs",
     "lock:prepare": "pnpm install --lockfile-only --no-frozen-lockfile --reporter=silent && node scripts/verify-lockfile.mjs",
     "install:verified": "pnpm lock:prepare && pnpm install --frozen-lockfile --reporter=silent",
     "release:safety": "node scripts/release-safety-check.mjs && node scripts/verify-lockfile.mjs && pnpm test:release",
