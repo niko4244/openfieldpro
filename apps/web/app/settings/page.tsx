@@ -547,19 +547,63 @@ function EstimateSection({ settings, updateSettings }: SettingsProps) {
 function PaymentsSection({ settings, updateSettings }: SettingsProps) {
   const set = (key: keyof BusinessSettingsDTO["payments"], value: boolean) =>
     updateSettings({ ...settings, payments: { ...settings.payments, [key]: value } });
+  const payments = settings.payments;
+  const methodRows = [
+    { id: "online" as const, label: "Pay online", enabled: payments.onlinePaymentsEnabled },
+    { id: "cash" as const, label: "Cash", enabled: payments.allowManualCash },
+    { id: "check" as const, label: "Check", enabled: payments.allowManualCheck },
+    { id: "card" as const, label: "Card", enabled: payments.allowManualCard },
+  ];
+  const enabledMethods = methodRows.filter((row) => row.enabled).map((row) => row.label);
+  const noneEnabled = enabledMethods.length === 0;
+
   return (
-    <CheckboxGrid
-      values={settings.payments}
-      labels={{
-        onlinePaymentsEnabled: "Online payments enabled",
-        allowManualCash: "Cash payments",
-        allowManualCheck: "Check payments",
-        allowManualCard: "Manual card payments",
-        allowPartialPayments: "Partial payments",
-        tipsEnabled: "Tips",
-      }}
-      onChange={set}
-    />
+    <div className="grid gap-6">
+      <CheckboxGrid
+        values={settings.payments}
+        labels={{
+          onlinePaymentsEnabled: "Online payments enabled",
+          allowManualCash: "Cash payments",
+          allowManualCheck: "Check payments",
+          allowManualCard: "Manual card payments",
+          allowPartialPayments: "Partial payments",
+          tipsEnabled: "Tips",
+        }}
+        onChange={set}
+      />
+
+      <div
+        role="status"
+        aria-live="polite"
+        className={`rounded-xl border p-4 ${noneEnabled ? "border-red/30 bg-red/5" : "border-border bg-surface-200"}`}
+      >
+        <p className="text-sm font-semibold text-fg">Customer-facing methods</p>
+        <p className="mt-1 text-sm text-fg-muted">
+          {noneEnabled
+            ? "No payment methods are enabled for customers. Enable online payments or at least one manual method so invoices can be settled."
+            : `Customers can pay by ${enabledMethods.join(", ")}.`}
+        </p>
+        <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {methodRows.map((row) => (
+            <li key={row.id} className="flex items-center justify-between rounded-lg border border-border bg-surface-300 px-3 py-2 text-sm">
+              <span className="text-fg">{row.label}</span>
+              <span className={`text-xs font-medium ${row.enabled ? "text-green" : "text-fg-dim"}`}>
+                {row.enabled ? "shown" : "hidden"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {!payments.allowPartialPayments && (
+        <div role="alert" className="rounded-xl border border-yellow/40 bg-yellow/10 p-4">
+          <p className="text-sm font-semibold text-fg">Partial payments are disabled</p>
+          <p className="mt-1 text-sm text-fg-muted">
+            Customers must pay the full balance at once. If you collect deposits or accept progress payments, enable partial payments.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -780,6 +824,17 @@ function SettingsPreview({ form, tab }: { form: OrgSettingsDTO; tab: Exclude<Tab
             <div className="mt-4 text-sm text-fg-muted">
               <p><strong className="text-fg">{form.businessSettings.serviceAreas.length}</strong> configured service areas</p>
               <p className="mt-2 break-words">{form.businessSettings.serviceAreas.join(", ") || "No service areas added yet."}</p>
+            </div>
+          ) : tab === "payments" ? (
+            <div className="mt-4 grid gap-2 text-sm text-fg-muted">
+              <p><strong className="text-fg">Online payments:</strong> {form.businessSettings.payments.onlinePaymentsEnabled ? "enabled" : "disabled"}</p>
+              <p><strong className="text-fg">Manual methods:</strong> {[
+                form.businessSettings.payments.allowManualCash ? "Cash" : null,
+                form.businessSettings.payments.allowManualCheck ? "Check" : null,
+                form.businessSettings.payments.allowManualCard ? "Card" : null,
+              ].filter(Boolean).join(", ") || "none enabled"}</p>
+              <p><strong className="text-fg">Partial payments:</strong> {form.businessSettings.payments.allowPartialPayments ? "allowed" : "blocked — full balance required"}</p>
+              <p><strong className="text-fg">Tips:</strong> {form.businessSettings.payments.tipsEnabled ? "enabled" : "disabled"}</p>
             </div>
           ) : (
             <div className="mt-4 grid gap-2 text-xs text-fg-muted">
