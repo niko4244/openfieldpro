@@ -238,6 +238,25 @@ export const invoices = pgTable(
   (t) => ({ orgStatus: index("invoices_org_status_idx").on(t.orgId, t.status) }),
 );
 
+export const invoiceLineItems = pgTable(
+  "invoice_line_items",
+  {
+    id: id(),
+    orgId: orgId(),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    description: text("description").notNull(),
+    quantity: integer("quantity").default(1).notNull(),
+    unitPrice: integer("unit_price").default(0).notNull(),
+    unitCost: integer("unit_cost").default(0).notNull(),
+    position: integer("position").default(0).notNull(),
+    createdAt: ts(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({ orgInvoice: index("invoice_line_items_org_invoice_idx").on(t.orgId, t.invoiceId) }),
+);
+
 export const payments = pgTable("payments", {
   id: id(),
   orgId: orgId(),

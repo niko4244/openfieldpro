@@ -214,8 +214,19 @@ interface Payment {
   paidAt: string;
 }
 
-interface InvoiceDetail extends Invoice {
-  lineItems: LineItem[];
+export interface InvoiceLineItem {
+  id: string;
+  invoiceId: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  unitCost: number;
+  position: number;
+  createdAt: string;
+}
+
+export interface InvoiceDetail extends Invoice {
+  lineItems: InvoiceLineItem[];
   payments: Payment[];
 }
 

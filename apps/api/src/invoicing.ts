@@ -31,6 +31,26 @@ export function applyPayment(
   return { paidSoFar, status, remaining, overpaid };
 }
 
+export interface InvoiceLineInput {
+  quantity: number;
+  unitPrice: number;
+}
+
+/** Invoice-owned line total in cents — the invoice total is always derived from its own lines. */
+export function invoiceLineTotal(lines: InvoiceLineInput[]): number {
+  return lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+}
+
+/**
+ * Total for a newly created invoice. Prefers the snapshotted line sum so the
+ * invoice is internally coherent from birth; falls back to the job total only
+ * for jobs priced without line items (manual total).
+ */
+export function invoiceSnapshotTotal(lines: InvoiceLineInput[], fallbackTotal: number): number {
+  if (lines.length === 0) return fallbackTotal;
+  return invoiceLineTotal(lines);
+}
+
 /** Human invoice number from a per-org sequence. */
 export function invoiceNumber(seq: number, prefix = "INV", nextNumber = 1000): string {
   return `${prefix}-${String(nextNumber + seq).padStart(4, "0")}`;

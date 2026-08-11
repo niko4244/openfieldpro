@@ -2,7 +2,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { defaultEstimateExpiresAt, estimateNumber } from "../src/estimates.ts";
-import { applyPayment, defaultInvoiceDueAt, invoiceNumber, updateInvoiceStatus } from "../src/invoicing.ts";
+import {
+  applyPayment,
+  defaultInvoiceDueAt,
+  invoiceLineTotal,
+  invoiceNumber,
+  invoiceSnapshotTotal,
+  updateInvoiceStatus,
+} from "../src/invoicing.ts";
 
 test("full payment marks the invoice paid", () => {
   const r = applyPayment(18900, 0, 18900, "sent");
@@ -56,6 +63,23 @@ test("invoice numbers are sequential and zero-padded", () => {
 
 test("default invoice due date follows configured net days", () => {
   assert.equal(defaultInvoiceDueAt(14, new Date("2026-07-15T12:00:00.000Z")).toISOString(), "2026-07-29T12:00:00.000Z");
+});
+
+test("invoice line totals are derived from the invoice-owned snapshot", () => {
+  assert.equal(invoiceLineTotal([
+    { quantity: 2, unitPrice: 12_500 },
+    { quantity: 1, unitPrice: 4_900 },
+  ]), 29_900);
+  assert.equal(invoiceLineTotal([]), 0);
+});
+
+test("snapshot total prefers the line sum and falls back to the job total only without lines", () => {
+  assert.equal(invoiceSnapshotTotal([{ quantity: 1, unitPrice: 18_900 }], 0), 18_900);
+  assert.equal(invoiceSnapshotTotal([], 5_000), 5_000);
+});
+
+test("snapshot totals ignore unit cost, matching customer pricing", () => {
+  assert.equal(invoiceLineTotal([{ quantity: 3, unitPrice: 1_000, unitCost: 10_000 }]), 3_000);
 });
 
 test("estimate numbers and expiration follow configured settings", () => {

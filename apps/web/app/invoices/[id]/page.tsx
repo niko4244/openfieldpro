@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, type InvoiceDetail } from "@/lib/api";
 import { formatMoney } from "@ofp/shared";
 import type { JobDTO, CustomerDTO } from "@ofp/shared";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -14,16 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 
-interface LineItem {
-  id: string;
-  jobId: string;
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  unitCost: number;
-  createdAt: string;
-}
-
 interface Payment {
   id: string;
   orgId: string;
@@ -32,18 +22,6 @@ interface Payment {
   method: string;
   reference?: string | null;
   paidAt: string;
-}
-
-interface InvoiceDetail {
-  id: string;
-  jobId: string;
-  number: string;
-  status: "draft" | "sent" | "paid" | "void";
-  total: number;
-  dueAt?: string | null;
-  createdAt?: string;
-  lineItems: LineItem[];
-  payments: Payment[];
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {

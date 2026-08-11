@@ -1,9 +1,16 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { eq, and, desc, ne, sql } from "drizzle-orm";
-import { db, invoices, payments, jobs, lineItems, orgs } from "@ofp/db";
+import { eq, and, asc, desc, ne, sql } from "drizzle-orm";
+import { db, invoices, invoiceLineItems, payments, jobs, lineItems, orgs } from "@ofp/db";
 import { mergeBusinessSettings } from "@ofp/shared";
-import { applyPayment, defaultInvoiceDueAt, invoiceNumber, updateInvoiceStatus } from "../invoicing.js";
+import {
+  applyPayment,
+  defaultInvoiceDueAt,
+  invoiceLineTotal,
+  invoiceNumber,
+  invoiceSnapshotTotal,
+  updateInvoiceStatus,
+} from "../invoicing.js";
 import { validateInvoiceCreation } from "../invoice-creation.js";
 import { createFixedWindowRateLimit, requestIpKey } from "../rate-limit.js";
 import { resolvePublicWebUrl } from "../runtime-security.js";
@@ -13,6 +20,13 @@ import { safeEmitEvent } from "../plugins/bus.js";
 
 const createBody = z.object({ jobId: z.string().uuid(), dueAt: z.string().datetime().optional() });
 const statusBody = z.object({ status: z.enum(["sent", "void"]) });
+const lineBody = z.object({
+  description: z.string().trim().min(1).max(500),
+  quantity: z.number().int().positive(),
+  unitPrice: z.number().int().nonnegative(),
+  unitCost: z.number().int().nonnegative().default(0),
+});
+const linePatchBody = lineBody.partial().refine((value) => Object.keys(value).length > 0, "at least one field is required");
 const payBody = z.object({
   amount: z.number().int().positive(),
   method: z.enum(["manual", "cash", "check", "card"]).default("manual"),
@@ -28,6 +42,28 @@ const checkoutRateLimit = createFixedWindowRateLimit({
   },
 });
 
+async function editableInvoice(orgId: string, invoiceId: string) {
+  const [inv] = await db
+    .select({ id: invoices.id, status: invoices.status })
+    .from(invoices)
+    .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId)));
+  if (!inv || inv.status !== "draft") return null;
+  return inv;
+}
+
+async function recomputeInvoiceTotalTx(tx: Pick<typeof db, "select" | "update">, orgId: string, invoiceId: string) {
+  const lines = await tx
+    .select()
+    .from(invoiceLineItems)
+    .where(and(eq(invoiceLineItems.orgId, orgId), eq(invoiceLineItems.invoiceId, invoiceId)));
+  const total = invoiceLineTotal(lines);
+  await tx
+    .update(invoices)
+    .set({ total, updatedAt: new Date() })
+    .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId)));
+  return total;
+}
+
 export async function invoiceRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     const orgId = await resolveOrgId(req);
@@ -42,7 +78,12 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const [inv] = await db.select().from(invoices).where(and(eq(invoices.orgId, orgId), eq(invoices.id, id)));
     if (!inv) return reply.code(404).send({ error: "not found" });
-    const items = await db.select().from(lineItems).where(and(eq(lineItems.orgId, orgId), eq(lineItems.jobId, inv.jobId)));
+    // Invoice-owned snapshot lines: the customer document never drifts with later job edits.
+    const items = await db
+      .select()
+      .from(invoiceLineItems)
+      .where(and(eq(invoiceLineItems.orgId, orgId), eq(invoiceLineItems.invoiceId, id)))
+      .orderBy(asc(invoiceLineItems.position), asc(invoiceLineItems.createdAt));
     const paid = await db.select().from(payments).where(and(eq(payments.orgId, orgId), eq(payments.invoiceId, id)));
     return { ...inv, lineItems: items, payments: paid };
   });
@@ -65,6 +106,13 @@ export async function invoiceRoutes(app: FastifyInstance) {
       const blocked = validateInvoiceCreation(job.total, existing);
       if (blocked) return { kind: "blocked" as const, blocked };
 
+      // Snapshot the job's current scope so the invoice owns its lines from birth.
+      const sourceLines = await tx
+        .select()
+        .from(lineItems)
+        .where(and(eq(lineItems.orgId, orgId), eq(lineItems.jobId, job.id)));
+      const total = invoiceSnapshotTotal(sourceLines, job.total);
+
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`invoice-number:${orgId}`}))`);
       const [org] = await tx.select({ businessSettings: orgs.businessSettings }).from(orgs).where(eq(orgs.id, orgId)).limit(1);
       const settings = mergeBusinessSettings(org?.businessSettings);
@@ -79,10 +127,21 @@ export async function invoiceRoutes(app: FastifyInstance) {
           jobId: job.id,
           number: invoiceNumber(count, settings.numbering.invoicePrefix, settings.numbering.invoiceNextNumber),
           status: "draft",
-          total: job.total,
+          total,
           dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : defaultInvoiceDueAt(settings.invoice.netDays),
         })
         .returning();
+      if (sourceLines.length) {
+        await tx.insert(invoiceLineItems).values(sourceLines.map((line, position) => ({
+          orgId,
+          invoiceId: row.id,
+          description: line.description,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          unitCost: line.unitCost,
+          position,
+        })));
+      }
       return { kind: "created" as const, row, job };
     });
 
@@ -132,6 +191,72 @@ export async function invoiceRoutes(app: FastifyInstance) {
       status,
     });
     return { ok: true, status };
+  });
+
+  // Invoice-owned line management. The snapshot is immutable once the invoice
+  // leaves the draft state, so the customer document never drifts.
+  app.post("/:id/lines", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+    const parsed = lineBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    if (!(await editableInvoice(orgId, id))) {
+      return reply.code(409).send({ error: "invoice lines can only be edited while the invoice is a draft" });
+    }
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`invoice-payment:${id}`}))`);
+      const [{ count }] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(invoiceLineItems)
+        .where(eq(invoiceLineItems.invoiceId, id));
+      const [line] = await tx.insert(invoiceLineItems).values({ orgId, invoiceId: id, ...parsed.data, position: count }).returning();
+      const total = await recomputeInvoiceTotalTx(tx, orgId, id);
+      return { line, total };
+    });
+    return reply.code(201).send({ lineItem: result.line, total: result.total });
+  });
+
+  app.patch("/:id/lines/:lineId", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id, lineId } = req.params as { id: string; lineId: string };
+    const parsed = linePatchBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    if (!(await editableInvoice(orgId, id))) {
+      return reply.code(409).send({ error: "invoice lines can only be edited while the invoice is a draft" });
+    }
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`invoice-payment:${id}`}))`);
+      const [line] = await tx
+        .update(invoiceLineItems)
+        .set({ ...parsed.data, updatedAt: new Date() })
+        .where(and(eq(invoiceLineItems.orgId, orgId), eq(invoiceLineItems.invoiceId, id), eq(invoiceLineItems.id, lineId)))
+        .returning();
+      if (!line) return null;
+      const total = await recomputeInvoiceTotalTx(tx, orgId, id);
+      return { line, total };
+    });
+    if (!result) return reply.code(404).send({ error: "line item not found" });
+    return { lineItem: result.line, total: result.total };
+  });
+
+  app.delete("/:id/lines/:lineId", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id, lineId } = req.params as { id: string; lineId: string };
+    if (!(await editableInvoice(orgId, id))) {
+      return reply.code(409).send({ error: "invoice lines can only be edited while the invoice is a draft" });
+    }
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`invoice-payment:${id}`}))`);
+      const [line] = await tx
+        .delete(invoiceLineItems)
+        .where(and(eq(invoiceLineItems.orgId, orgId), eq(invoiceLineItems.invoiceId, id), eq(invoiceLineItems.id, lineId)))
+        .returning();
+      if (!line) return null;
+      const total = await recomputeInvoiceTotalTx(tx, orgId, id);
+      return { total };
+    });
+    if (!result) return reply.code(404).send({ error: "line item not found" });
+    return { ok: true, total: result.total };
   });
 
   app.post("/:id/pay", async (req, reply) => {
