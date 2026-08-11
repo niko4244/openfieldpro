@@ -13,7 +13,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     pathname === "/welcome" ||
     pathname.startsWith("/welcome/") ||
     pathname === "/portal" ||
-    pathname.startsWith("/portal/");
+    pathname.startsWith("/portal/") ||
+    pathname === "/p" ||
+    pathname.startsWith("/p/");
 
   if (isPublicSurface) return <>{children}</>;
 

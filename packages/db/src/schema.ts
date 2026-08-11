@@ -22,6 +22,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { PortalLinkScope } from "@ofp/shared";
 
 export const jobStatus = pgEnum("job_status", [
   "lead",
@@ -502,5 +503,27 @@ export const pluginEvents = pgTable(
   (t) => ({
     install: index("plugin_events_install_idx").on(t.installId, t.createdAt),
     retry: index("plugin_events_retry_idx").on(t.status, t.nextAttemptAt),
+  }),
+);
+
+export const portalLinks = pgTable(
+  "portal_links",
+  {
+    id: id(),
+    orgId: orgId(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    tokenPrefix: text("token_prefix").notNull(),
+    scopes: jsonb("scopes").$type<PortalLinkScope[]>().default(sql`'[]'::jsonb`).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdAt: ts(),
+  },
+  (t) => ({
+    tokenHash: uniqueIndex("portal_links_hash_idx").on(t.tokenHash),
+    orgCustomer: index("portal_links_org_customer_idx").on(t.orgId, t.customerId),
   }),
 );

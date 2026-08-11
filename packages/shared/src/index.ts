@@ -23,6 +23,9 @@ export type ServicePlanStatus = (typeof SERVICE_PLAN_STATUS)[number];
 export const SERVICE_VISIT_STATUS = ["planned", "scheduled", "completed", "skipped"] as const;
 export type ServiceVisitStatus = (typeof SERVICE_VISIT_STATUS)[number];
 
+export const PORTAL_LINK_SCOPES = ["balance", "checkout", "receipts", "service_plans"] as const;
+export type PortalLinkScope = (typeof PORTAL_LINK_SCOPES)[number];
+
 export type Money = number; // cents, integer
 
 /** Render integer cents as a dollar string. Canonical formatter for web/mobile. */

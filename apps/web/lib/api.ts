@@ -306,6 +306,55 @@ interface PluginEvent {
   createdAt: string;
 }
 
+export type PortalLinkScope = import("@ofp/shared").PortalLinkScope;
+
+export interface PortalLinkDTO {
+  id: string;
+  customerId: string;
+  tokenPrefix: string;
+  scopes: PortalLinkScope[];
+  expiresAt: string | null;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+export interface PortalSessionDTO {
+  org: {
+    id: string;
+    name: string;
+    logoUrl?: string | null;
+    publicEmail?: string | null;
+    publicPhone?: string | null;
+    publicAddress?: string | null;
+    sponsorEnabled?: boolean;
+  };
+  customer: { name: string; email?: string | null; phone?: string | null };
+  views: PortalLinkScope[];
+  balance: {
+    invoices: Array<{ id: string; number: string; total: number; paid: number; remaining: number; dueAt: string | null }>;
+    totalRemaining: number;
+    paymentInstructions: string;
+  };
+  checkout: { available: boolean; totalRemaining: number };
+  receipts: Array<{
+    id: string;
+    number: string;
+    total: number;
+    paidAt: string | null;
+    payments: Array<{ amount: number; method: string; paidAt: string }>;
+  }>;
+  servicePlans: Array<{
+    id: string;
+    planName: string;
+    status: string;
+    visitsIncluded: number;
+    visitsCompleted: number;
+    renewsAt: string | null;
+    nextVisit: { title: string; dueAt: string | null; status: string } | null;
+  }>;
+}
+
 export const api = {
   health: () => request<{ ok: boolean }>("/api/health"),
 
@@ -483,4 +532,22 @@ export const api = {
     request<CatalogItemDTO>(`/api/catalog/items/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteCatalogItem: (id: string) =>
     request<void>(`/api/catalog/items/${id}`, { method: "DELETE" }),
+
+  // ── Customer portal links (owner management) ──
+  portalLinks: (customerId: string) => request<PortalLinkDTO[]>(`/api/portal/links?customerId=${customerId}`),
+  createPortalLink: (body: { customerId: string; scopes: PortalLinkScope[]; expiresInDays?: number | null }) =>
+    request<{ link: PortalLinkDTO; token: string; ttlDays: number }>("/api/portal/links", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  revokePortalLink: (id: string) =>
+    request<{ ok: boolean }>(`/api/portal/links/${id}/revoke`, { method: "POST" }),
+
+  // ── Customer portal (anonymous, bearer token in path) ──
+  portalSession: (token: string) => request<PortalSessionDTO>(`/api/portal/${token}`),
+  portalCheckout: (token: string, invoiceId: string) =>
+    request<{ url: string }>(`/api/portal/${token}/checkout`, {
+      method: "POST",
+      body: JSON.stringify({ invoiceId }),
+    }),
 };
