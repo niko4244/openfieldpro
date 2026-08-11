@@ -86,6 +86,8 @@ export const businessSettingsSchema = z.object({
     estimateEmailSubject: z.string().trim().min(1).max(160),
     estimateEmailBody: z.string().trim().min(1).max(2000),
     reviewRequestBody: z.string().trim().min(1).max(1000),
+    portalLinkSubject: z.string().trim().min(1).max(160),
+    portalLinkBody: z.string().trim().min(1).max(2000),
   }).default(DEFAULT_BUSINESS_SETTINGS.messages),
   numbering: z.object({
     invoicePrefix: z.string().trim().min(1).max(12).regex(/^[A-Za-z0-9-]+$/),

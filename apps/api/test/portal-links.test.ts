@@ -3,9 +3,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PORTAL_LINK_TTL_DAYS,
+  decryptPortalToken,
+  encryptPortalToken,
   generatePortalToken,
   hashPortalToken,
   parsePortalLinkScopes,
+  portalLinkEncryptionKey,
   portalLinkExpiry,
   portalLinkStatus,
   PORTAL_TOKEN_PREFIX,
@@ -51,6 +54,25 @@ test("parsePortalLinkScopes keeps only known scopes and deduplicates", () => {
   assert.deepEqual(parsePortalLinkScopes(["balance", "admin", 42, null]), ["balance"]);
   assert.deepEqual(parsePortalLinkScopes("balance"), []);
   assert.deepEqual(parsePortalLinkScopes(undefined), []);
+});
+
+test("encrypted portal tokens round-trip and are recoverable for emailing", () => {
+  const key = portalLinkEncryptionKey("test-server-secret");
+  const { token } = generatePortalToken();
+  const cipher = encryptPortalToken(token, key);
+  assert.equal(decryptPortalToken(cipher, key), token);
+});
+
+test("encrypted tokens cannot be decrypted with a different key or tampered ciphertext", () => {
+  const keyA = portalLinkEncryptionKey("secret-a");
+  const keyB = portalLinkEncryptionKey("secret-b");
+  const { token } = generatePortalToken();
+  const cipher = encryptPortalToken(token, keyA);
+  assert.equal(decryptPortalToken(cipher, keyB), null);
+  const [version, iv, tag, body] = cipher.split(".");
+  assert.equal(decryptPortalToken(`${version}.${iv}.${tag}.${body.slice(0, -2)}x`, keyA), null);
+  assert.equal(decryptPortalToken("garbage", keyA), null);
+  assert.equal(decryptPortalToken("v2.abc.def.ghi", keyA), null);
 });
 
 test("portalLinkExpiry rejects invalid input and explicit null means no expiry", () => {

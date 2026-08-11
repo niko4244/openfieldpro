@@ -40,6 +40,8 @@ export function CustomerPortalLinks({ customerId }: { customerId: string }) {
   const [newToken, setNewToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [sendNotice, setSendNotice] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -103,6 +105,22 @@ export function CustomerPortalLinks({ customerId }: { customerId: string }) {
     }
   }
 
+  async function send(id: string) {
+    setSendingId(id);
+    setSendNotice(null);
+    setError(null);
+    try {
+      const result = await api.sendPortalLink(id);
+      setSendNotice(`Emailed the portal link to ${result.to}.`);
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to email the portal link";
+      setError(message.replace(/^\d+:\s*/, ""));
+    } finally {
+      setSendingId(null);
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
@@ -121,6 +139,11 @@ export function CustomerPortalLinks({ customerId }: { customerId: string }) {
           </div>
         ) : (
           <div className="grid gap-3">
+            {sendNotice ? (
+              <div role="status" className="rounded-lg border border-green/40 bg-green/10 p-3">
+                <p className="text-sm text-green">{sendNotice}</p>
+              </div>
+            ) : null}
             {links.length === 0 ? (
               <div className="rounded-xl border border-border bg-surface-200 p-4">
                 <p className="text-sm font-medium text-fg">No portal link yet.</p>
@@ -142,27 +165,31 @@ export function CustomerPortalLinks({ customerId }: { customerId: string }) {
                           {state.label}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {active ? (
-                          <>
-                            {revokingId === link.id ? (
-                              <>
-                                <Button size="sm" variant="ghost" onClick={() => setRevokingId(null)}>Keep</Button>
-                                <Button size="sm" variant="danger" onClick={() => void revoke(link.id)}>Confirm revoke</Button>
-                              </>
-                            ) : (
-                              <Button size="sm" variant="ghost" onClick={() => setRevokingId(link.id)}>Revoke</Button>
-                            )}
-                          </>
-                        ) : null}
-                      </div>
+                    <div className="flex items-center gap-2">
+                      {active ? (
+                        <>
+                          <Button size="sm" variant="secondary" disabled={sendingId === link.id} onClick={() => void send(link.id)}>
+                            {sendingId === link.id ? "Sending…" : "Send email"}
+                          </Button>
+                          {revokingId === link.id ? (
+                            <>
+                              <Button size="sm" variant="ghost" onClick={() => setRevokingId(null)}>Keep</Button>
+                              <Button size="sm" variant="danger" onClick={() => void revoke(link.id)}>Confirm revoke</Button>
+                            </>
+                          ) : (
+                            <Button size="sm" variant="ghost" onClick={() => setRevokingId(link.id)}>Revoke</Button>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
                     </div>
                     <p className="mt-2 text-xs text-fg-muted">
                       {link.scopes.map((scope) => SCOPE_LABELS[scope]).join(" · ")}
                     </p>
                     <p className="mt-1 text-xs text-fg-dim">
                       {link.expiresAt ? `Expires ${new Date(link.expiresAt).toLocaleDateString()} · ` : "No expiration · "}
-                      {link.lastUsedAt ? `last used ${new Date(link.lastUsedAt).toLocaleDateString()}` : "never used"}
+                      {link.lastUsedAt ? `last used ${new Date(link.lastUsedAt).toLocaleDateString()} · ` : "never used · "}
+                      {link.sentCount > 0 ? `emailed ${link.sentCount}×${link.lastSentAt ? ` (${new Date(link.lastSentAt).toLocaleDateString()})` : ""}` : "not yet emailed"}
                     </p>
                   </div>
                 );

@@ -516,10 +516,13 @@ export const portalLinks = pgTable(
       .references(() => customers.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull(),
     tokenPrefix: text("token_prefix").notNull(),
+    tokenCipher: text("token_cipher"),
     scopes: jsonb("scopes").$type<PortalLinkScope[]>().default(sql`'[]'::jsonb`).notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    sentCount: integer("sent_count").default(0).notNull(),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
     createdAt: ts(),
   },
   (t) => ({

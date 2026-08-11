@@ -18,16 +18,21 @@ import {
 import { mergeBusinessSettings, type PortalLinkScope } from "@ofp/shared";
 import {
   DEFAULT_PORTAL_LINK_TTL_DAYS,
+  decryptPortalToken,
+  encryptPortalToken,
   generatePortalToken,
   hashPortalToken,
   parsePortalLinkScopes,
+  portalLinkEncryptionKey,
   portalLinkExpiry,
   portalLinkStatus,
 } from "../portal-links.js";
 import { createFixedWindowRateLimit, requestIpKey } from "../rate-limit.js";
-import { resolvePublicWebUrl } from "../runtime-security.js";
+import { resolveJwtSecret, resolvePublicWebUrl } from "../runtime-security.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
+import { renderMessageTemplate } from "../message-templates.js";
+import { resolveSmtpConfig, sendEmail } from "../mailer.js";
 
 const createLinkBody = z.object({
   customerId: z.string().uuid(),
@@ -46,6 +51,8 @@ function portalLinkRow(row: typeof portalLinks.$inferSelect) {
     expiresAt: row.expiresAt,
     revokedAt: row.revokedAt,
     lastUsedAt: row.lastUsedAt,
+    sentCount: row.sentCount,
+    lastSentAt: row.lastSentAt,
     createdAt: row.createdAt,
   };
 }
@@ -111,6 +118,10 @@ export async function portalRoutes(app: FastifyInstance) {
 
     const generated = generatePortalToken();
     const ttl = parsed.data.expiresInDays ?? DEFAULT_PORTAL_LINK_TTL_DAYS;
+    // The raw token is stored encrypted (AES-256-GCM under the server secret)
+    // so the owner can email the link to the customer later without exposing
+    // usable tokens in the database.
+    const tokenCipher = encryptPortalToken(generated.token, portalLinkEncryptionKey(resolveJwtSecret()));
     const [row] = await db
       .insert(portalLinks)
       .values({
@@ -118,6 +129,7 @@ export async function portalRoutes(app: FastifyInstance) {
         customerId: customer.id,
         tokenHash: generated.tokenHash,
         tokenPrefix: generated.tokenPrefix,
+        tokenCipher,
         scopes,
         expiresAt: portalLinkExpiry(ttl),
       })
@@ -143,6 +155,75 @@ export async function portalRoutes(app: FastifyInstance) {
     if (!row) return reply.code(404).send({ error: "portal link not found" });
     safeEmitActivity(orgId, "portal.link_revoked", `Revoked a customer portal link (${row.tokenPrefix})`, {});
     return { ok: true };
+  });
+
+  // Emails the customer their signed portal link using the org's message
+  // templates. Fails closed when SMTP is unconfigured or the link can't be
+  // safely re-derived.
+  app.post("/links/:id/send", async (req, reply) => {
+    const orgId = await resolveOrgId(req);
+    const { id } = req.params as { id: string };
+
+    const [link] = await db
+      .select()
+      .from(portalLinks)
+      .where(and(eq(portalLinks.orgId, orgId), eq(portalLinks.id, id)));
+    if (!link) return reply.code(404).send({ error: "portal link not found" });
+    const status = portalLinkStatus(link);
+    if (status !== "active") {
+      return reply.code(409).send({ error: `cannot email a portal link that ${status === "revoked" ? "has been revoked" : "has expired"}` });
+    }
+    if (!link.tokenCipher) {
+      return reply.code(409).send({ error: "this link predates secure re-sending; create a new portal link" });
+    }
+    const token = decryptPortalToken(link.tokenCipher, portalLinkEncryptionKey(resolveJwtSecret()));
+    if (!token) return reply.code(409).send({ error: "this portal link cannot be recovered for sending; create a new link" });
+
+    const [customer] = await db
+      .select({ name: customers.name, email: customers.email })
+      .from(customers)
+      .where(and(eq(customers.orgId, orgId), eq(customers.id, link.customerId)));
+    if (!customer) return reply.code(404).send({ error: "customer not found" });
+    if (!customer.email) return reply.code(409).send({ error: `customer ${customer.name} has no email address on file` });
+
+    const [org] = await db.select().from(orgs).where(eq(orgs.id, orgId));
+    if (!org) return reply.code(404).send({ error: "organization not found" });
+    const settings = mergeBusinessSettings(org.businessSettings);
+    const smtp = resolveSmtpConfig();
+    if (!smtp) {
+      return reply.code(501).send({
+        error: "email is not configured",
+        hint: "Set SMTP_HOST, SMTP_USER, and SMTP_PASS (plus SMTP_FROM) to email portal links.",
+      });
+    }
+
+    const webOrigin = resolvePublicWebUrl();
+    const portalUrl = `${webOrigin}/p/${token}`;
+    const variables = {
+      companyName: org.name,
+      customerName: customer.name,
+      portalLink: portalUrl,
+      portalExpiresAt: link.expiresAt
+        ? new Date(link.expiresAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+        : null,
+    };
+    const subject = renderMessageTemplate(settings.messages.portalLinkSubject, variables);
+    const body = renderMessageTemplate(settings.messages.portalLinkBody, variables);
+
+    const result = await sendEmail({ to: customer.email, subject, text: body });
+    if (!result) return reply.code(501).send({ error: "email is not configured" });
+
+    await db
+      .update(portalLinks)
+      .set({ sentCount: link.sentCount + 1, lastSentAt: new Date() })
+      .where(and(eq(portalLinks.orgId, orgId), eq(portalLinks.id, id)));
+    safeEmitActivity(
+      orgId,
+      "portal.link_sent",
+      `Emailed the customer portal link to ${customer.name} (${customer.email})`,
+      {},
+    );
+    return { ok: true, to: customer.email, messageId: result.messageId, sentAt: new Date().toISOString() };
   });
 
   // ---- Anonymous token routes ---------------------------------------------

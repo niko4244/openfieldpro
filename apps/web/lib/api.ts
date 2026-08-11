@@ -316,6 +316,8 @@ export interface PortalLinkDTO {
   expiresAt: string | null;
   revokedAt: string | null;
   lastUsedAt: string | null;
+  sentCount: number;
+  lastSentAt: string | null;
   createdAt: string;
 }
 
@@ -542,6 +544,8 @@ export const api = {
     }),
   revokePortalLink: (id: string) =>
     request<{ ok: boolean }>(`/api/portal/links/${id}/revoke`, { method: "POST" }),
+  sendPortalLink: (id: string) =>
+    request<{ ok: boolean; to: string; messageId: string; sentAt: string }>(`/api/portal/links/${id}/send`, { method: "POST" }),
 
   // ── Customer portal (anonymous, bearer token in path) ──
   portalSession: (token: string) => request<PortalSessionDTO>(`/api/portal/${token}`),
