@@ -106,6 +106,13 @@
       "when": 1785005000000,
       "tag": "0015_portal_link_send",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1785006000000,
+      "tag": "0016_message_logs",
+      "breakpoints": true
     }
   ]
 }

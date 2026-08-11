@@ -530,3 +530,31 @@ export const portalLinks = pgTable(
     orgCustomer: index("portal_links_org_customer_idx").on(t.orgId, t.customerId),
   }),
 );
+
+export const messageLogs = pgTable(
+  "message_logs",
+  {
+    id: id(),
+    orgId: orgId(),
+    kind: text("kind").notNull(),
+    documentId: uuid("document_id").notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    recipient: text("recipient").notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    status: text("status").default("pending").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    messageId: text("message_id"),
+    error: text("error"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    version: version(),
+    updatedAt: updatedAt(),
+    createdAt: ts(),
+  },
+  (t) => ({
+    orgDocument: index("message_logs_org_document_idx").on(t.orgId, t.kind, t.documentId),
+  }),
+);

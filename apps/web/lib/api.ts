@@ -321,6 +321,30 @@ export interface PortalLinkDTO {
   createdAt: string;
 }
 
+export interface MessageLogDTO {
+  id: string;
+  kind: "invoice" | "estimate";
+  documentId: string;
+  customerId: string;
+  recipient: string;
+  subject: string;
+  body: string;
+  status: "pending" | "sent" | "failed";
+  attempts: number;
+  messageId: string | null;
+  error: string | null;
+  sentAt: string | null;
+  lastAttemptAt: string | null;
+  createdAt: string;
+}
+
+export interface EmailPreviewDTO {
+  to: string;
+  recipientName: string;
+  subject: string;
+  body: string;
+}
+
 export interface PortalSessionDTO {
   org: {
     id: string;
@@ -426,6 +450,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // ── Email send workflow ──
+  invoiceEmailPreview: (id: string) => request<EmailPreviewDTO>(`/api/invoices/${id}/email-preview`),
+  invoiceSendEmail: (id: string) =>
+    request<{ log: MessageLogDTO; draft: EmailPreviewDTO }>(`/api/invoices/${id}/email`, { method: "POST" }),
+  estimateEmailPreview: (id: string) => request<EmailPreviewDTO>(`/api/estimates/${id}/email-preview`),
+  estimateSendEmail: (id: string) =>
+    request<{ log: MessageLogDTO; draft: EmailPreviewDTO }>(`/api/estimates/${id}/email`, { method: "POST" }),
+  messageLogs: (query: { kind?: "invoice" | "estimate"; documentId?: string }) => {
+    const params = new URLSearchParams();
+    if (query.kind) params.set("kind", query.kind);
+    if (query.documentId) params.set("documentId", query.documentId);
+    const qs = params.toString();
+    return request<MessageLogDTO[]>(`/api/messages${qs ? `?${qs}` : ""}`);
+  },
+  retryMessage: (id: string) =>
+    request<MessageLogDTO>(`/api/messages/${id}/retry`, { method: "POST" }),
+
   reports: () => request<ReportSummaryDTO>("/api/reports/summary"),
 
   estimates: () => request<Estimate[]>("/api/estimates"),

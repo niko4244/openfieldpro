@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MessageSendDialog } from "@/components/message-send-dialog";
 
 type EstimateDetail = Awaited<ReturnType<typeof api.estimate>>;
 
@@ -20,6 +21,7 @@ export default function EstimateDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [price, setPrice] = useState("");
@@ -66,6 +68,7 @@ export default function EstimateDetailPage() {
         description={`${estimate.status} · ${estimate.options.length} options`}
         actions={<div className="flex flex-wrap gap-2">
           <Link href={`/estimates/${id}/preview`}><Button size="sm" variant="secondary">Preview</Button></Link>
+          <Button size="sm" variant="secondary" onClick={() => setEmailOpen(true)}>Email estimate</Button>
           {estimate.status === "draft" ? <Button size="sm" disabled={busy} onClick={() => refreshAfter(() => api.markEstimateSent(id))}>Mark sent</Button> : null}
           {estimate.status === "approved" ? <Button size="sm" disabled={busy || Boolean(estimate.copiedToJobAt)} onClick={() => refreshAfter(() => api.copyApprovedEstimateToJob(id))}>{estimate.copiedToJobAt ? "Copied to job" : "Copy approved work to job"}</Button> : null}
         </div>}
@@ -94,6 +97,14 @@ export default function EstimateDetailPage() {
           </form>
         </Card>
       ) : null}
+      <MessageSendDialog
+        open={emailOpen}
+        onOpenChange={setEmailOpen}
+        kind="estimate"
+        documentId={id}
+        title={`Email estimate ${estimate.number}`}
+        description="Sends the customer this estimate using your message template settings."
+      />
     </div>
   );
 }

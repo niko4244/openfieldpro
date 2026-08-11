@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MessageSendDialog } from "@/components/message-send-dialog";
 
 interface Payment {
   id: string;
@@ -49,6 +50,9 @@ export default function InvoiceDetailPage() {
   // ── Confirm dialog ──
   const [confirmAction, setConfirmAction] = useState<"sent" | "paid" | "void" | null>(null);
 
+  // ── Email send workflow ──
+  const [emailOpen, setEmailOpen] = useState(false);
+
   // ── Payment modal ──
   const [showPayment, setShowPayment] = useState(false);
   const [payAmount, setPayAmount] = useState("");
@@ -68,17 +72,18 @@ export default function InvoiceDetailPage() {
 
   // ── Escape key handler for dialogs ──
   useEffect(() => {
-    if (!confirmAction && !showPayment && !lineModal) return;
+    if (!confirmAction && !showPayment && !lineModal && !emailOpen) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setConfirmAction(null);
         setShowPayment(false);
         setLineModal(null);
+        setEmailOpen(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [confirmAction, showPayment, lineModal]);
+  }, [confirmAction, showPayment, lineModal, emailOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -550,6 +555,11 @@ export default function InvoiceDetailPage() {
           }
           actions={
             <div className="flex gap-2 flex-wrap">
+              {(invoice.status === "draft" || invoice.status === "sent" || invoice.status === "paid") && (
+                <Button size="sm" variant="secondary" onClick={() => setEmailOpen(true)}>
+                  Email invoice
+                </Button>
+              )}
               {invoice.status === "draft" && (
                 <Button size="sm" onClick={() => setConfirmAction("sent")}>
                   Mark as Sent
@@ -846,6 +856,17 @@ export default function InvoiceDetailPage() {
             </div>
           </div>
         </>
+      )}
+
+      {invoice && (
+        <MessageSendDialog
+          open={emailOpen}
+          onOpenChange={setEmailOpen}
+          kind="invoice"
+          documentId={invoiceId}
+          title={`Email invoice ${invoice.number}`}
+          description="Sends the customer a copy of this invoice using your message template settings."
+        />
       )}
     </div>
   );
