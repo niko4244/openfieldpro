@@ -4,11 +4,12 @@ import { eq, and, asc, desc, ne, sql } from "drizzle-orm";
 import { db, invoices, invoiceLineItems, payments, jobs, lineItems, orgs } from "@ofp/db";
 import { mergeBusinessSettings } from "@ofp/shared";
 import {
-  applyPayment,
+  applyPaymentWithRules,
   defaultInvoiceDueAt,
   invoiceLineTotal,
   invoiceNumber,
   invoiceSnapshotTotal,
+  resolvePaymentRules,
   updateInvoiceStatus,
 } from "../invoicing.js";
 import { validateInvoiceCreation } from "../invoice-creation.js";
@@ -271,9 +272,11 @@ export async function invoiceRoutes(app: FastifyInstance) {
       if (!inv) return { kind: "not-found" as const };
       const prior = await tx.select().from(payments).where(and(eq(payments.orgId, orgId), eq(payments.invoiceId, id)));
       const priorPaid = prior.reduce((sum, payment) => sum + payment.amount, 0);
+      const [org] = await tx.select({ businessSettings: orgs.businessSettings }).from(orgs).where(eq(orgs.id, orgId)).limit(1);
+      const rules = resolvePaymentRules(mergeBusinessSettings(org?.businessSettings));
       let applied;
       try {
-        applied = applyPayment(inv.total, priorPaid, parsed.data.amount, inv.status);
+        applied = applyPaymentWithRules(inv.total, priorPaid, parsed.data.amount, parsed.data.method, inv.status, rules);
       } catch (error) {
         return { kind: "invalid" as const, error: (error as Error).message };
       }

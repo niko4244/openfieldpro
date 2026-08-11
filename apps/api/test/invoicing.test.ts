@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import { defaultEstimateExpiresAt, estimateNumber } from "../src/estimates.ts";
 import {
   applyPayment,
+  applyPaymentWithRules,
   defaultInvoiceDueAt,
   invoiceLineTotal,
   invoiceNumber,
   invoiceSnapshotTotal,
+  resolvePaymentRules,
   updateInvoiceStatus,
 } from "../src/invoicing.ts";
 
@@ -80,6 +82,54 @@ test("snapshot total prefers the line sum and falls back to the job total only w
 
 test("snapshot totals ignore unit cost, matching customer pricing", () => {
   assert.equal(invoiceLineTotal([{ quantity: 3, unitPrice: 1_000, unitCost: 10_000 }]), 3_000);
+});
+
+test("payment rules default to permissive methods and partial payments", () => {
+  assert.deepEqual(resolvePaymentRules({}), {
+    acceptedMethods: ["manual", "cash", "check", "card"],
+    allowPartial: true,
+  });
+});
+
+test("payment rules honor method and partial-payment toggles", () => {
+  const rules = resolvePaymentRules({
+    payments: { allowManualCash: false, allowManualCheck: false, allowPartialPayments: false },
+  });
+  assert.deepEqual(rules.acceptedMethods, ["manual", "card"]);
+  assert.equal(rules.allowPartial, false);
+});
+
+test("paying with a method the organization does not accept is rejected", () => {
+  const rules = resolvePaymentRules({ payments: { allowManualCash: false } });
+  assert.throws(
+    () => applyPaymentWithRules(10_000, 0, 10_000, "cash", "sent", rules),
+    /not accepted/,
+  );
+  assert.equal(applyPaymentWithRules(10_000, 0, 10_000, "card", "sent", rules).status, "paid");
+});
+
+test("overpayment is rejected under payment rules", () => {
+  const rules = resolvePaymentRules({});
+  assert.throws(
+    () => applyPaymentWithRules(10_000, 0, 10_500, "manual", "sent", rules),
+    /exceeds the remaining balance/,
+  );
+});
+
+test("partial payments are rejected when disabled and settled in full when required", () => {
+  const rules = resolvePaymentRules({ payments: { allowPartialPayments: false } });
+  assert.throws(
+    () => applyPaymentWithRules(10_000, 4_000, 2_000, "manual", "sent", rules),
+    /partial payments are not allowed/,
+  );
+  assert.equal(applyPaymentWithRules(10_000, 4_000, 6_000, "manual", "sent", rules).status, "paid");
+});
+
+test("partial payments stay allowed when configured, within the balance", () => {
+  const rules = resolvePaymentRules({ payments: { allowPartialPayments: true } });
+  const r = applyPaymentWithRules(10_000, 0, 4_000, "check", "sent", rules);
+  assert.equal(r.status, "sent");
+  assert.equal(r.remaining, 6_000);
 });
 
 test("estimate numbers and expiration follow configured settings", () => {

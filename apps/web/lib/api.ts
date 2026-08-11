@@ -15,7 +15,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...(init?.headers as Record<string, string>),
   };
 
-  if (!(typeof FormData !== "undefined" && init?.body instanceof FormData)) {
+  if (
+    init?.body
+    && !(typeof FormData !== "undefined" && init.body instanceof FormData)
+  ) {
     headers["content-type"] = "application/json";
   }
   const res = await fetch(`${BASE}${path}`, {
@@ -355,6 +358,18 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  addInvoiceLine: (id: string, body: { description: string; quantity: number; unitPrice: number; unitCost?: number }) =>
+    request<{ lineItem: InvoiceLineItem; total: number }>(`/api/invoices/${id}/lines`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateInvoiceLine: (id: string, lineId: string, body: Partial<{ description: string; quantity: number; unitPrice: number; unitCost: number }>) =>
+    request<{ lineItem: InvoiceLineItem; total: number }>(`/api/invoices/${id}/lines/${lineId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteInvoiceLine: (id: string, lineId: string) =>
+    request<{ ok: boolean; total: number }>(`/api/invoices/${id}/lines/${lineId}`, { method: "DELETE" }),
   recordPayment: (id: string, body: { amount: number; method?: string }) =>
     request<{ status: string; remaining: number; overpaid: number }>(`/api/invoices/${id}/pay`, {
       method: "POST",

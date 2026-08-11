@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { api, type InvoiceDetail } from "@/lib/api";
+import { api, type InvoiceDetail, type InvoiceLineItem, type OrgSettingsDTO } from "@/lib/api";
 import { formatMoney } from "@ofp/shared";
 import type { JobDTO, CustomerDTO } from "@ofp/shared";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -38,6 +38,7 @@ export default function InvoiceDetailPage() {
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
   const [jobs, setJobs] = useState<JobDTO[]>([]);
   const [customers, setCustomers] = useState<CustomerDTO[]>([]);
+  const [orgSettings, setOrgSettings] = useState<OrgSettingsDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
 
@@ -55,32 +56,45 @@ export default function InvoiceDetailPage() {
   const [paySubmitting, setPaySubmitting] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
+  // ── Line item editor (draft only) ──
+  const [lineModal, setLineModal] = useState<{ mode: "add" } | { mode: "edit"; lineId: string } | null>(null);
+  const [lineDescription, setLineDescription] = useState("");
+  const [lineQuantity, setLineQuantity] = useState("1");
+  const [linePrice, setLinePrice] = useState("");
+  const [lineSubmitting, setLineSubmitting] = useState(false);
+  const [lineError, setLineError] = useState<string | null>(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   // ── Escape key handler for dialogs ──
   useEffect(() => {
-    if (!confirmAction && !showPayment) return;
+    if (!confirmAction && !showPayment && !lineModal) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setConfirmAction(null);
         setShowPayment(false);
+        setLineModal(null);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [confirmAction, showPayment]);
+  }, [confirmAction, showPayment, lineModal]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [inv, jb, cust] = await Promise.all([
+        const [inv, jb, cust, org] = await Promise.all([
           api.invoice(invoiceId),
           api.jobs().catch(() => [] as JobDTO[]),
           api.customers().catch(() => [] as CustomerDTO[]),
+          api.org().catch(() => null as OrgSettingsDTO | null),
         ]);
         if (!cancelled) {
           setInvoice(inv);
           setJobs(jb);
           setCustomers(cust);
+          setOrgSettings(org);
         }
       } catch {
         if (!cancelled) setLoadFailed(true);
@@ -105,6 +119,16 @@ export default function InvoiceDetailPage() {
     ? invoice.payments.reduce((sum, p) => sum + p.amount, 0)
     : 0;
   const remaining = invoice ? invoice.total - totalPaid : 0;
+
+  const paymentSettings = orgSettings?.businessSettings?.payments;
+  const allowPartialPayments = paymentSettings?.allowPartialPayments !== false;
+  const acceptedPaymentMethods = useMemo(() => {
+    const methods: { value: string; label: string }[] = [{ value: "manual", label: "Manual" }];
+    if (paymentSettings?.allowManualCash !== false) methods.push({ value: "cash", label: "Cash" });
+    if (paymentSettings?.allowManualCheck !== false) methods.push({ value: "check", label: "Check" });
+    if (paymentSettings?.allowManualCard !== false) methods.push({ value: "card", label: "Card" });
+    return methods;
+  }, [paymentSettings]);
 
   // ── Status actions ──
   const handleStatusChange = async (status: "sent" | "void") => {
@@ -153,6 +177,10 @@ export default function InvoiceDetailPage() {
     if (!invoice) return;
     const cents = Math.round(parseFloat(payAmount || "0") * 100);
     if (cents <= 0) return;
+    if (cents > remaining) {
+      setPayError(`Amount cannot exceed the remaining balance of ${formatMoney(remaining)}.`);
+      return;
+    }
     setPaySubmitting(true);
     setPayError(null);
     try {
@@ -169,6 +197,72 @@ export default function InvoiceDetailPage() {
       setPayError(String(e));
     } finally {
       setPaySubmitting(false);
+    }
+  };
+
+  // ── Line item editing (draft only) ──
+  const openAddLine = () => {
+    setLineDescription("");
+    setLineQuantity("1");
+    setLinePrice("");
+    setLineError(null);
+    setLineModal({ mode: "add" });
+  };
+
+  const openEditLine = (item: InvoiceLineItem) => {
+    setLineDescription(item.description);
+    setLineQuantity(String(item.quantity));
+    setLinePrice((item.unitPrice / 100).toFixed(2));
+    setLineError(null);
+    setLineModal({ mode: "edit", lineId: item.id });
+  };
+
+  const handleSaveLine = async () => {
+    if (!invoice || !lineModal) return;
+    const description = lineDescription.trim();
+    const quantity = Math.floor(Number(lineQuantity));
+    const cents = Math.round(parseFloat(linePrice || "0") * 100);
+    if (!description) {
+      setLineError("Description is required.");
+      return;
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      setLineError("Quantity must be a whole number of at least 1.");
+      return;
+    }
+    if (!Number.isFinite(cents) || cents < 0) {
+      setLineError("Unit price must be zero or more.");
+      return;
+    }
+    setLineSubmitting(true);
+    setLineError(null);
+    try {
+      if (lineModal.mode === "edit") {
+        await api.updateInvoiceLine(invoice.id, lineModal.lineId, { description, quantity, unitPrice: cents });
+      } else {
+        await api.addInvoiceLine(invoice.id, { description, quantity, unitPrice: cents });
+      }
+      const refreshed = await api.invoice(invoiceId);
+      setInvoice(refreshed);
+      setLineModal(null);
+    } catch (e) {
+      setLineError(String(e));
+    } finally {
+      setLineSubmitting(false);
+    }
+  };
+
+  const handleDeleteLine = async (lineId: string) => {
+    if (!invoice) return;
+    setDeleteError(null);
+    try {
+      await api.deleteInvoiceLine(invoice.id, lineId);
+      setConfirmingDeleteId(null);
+      const refreshed = await api.invoice(invoiceId);
+      setInvoice(refreshed);
+    } catch (e) {
+      setDeleteError(String(e));
+      setConfirmingDeleteId(null);
     }
   };
 
@@ -282,11 +376,18 @@ export default function InvoiceDetailPage() {
                       type="number"
                       step="0.01"
                       min="0.01"
+                      max={allowPartialPayments ? remaining / 100 : undefined}
                       required
                       value={payAmount}
                       onChange={(e) => setPayAmount(e.target.value)}
+                      disabled={!allowPartialPayments}
                       autoFocus
                     />
+                    {!allowPartialPayments && (
+                      <p className="text-xs text-fg-muted mt-1.5">
+                        Partial payments are disabled — the full balance must be paid at once.
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-fg-muted mb-1.5">
@@ -297,10 +398,11 @@ export default function InvoiceDetailPage() {
                       onChange={(e) => setPayMethod(e.target.value)}
                       className="h-10 w-full rounded-lg border border-border bg-surface-200 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
                     >
-                      <option value="manual">Manual</option>
-                      <option value="cash">Cash</option>
-                      <option value="check">Check</option>
-                      <option value="card">Card</option>
+                      {acceptedPaymentMethods.map((method) => (
+                        <option key={method.value} value={method.value}>
+                          {method.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -310,6 +412,98 @@ export default function InvoiceDetailPage() {
                     {paySubmitting ? "Recording..." : "Record Payment"}
                   </Button>
                   <Button type="button" variant="secondary" onClick={() => setShowPayment(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+        </>
+      )}
+
+      {/* Line item editor modal */}
+      {lineModal && invoice && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            onClick={() => setLineModal(null)}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <Card className="w-full max-w-sm">
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleSaveLine(); }}
+                className="p-6"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-semibold text-fg">
+                    {lineModal.mode === "edit" ? "Edit line item" : "Add line item"}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setLineModal(null)}
+                    className="text-fg-muted hover:text-fg transition-colors cursor-pointer bg-transparent border-none text-lg leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {lineError && (
+                  <p className="text-red text-xs mb-3 p-2 rounded bg-red/5">{lineError}</p>
+                )}
+
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="line-description" className="block text-xs font-semibold text-fg-muted mb-1.5">
+                      Description *
+                    </label>
+                    <Input
+                      id="line-description"
+                      value={lineDescription}
+                      onChange={(e) => setLineDescription(e.target.value)}
+                      maxLength={500}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="line-quantity" className="block text-xs font-semibold text-fg-muted mb-1.5">
+                        Quantity *
+                      </label>
+                      <Input
+                        id="line-quantity"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={lineQuantity}
+                        onChange={(e) => setLineQuantity(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="line-price" className="block text-xs font-semibold text-fg-muted mb-1.5">
+                        Unit price ($) *
+                      </label>
+                      <Input
+                        id="line-price"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={linePrice}
+                        onChange={(e) => setLinePrice(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-fg-muted">
+                    Subtotal: {formatMoney(
+                      Math.round(parseFloat(linePrice || "0") * 100) * (Math.max(0, Math.floor(Number(lineQuantity)) || 0)),
+                    )}
+                  </p>
+                </div>
+
+                <div className="flex gap-2 mt-6">
+                  <Button type="submit" disabled={lineSubmitting || !lineDescription.trim() || !linePrice}>
+                    {lineSubmitting ? "Saving..." : lineModal.mode === "edit" ? "Save changes" : "Add line"}
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setLineModal(null)}>
                     Cancel
                   </Button>
                 </div>
@@ -526,13 +720,26 @@ export default function InvoiceDetailPage() {
                     {invoice.lineItems.length === 0
                       ? "No items"
                       : `${invoice.lineItems.length} item${invoice.lineItems.length !== 1 ? "s" : ""}`}
+                    {invoice.status === "draft" ? " · Editable while draft" : " · Frozen at send"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  {deleteError && (
+                    <p className="text-red text-xs mb-3 p-2 rounded bg-red/5">{deleteError}</p>
+                  )}
                   {invoice.lineItems.length === 0 ? (
-                    <p className="text-sm text-fg-muted py-4 text-center">
-                      No line items on this invoice.
-                    </p>
+                    <div className="py-4 text-center">
+                      <p className="text-sm text-fg-muted">
+                        {invoice.status === "draft"
+                          ? "No line items yet — add them before sending."
+                          : "No line items on this invoice."}
+                      </p>
+                      {invoice.status === "draft" && (
+                        <Button size="sm" variant="secondary" className="mt-3" onClick={openAddLine}>
+                          Add line item
+                        </Button>
+                      )}
+                    </div>
                   ) : (
                     <div className="flex flex-col gap-1">
                       {invoice.lineItems.map((item) => (
@@ -549,6 +756,33 @@ export default function InvoiceDetailPage() {
                           <span className="text-sm font-semibold text-fg tabular-nums shrink-0 ml-3">
                             {formatMoney(item.quantity * item.unitPrice)}
                           </span>
+                          {invoice.status === "draft" && (
+                            <span className="flex items-center gap-1 ml-3 shrink-0">
+                              {confirmingDeleteId === item.id ? (
+                                <>
+                                  <Button size="sm" variant="danger" onClick={() => handleDeleteLine(item.id)}>
+                                    Delete
+                                  </Button>
+                                  <Button size="sm" variant="secondary" onClick={() => setConfirmingDeleteId(null)}>
+                                    Keep
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
+                                  <Button size="sm" variant="secondary" onClick={() => openEditLine(item)}>
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="danger"
+                                    onClick={() => { setDeleteError(null); setConfirmingDeleteId(item.id); }}
+                                  >
+                                    Remove
+                                  </Button>
+                                </>
+                              )}
+                            </span>
+                          )}
                         </div>
                       ))}
                       <div className="flex items-center justify-between py-2 px-3 mt-1 rounded-lg bg-accent/5 border border-accent/20">
@@ -557,6 +791,11 @@ export default function InvoiceDetailPage() {
                           {formatMoney(invoice.total)}
                         </span>
                       </div>
+                      {invoice.status === "draft" && (
+                        <Button size="sm" variant="secondary" className="self-start mt-2" onClick={openAddLine}>
+                          Add line item
+                        </Button>
+                      )}
                     </div>
                   )}
                 </CardContent>
