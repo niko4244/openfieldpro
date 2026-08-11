@@ -74,6 +74,25 @@ export default function EstimateDetailPage() {
         </div>}
       />
       {error ? <Card className="mb-4 border-red/30 bg-red/5"><p className="text-sm text-red">{error}</p></Card> : null}
+      {estimate.deposit && estimate.deposit.requiredCents > 0 ? (
+        <Card className={`mb-4 ${estimate.deposit.collected ? "border-green/40 bg-green/10" : "border-yellow/40 bg-yellow/10"}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-fg">Deposit required</p>
+              <p className="mt-1 text-xs text-fg-muted">
+                {formatMoney(estimate.deposit.requiredCents)} required · {formatMoney(estimate.deposit.collectedCents)} collected · {formatMoney(estimate.deposit.remainingCents)} remaining
+              </p>
+            </div>
+            {estimate.deposit.invoice ? (
+              <Link href={`/invoices/${estimate.deposit.invoice.id}`}>
+                <Button size="sm" variant="secondary">
+                  {estimate.deposit.invoice.status === "paid" ? "Deposit paid" : "Open deposit invoice"}
+                </Button>
+              </Link>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3" role="tablist" aria-label="Estimate options">
         {estimate.options.map((option) => (
           <button key={option.id} role="tab" aria-selected={active?.id === option.id} onClick={() => setActiveId(option.id)} className={`rounded-xl border p-4 text-left ${active?.id === option.id ? "border-accent bg-accent/10" : "border-border bg-surface-100"}`}>

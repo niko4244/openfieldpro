@@ -178,6 +178,13 @@ interface LineItem {
 interface EstimateDetail extends Estimate {
   lineItems: LineItem[];
   options: EstimateOption[];
+  deposit?: {
+    requiredCents: number;
+    collectedCents: number;
+    remainingCents: number;
+    collected: boolean;
+    invoice: { id: string; number: string; status: string } | null;
+  };
 }
 
 interface Review {

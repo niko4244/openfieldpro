@@ -177,6 +177,8 @@ export const estimates = pgTable("estimates", {
   sentAt: timestamp("sent_at", { withTimezone: true }),
   declinedAt: timestamp("declined_at", { withTimezone: true }),
   copiedToJobAt: timestamp("copied_to_job_at", { withTimezone: true }),
+  depositCents: integer("deposit_cents").default(0).notNull(),
+  depositInvoiceId: uuid("deposit_invoice_id").references(() => invoices.id, { onDelete: "set null" }),
   version: version(),
   updatedAt: updatedAt(),
   createdAt: ts(),

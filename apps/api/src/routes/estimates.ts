@@ -6,13 +6,72 @@ import {
   estimates,
   estimateOptions,
   estimateOptionLineItems,
+  invoices,
+  invoiceLineItems,
+  payments,
   jobs,
   lineItems,
   orgs,
 } from "@ofp/db";
 import { mergeBusinessSettings } from "@ofp/shared";
-import { defaultEstimateExpiresAt, estimateNumber } from "../estimates.js";
+import { defaultEstimateExpiresAt, depositAmountFor, depositSummary, estimateNumber } from "../estimates.js";
+import { defaultInvoiceDueAt, invoiceNumber } from "../invoicing.js";
 import { resolveOrgId } from "./org.js";
+import { safeEmitActivity } from "../activities.js";
+
+/**
+ * Creates the deposit invoice for an approved estimate option. The deposit is
+ * a sent invoice with one snapshot line so it is internally coherent and shows
+ * up in the customer's balance and checkout. Idempotent: a deposit invoice
+ * already recorded for the estimate is returned untouched.
+ */
+async function createDepositInvoiceTx(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  input: {
+    orgId: string;
+    estimateId: string;
+    estimateNumberValue: string;
+    jobId: string;
+    optionTotal: number;
+    depositMode: "none" | "fixed" | "percent";
+    depositValue: number;
+    netDays: number;
+    invoicePrefix: string;
+    invoiceNextNumber: number;
+    existingDepositInvoiceId: string | null;
+  },
+) {
+  const deposit = depositAmountFor(input.optionTotal, input.depositMode, input.depositValue);
+  if (deposit <= 0) return { deposit, invoiceId: null as string | null };
+  if (input.existingDepositInvoiceId) return { deposit, invoiceId: input.existingDepositInvoiceId };
+
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`invoice-number:${input.orgId}`}))`);
+  const [{ count }] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(invoices)
+    .where(eq(invoices.orgId, input.orgId));
+  const [row] = await tx
+    .insert(invoices)
+    .values({
+      orgId: input.orgId,
+      jobId: input.jobId,
+      number: invoiceNumber(count, input.invoicePrefix, input.invoiceNextNumber),
+      status: "sent",
+      total: deposit,
+      dueAt: defaultInvoiceDueAt(input.netDays),
+    })
+    .returning();
+  await tx.insert(invoiceLineItems).values({
+    orgId: input.orgId,
+    invoiceId: row.id,
+    description: `Deposit for ${input.estimateNumberValue}`,
+    quantity: 1,
+    unitPrice: deposit,
+    unitCost: 0,
+    position: 0,
+  });
+  return { deposit, invoiceId: row.id };
+}
 
 type EstimateLifecycle = "draft" | "sent" | "approved" | "declined" | "expired";
 
@@ -79,7 +138,31 @@ async function detail(orgId: string, id: string) {
   }));
   // Legacy clients still expect one flat lineItems collection.
   const legacyLines = withLines[0]?.lineItems ?? [];
-  return { ...estimate, options: withLines, lineItems: legacyLines };
+
+  // Deposit collection summary, computed from the deposit invoice's payments so
+  // it always reflects the real collected amount.
+  let deposit: { requiredCents: number; collectedCents: number; remainingCents: number; collected: boolean; invoice: { id: string; number: string; status: string } | null } = {
+    requiredCents: 0,
+    collectedCents: 0,
+    remainingCents: 0,
+    collected: false,
+    invoice: null,
+  };
+  if (estimate.depositInvoiceId) {
+    const [depositInvoice] = await db
+      .select({ id: invoices.id, number: invoices.number, status: invoices.status })
+      .from(invoices)
+      .where(and(eq(invoices.orgId, orgId), eq(invoices.id, estimate.depositInvoiceId)));
+    const paidRows = depositInvoice
+      ? await db.select({ amount: payments.amount }).from(payments).where(and(eq(payments.orgId, orgId), eq(payments.invoiceId, depositInvoice.id)))
+      : [];
+    const collected = paidRows.reduce((sum, payment) => sum + payment.amount, 0);
+    deposit = {
+      ...depositSummary(estimate.depositCents, collected),
+      invoice: depositInvoice ?? null,
+    };
+  }
+  return { ...estimate, options: withLines, lineItems: legacyLines, deposit };
 }
 
 async function editableOption(orgId: string, estimateId: string, optionId: string) {
@@ -240,7 +323,7 @@ export async function estimateRoutes(app: FastifyInstance) {
       try {
         if (estimate.status === "approved") {
           nextEstimateLifecycle(estimate.status, estimate.selectedOptionId, option.id);
-          return { kind: "approved" as const, estimate };
+          return { kind: "approved" as const, estimate, deposit: { deposit: 0, invoiceId: null as string | null } };
         }
         assertEstimateApprovalAllowed({
           status: estimate.status,
@@ -263,11 +346,40 @@ export async function estimateRoutes(app: FastifyInstance) {
         total: option.total,
         updatedAt: now,
       }).where(and(eq(estimates.orgId, orgId), eq(estimates.id, id))).returning();
-      return { kind: "approved" as const, estimate: approved };
+
+      // Deposit collection: when configured, approval creates a sent deposit
+      // invoice tied to the approved option's total (fixed or percent).
+      const deposit = await createDepositInvoiceTx(tx, {
+        orgId,
+        estimateId: id,
+        estimateNumberValue: estimate.number,
+        jobId: estimate.jobId,
+        optionTotal: option.total,
+        depositMode: settings.estimate.depositMode,
+        depositValue: settings.estimate.depositValue,
+        netDays: settings.invoice.netDays,
+        invoicePrefix: settings.numbering.invoicePrefix,
+        invoiceNextNumber: settings.numbering.invoiceNextNumber,
+        existingDepositInvoiceId: estimate.depositInvoiceId,
+      });
+      const [finalEstimate] = await tx.update(estimates).set({
+        depositCents: deposit.deposit,
+        depositInvoiceId: deposit.invoiceId ?? estimate.depositInvoiceId,
+        updatedAt: now,
+      }).where(and(eq(estimates.orgId, orgId), eq(estimates.id, id))).returning();
+      return { kind: "approved" as const, estimate: finalEstimate, deposit };
     });
     if (result.kind === "missing") return reply.code(404).send({ error: "not found" });
     if (result.kind === "option") return reply.code(404).send({ error: "option not found" });
     if (result.kind === "invalid") return reply.code(409).send({ error: result.error });
+    if (result.deposit.invoiceId) {
+      safeEmitActivity(
+        orgId,
+        "estimate.deposit_created",
+        `Created ${(result.deposit.deposit / 100).toFixed(2)} deposit invoice for ${result.estimate.number}`,
+        { jobId: result.estimate.jobId },
+      );
+    }
     return result.estimate;
   });
 
@@ -334,8 +446,41 @@ export async function estimateRoutes(app: FastifyInstance) {
       return reply.code(409).send({ error: (error as Error).message });
     }
     const now = new Date();
-    const [approved] = await db.update(estimates).set({ status: "approved", accepted: true, acceptedAt: now, acceptedByName: body.data.customerName, signatureName: body.data.customerName, selectedOptionId: option.id, total: option.total, updatedAt: now })
-      .where(and(eq(estimates.orgId, orgId), eq(estimates.id, id), eq(estimates.status, "sent"))).returning();
-    return approved;
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`estimate-approval:${id}`}))`);
+      const [estimate] = await tx.select().from(estimates).where(and(eq(estimates.orgId, orgId), eq(estimates.id, id), eq(estimates.status, "sent")));
+      if (!estimate) return { kind: "missing" as const };
+      const [approved] = await tx.update(estimates).set({ status: "approved", accepted: true, acceptedAt: now, acceptedByName: body.data.customerName, signatureName: body.data.customerName, selectedOptionId: option.id, total: option.total, updatedAt: now })
+        .where(and(eq(estimates.orgId, orgId), eq(estimates.id, id), eq(estimates.status, "sent"))).returning();
+      const deposit = await createDepositInvoiceTx(tx, {
+        orgId,
+        estimateId: id,
+        estimateNumberValue: estimate.number,
+        jobId: estimate.jobId,
+        optionTotal: option.total,
+        depositMode: settings.estimate.depositMode,
+        depositValue: settings.estimate.depositValue,
+        netDays: settings.invoice.netDays,
+        invoicePrefix: settings.numbering.invoicePrefix,
+        invoiceNextNumber: settings.numbering.invoiceNextNumber,
+        existingDepositInvoiceId: estimate.depositInvoiceId,
+      });
+      const [finalEstimate] = await tx.update(estimates).set({
+        depositCents: deposit.deposit,
+        depositInvoiceId: deposit.invoiceId ?? estimate.depositInvoiceId,
+        updatedAt: now,
+      }).where(and(eq(estimates.orgId, orgId), eq(estimates.id, id))).returning();
+      return { kind: "approved" as const, estimate: finalEstimate, deposit };
+    });
+    if (result.kind === "missing") return reply.code(409).send({ error: "estimate cannot be accepted" });
+    if (result.deposit.invoiceId) {
+      safeEmitActivity(
+        orgId,
+        "estimate.deposit_created",
+        `Created ${(result.deposit.deposit / 100).toFixed(2)} deposit invoice for ${result.estimate.number}`,
+        { jobId: result.estimate.jobId },
+      );
+    }
+    return result.estimate;
   });
 }
