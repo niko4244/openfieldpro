@@ -167,7 +167,7 @@ export const DEFAULT_BUSINESS_SETTINGS: BusinessSettings = {
     invoiceEmailSubject: "Invoice {{invoiceNumber}} from {{companyName}}",
     invoiceEmailBody: "Hi {{customerName}}, your invoice is ready. Balance due: {{balance}}.",
     estimateEmailSubject: "Estimate from {{companyName}}",
-    estimateEmailBody: "Hi {{customerName}}, please review your estimate and approve the option that works best.",
+    estimateEmailBody: "Hi {{customerName}}, please review estimate {{estimateNumber}} and approve the option that works best.",
     reviewRequestBody: "Thanks for choosing {{companyName}}. If we earned it, please leave us a review.",
     portalLinkSubject: "Your customer portal link from {{companyName}}",
     portalLinkBody: "Hi {{customerName}},\n\nHere is your secure customer portal link for {{companyName}}:\n\n{{portalLink}}\n\n{{#portalExpiresAt}}This link expires {{portalExpiresAt}}.\n\n{{/portalExpiresAt}}Use it to review your balance, pay online, see receipts, and view your service plan.",

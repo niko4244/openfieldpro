@@ -3,7 +3,12 @@ import multipart from "@fastify/multipart";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, orgs } from "@ofp/db";
-import { DEFAULT_BUSINESS_SETTINGS, mergeBusinessSettings } from "@ofp/shared";
+import {
+  DEFAULT_BUSINESS_SETTINGS,
+  mergeBusinessSettings,
+  validateMessageTemplate,
+  type MessageTemplateKind,
+} from "@ofp/shared";
 import { resolveOrgId } from "./org.js";
 import { deleteOrgLogo, saveOrgLogo } from "../uploads.js";
 
@@ -88,7 +93,31 @@ export const businessSettingsSchema = z.object({
     reviewRequestBody: z.string().trim().min(1).max(1000),
     portalLinkSubject: z.string().trim().min(1).max(160),
     portalLinkBody: z.string().trim().min(1).max(2000),
-  }).default(DEFAULT_BUSINESS_SETTINGS.messages),
+  })
+    .default(DEFAULT_BUSINESS_SETTINGS.messages)
+    .superRefine((messages, ctx) => {
+      // Templates may only reference variables defined for their kind — a
+      // typo like {{costumerName}} is a hard save error, not a silent empty.
+      const fields: Array<[keyof typeof messages, MessageTemplateKind]> = [
+        ["invoiceEmailSubject", "invoice"],
+        ["invoiceEmailBody", "invoice"],
+        ["estimateEmailSubject", "estimate"],
+        ["estimateEmailBody", "estimate"],
+        ["portalLinkSubject", "portal_link"],
+        ["portalLinkBody", "portal_link"],
+        ["reviewRequestBody", "review_request"],
+      ];
+      for (const [field, kind] of fields) {
+        const validation = validateMessageTemplate(messages[field], kind);
+        if (validation.unknown.length > 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `unknown variable(s): ${validation.unknown.join(", ")}`,
+          });
+        }
+      }
+    }),
   numbering: z.object({
     invoicePrefix: z.string().trim().min(1).max(12).regex(/^[A-Za-z0-9-]+$/),
     invoiceNextNumber: z.number().int().min(1).max(999_999_999),

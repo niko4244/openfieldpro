@@ -7,6 +7,7 @@ import { api, type BusinessSettingsDTO, type OrgSettingsDTO } from "@/lib/api";
 import { normalizeServiceAreas, validateBusinessHours } from "@/lib/business-settings-form";
 import { estimateDocumentHtml, invoiceDocumentHtml } from "@/lib/document-data";
 import { DocumentPreviewWorkbench, type DocumentPreviewItem } from "@/components/document-preview-workbench";
+import { MessageTemplatesEditor } from "@/components/settings/message-templates-editor";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -268,7 +269,7 @@ function BusinessSettingsTab({ tab, onDirtyChange }: { tab: Exclude<Tab, "team">
           {tab === "estimate" && <EstimateSection settings={settings} updateSettings={updateSettings} />}
           {tab === "payments" && <PaymentsSection settings={settings} updateSettings={updateSettings} />}
           {tab === "taxes" && <TaxesSection settings={settings} updateSettings={updateSettings} />}
-          {tab === "messages" && <MessagesSection settings={settings} updateSettings={updateSettings} />}
+          {tab === "messages" && <MessageTemplatesEditor settings={settings} updateSettings={updateSettings} companyName={org.name} />}
           {tab === "numbering" && <NumberingSection settings={settings} updateSettings={updateSettings} />}
           {tab === "portal" && <PortalSection settings={settings} updateSettings={updateSettings} />}
 
@@ -621,18 +622,6 @@ function TaxesSection({ settings, updateSettings }: SettingsProps) {
       <TextField label="Tax label" value={settings.taxes.taxLabel} onChange={(value) => updateSettings({ ...settings, taxes: { ...settings.taxes, taxLabel: value } })} />
       <NumberField label="Default tax basis points" value={settings.taxes.defaultTaxRateBps} onChange={(value) => updateSettings({ ...settings, taxes: { ...settings.taxes, defaultTaxRateBps: value } })} />
       <TextField label="Default discount label" value={settings.taxes.defaultDiscountLabel} onChange={(value) => updateSettings({ ...settings, taxes: { ...settings.taxes, defaultDiscountLabel: value } })} />
-    </div>
-  );
-}
-
-function MessagesSection({ settings, updateSettings }: SettingsProps) {
-  return (
-    <div className="grid gap-4">
-      <TextField label="Invoice email subject" value={settings.messages.invoiceEmailSubject} onChange={(value) => updateSettings({ ...settings, messages: { ...settings.messages, invoiceEmailSubject: value } })} />
-      <TextArea label="Invoice email body" value={settings.messages.invoiceEmailBody} onChange={(value) => updateSettings({ ...settings, messages: { ...settings.messages, invoiceEmailBody: value } })} />
-      <TextField label="Estimate email subject" value={settings.messages.estimateEmailSubject} onChange={(value) => updateSettings({ ...settings, messages: { ...settings.messages, estimateEmailSubject: value } })} />
-      <TextArea label="Estimate email body" value={settings.messages.estimateEmailBody} onChange={(value) => updateSettings({ ...settings, messages: { ...settings.messages, estimateEmailBody: value } })} />
-      <TextArea label="Review request message" value={settings.messages.reviewRequestBody} onChange={(value) => updateSettings({ ...settings, messages: { ...settings.messages, reviewRequestBody: value } })} />
     </div>
   );
 }

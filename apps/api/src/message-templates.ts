@@ -1,19 +1,15 @@
-// Outbound customer message rendering. Templates use Mustache syntax:
-// {{variable}} substitution and {{#name}}…{{/name}} sections that render only
-// when the variable is a non-empty value. Unknown variables render empty.
-//
-// Emails are plain text (not HTML), so Mustache's HTML escaping is disabled —
-// otherwise URLs in variables like the portal link would be mangled.
-import Mustache from "mustache";
-import type { MessageSettings } from "@ofp/shared";
+// Outbound customer message rendering. Rendering and variable validation are
+// implemented in @ofp/shared so the web editor previews exactly what the API
+// sends; this module adds the document-specific variable builders.
+import {
+  renderMessageTemplate,
+  type TemplateVariables,
+  type MessageSettings,
+} from "@ofp/shared";
 
-Mustache.escape = (value: string) => value;
+export { renderMessageTemplate, type TemplateVariables } from "@ofp/shared";
 
-export type TemplateVariables = Record<string, string | number | null | undefined>;
-
-export function renderMessageTemplate(template: string, variables: TemplateVariables): string {
-  return Mustache.render(template, variables);
-}
+export type { MessageSettings } from "@ofp/shared";
 
 export interface MessageRenderResult {
   subject: string;
