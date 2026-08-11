@@ -17,6 +17,7 @@ import { recurringRoutes } from "./routes/recurring.js";
 import { publicRoutes } from "./routes/public.js";
 import { portalRoutes } from "./routes/portal.js";
 import { messageRoutes } from "./routes/messages.js";
+import { documentRoutes } from "./routes/documents.js";
 import { activityRoutes } from "./routes/activities.js";
 import { syncRoutes } from "./routes/sync.js";
 import { userRoutes } from "./routes/users.js";
@@ -64,7 +65,11 @@ export function buildServer(
     bodyLimit: 1_048_576,
     trustProxy: process.env.TRUST_PROXY === "true",
   });
-  app.register(cors, { origin: resolveCorsOrigin(), credentials: true });
+  app.register(cors, {
+    origin: resolveCorsOrigin(),
+    credentials: true,
+    exposedHeaders: ["Content-Disposition"],
+  });
   app.register(jwt, {
     secret: resolveJwtSecret(),
     sign: { expiresIn: process.env.JWT_EXPIRES_IN ?? "12h" },
@@ -120,6 +125,7 @@ export function buildServer(
   app.register(publicRoutes, { prefix: "/api/public" });
   app.register(portalRoutes, { prefix: "/api/portal" });
   app.register(messageRoutes, { prefix: "/api" });
+  app.register(documentRoutes, { prefix: "/api" });
   app.register(activityRoutes, { prefix: "/api/activities" });
   app.register(syncRoutes);
   app.register(userRoutes, { prefix: "/api/users" });

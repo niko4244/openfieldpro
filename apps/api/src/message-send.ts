@@ -21,7 +21,7 @@ import {
   renderInvoiceMessage,
   type TemplateVariables,
 } from "./message-templates.js";
-import { sendEmail, type SendResult } from "./mailer.js";
+import { sendEmail, type EmailAttachment, type SendResult } from "./mailer.js";
 
 export const MESSAGE_KINDS = ["invoice", "estimate"] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
@@ -110,6 +110,8 @@ export interface MessageDelivery {
   recipient: string;
   subject: string;
   body: string;
+  /** Optional durable document attached to the email. */
+  attachments?: EmailAttachment[];
   /** Injected for tests; defaults to the real SMTP mailer. */
   deliver?: () => Promise<SendResult | null>;
 }
@@ -121,7 +123,7 @@ async function attemptDelivery(
   let outcome: DeliveryOutcome;
   try {
     const result = await (delivery.deliver ??
-      (() => sendEmail({ to: delivery.recipient, subject: delivery.subject, text: delivery.body })))();
+      (() => sendEmail({ to: delivery.recipient, subject: delivery.subject, text: delivery.body, attachments: delivery.attachments })))();
     outcome = result
       ? { ok: true, messageId: result.messageId }
       : { ok: false, error: "email is not configured" };
@@ -158,9 +160,13 @@ export async function deliverMessage(delivery: MessageDelivery): Promise<Message
 }
 
 /** Retries a failed delivery on the same recipient/subject/body snapshot. */
+export type AttachmentResolver = (log: typeof messageLogs.$inferSelect) => Promise<EmailAttachment[] | undefined>;
+
+/** Retries a failed delivery, re-attaching the durable document when present. */
 export async function retryMessage(
   orgId: string,
   messageId: string,
+  resolveAttachment?: AttachmentResolver,
 ): Promise<MessageLogDTO | { statusCode: number; error: string }> {
   const [log] = await db
     .select()
@@ -178,6 +184,9 @@ export async function retryMessage(
     recipient: log.recipient,
     subject: log.subject,
     body: log.body,
+    // The stored document is re-attached on retry so the customer always
+    // receives the same durable PDF.
+    attachments: resolveAttachment ? await resolveAttachment(log) : undefined,
   });
 }
 

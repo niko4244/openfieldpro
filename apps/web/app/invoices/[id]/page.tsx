@@ -52,6 +52,7 @@ export default function InvoiceDetailPage() {
 
   // ── Email send workflow ──
   const [emailOpen, setEmailOpen] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // ── Payment modal ──
   const [showPayment, setShowPayment] = useState(false);
@@ -136,6 +137,26 @@ export default function InvoiceDetailPage() {
   }, [paymentSettings]);
 
   // ── Status actions ──
+  async function downloadPdf() {
+    setDownloadingPdf(true);
+    setActionError(null);
+    try {
+      const { blob, filename } = await api.invoicePdf(invoiceId);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to download the PDF");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
+
   const handleStatusChange = async (status: "sent" | "void") => {
     if (!invoice) return;
     setSubmittingStatus(status);
@@ -555,6 +576,11 @@ export default function InvoiceDetailPage() {
           }
           actions={
             <div className="flex gap-2 flex-wrap">
+              {(invoice.status === "draft" || invoice.status === "sent" || invoice.status === "paid") && (
+                <Button size="sm" variant="secondary" disabled={downloadingPdf} onClick={() => void downloadPdf()}>
+                  {downloadingPdf ? "Preparing…" : "Download PDF"}
+                </Button>
+              )}
               {(invoice.status === "draft" || invoice.status === "sent" || invoice.status === "paid") && (
                 <Button size="sm" variant="secondary" onClick={() => setEmailOpen(true)}>
                   Email invoice

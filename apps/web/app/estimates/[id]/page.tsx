@@ -22,6 +22,7 @@ export default function EstimateDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [price, setPrice] = useState("");
@@ -44,6 +45,26 @@ export default function EstimateDetailPage() {
 
   const active = estimate?.options.find((option) => option.id === activeId) ?? estimate?.options[0];
   const editable = estimate?.status === "draft" || estimate?.status === "sent";
+
+  async function downloadPdf() {
+    setDownloadingPdf(true);
+    setError(null);
+    try {
+      const { blob, filename } = await api.estimatePdf(id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to download the PDF");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
 
   async function refreshAfter(action: () => Promise<unknown>) {
     setBusy(true);
@@ -68,6 +89,7 @@ export default function EstimateDetailPage() {
         description={`${estimate.status} · ${estimate.options.length} options`}
         actions={<div className="flex flex-wrap gap-2">
           <Link href={`/estimates/${id}/preview`}><Button size="sm" variant="secondary">Preview</Button></Link>
+          <Button size="sm" variant="secondary" disabled={downloadingPdf} onClick={() => void downloadPdf()}>{downloadingPdf ? "Preparing…" : "Download PDF"}</Button>
           <Button size="sm" variant="secondary" onClick={() => setEmailOpen(true)}>Email estimate</Button>
           {estimate.status === "draft" ? <Button size="sm" disabled={busy} onClick={() => refreshAfter(() => api.markEstimateSent(id))}>Mark sent</Button> : null}
           {estimate.status === "approved" ? <Button size="sm" disabled={busy || Boolean(estimate.copiedToJobAt)} onClick={() => refreshAfter(() => api.copyApprovedEstimateToJob(id))}>{estimate.copiedToJobAt ? "Copied to job" : "Copy approved work to job"}</Button> : null}

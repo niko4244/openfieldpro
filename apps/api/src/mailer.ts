@@ -12,10 +12,17 @@ export interface SmtpConfig {
   from: string;
 }
 
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;
   text: string;
+  attachments?: EmailAttachment[];
 }
 
 export interface SendResult {
@@ -64,6 +71,11 @@ export async function sendEmail(
     to: message.to,
     subject: message.subject,
     text: message.text,
+    attachments: message.attachments?.map((attachment) => ({
+      filename: attachment.filename,
+      content: attachment.content,
+      contentType: attachment.contentType,
+    })),
   });
   return { messageId: info.messageId ?? "", accepted: info.accepted ?? [] };
 }

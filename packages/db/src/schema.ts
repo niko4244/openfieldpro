@@ -21,7 +21,15 @@ import {
   pgEnum,
   index,
   uniqueIndex,
+  customType,
 } from "drizzle-orm/pg-core";
+
+// drizzle 0.45 does not ship a bytea column type; define one mapping Buffer.
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+  toDriver: (value: Buffer) => value,
+  fromDriver: (value: Buffer) => value,
+});
 import type { PortalLinkScope } from "@ofp/shared";
 
 export const jobStatus = pgEnum("job_status", [
@@ -558,5 +566,28 @@ export const messageLogs = pgTable(
   },
   (t) => ({
     orgDocument: index("message_logs_org_document_idx").on(t.orgId, t.kind, t.documentId),
+  }),
+);
+
+export const documents = pgTable(
+  "documents",
+  {
+    id: id(),
+    orgId: orgId(),
+    kind: text("kind").notNull(),
+    documentId: uuid("document_id").notNull(),
+    filename: text("filename").notNull(),
+    mime: text("mime").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    sha256: text("sha256").notNull(),
+    // Generated server-side and immutable once stored, so the bytea lives in
+    // the database and is covered by database backups.
+    data: bytea("data").notNull(),
+    version: version(),
+    updatedAt: updatedAt(),
+    createdAt: ts(),
+  },
+  (t) => ({
+    orgDocument: uniqueIndex("documents_org_kind_document_idx").on(t.orgId, t.kind, t.documentId),
   }),
 );

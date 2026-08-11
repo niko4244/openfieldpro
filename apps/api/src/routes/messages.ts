@@ -12,9 +12,22 @@ import {
   MESSAGE_KINDS,
   messageLogView,
   retryMessage,
+  type AttachmentResolver,
 } from "../message-send.js";
+import { ensureEstimateDocument, ensureInvoiceDocument } from "../documents.js";
 import { safeEmitActivity } from "../activities.js";
 import { resolveOrgId } from "./org.js";
+
+/** Resolves the stored durable PDF for a message's document so retries re-attach it. */
+const resolveAttachment: AttachmentResolver = async (log) => {
+  if (log.kind !== "invoice" && log.kind !== "estimate") return undefined;
+  const result =
+    log.kind === "invoice"
+      ? await ensureInvoiceDocument(log.orgId, log.documentId)
+      : await ensureEstimateDocument(log.orgId, log.documentId);
+  if ("error" in result) return undefined;
+  return [{ filename: result.row.filename, content: result.buffer, contentType: "application/pdf" }];
+};
 
 const historyQuery = z.object({
   kind: z.enum(MESSAGE_KINDS).optional(),
@@ -35,7 +48,7 @@ export async function messageRoutes(app: FastifyInstance) {
   app.post("/messages/:id/retry", async (req, reply) => {
     const orgId = await resolveOrgId(req);
     const { id } = req.params as { id: string };
-    const result = await retryMessage(orgId, id);
+    const result = await retryMessage(orgId, id, resolveAttachment);
     if ("statusCode" in result) return reply.code(result.statusCode).send({ error: result.error });
     if (result.status === "sent") {
       safeEmitActivity(
@@ -63,6 +76,10 @@ export async function messageRoutes(app: FastifyInstance) {
     const draft = await buildInvoiceEmail(orgId, id);
     if (!draft.ok) return reply.code(draft.statusCode).send({ error: draft.error });
 
+    // Durable PDF: generate/store once, attach to every send.
+    const document = await ensureInvoiceDocument(orgId, id);
+    if ("error" in document) return reply.code(document.statusCode).send({ error: document.error });
+
     const log = await deliverMessage({
       orgId,
       kind: "invoice",
@@ -71,6 +88,7 @@ export async function messageRoutes(app: FastifyInstance) {
       recipient: draft.recipient,
       subject: draft.subject,
       body: draft.body,
+      attachments: [{ filename: document.row.filename, content: document.buffer, contentType: "application/pdf" }],
     });
     if (log.status === "sent") {
       safeEmitActivity(
@@ -85,6 +103,7 @@ export async function messageRoutes(app: FastifyInstance) {
     return reply.send({
       log,
       draft: { to: draft.recipient, recipientName: draft.recipientName, subject: draft.subject, body: draft.body },
+      attachment: { filename: document.row.filename, sizeBytes: document.row.sizeBytes },
     });
   });
 
@@ -103,6 +122,10 @@ export async function messageRoutes(app: FastifyInstance) {
     const draft = await buildEstimateEmail(orgId, id);
     if (!draft.ok) return reply.code(draft.statusCode).send({ error: draft.error });
 
+    // Durable PDF: generate/store once, attach to every send.
+    const document = await ensureEstimateDocument(orgId, id);
+    if ("error" in document) return reply.code(document.statusCode).send({ error: document.error });
+
     const log = await deliverMessage({
       orgId,
       kind: "estimate",
@@ -111,6 +134,7 @@ export async function messageRoutes(app: FastifyInstance) {
       recipient: draft.recipient,
       subject: draft.subject,
       body: draft.body,
+      attachments: [{ filename: document.row.filename, content: document.buffer, contentType: "application/pdf" }],
     });
     if (log.status === "sent") {
       safeEmitActivity(
@@ -125,6 +149,7 @@ export async function messageRoutes(app: FastifyInstance) {
     return reply.send({
       log,
       draft: { to: draft.recipient, recipientName: draft.recipientName, subject: draft.subject, body: draft.body },
+      attachment: { filename: document.row.filename, sizeBytes: document.row.sizeBytes },
     });
   });
 }

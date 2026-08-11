@@ -71,7 +71,7 @@ export function MessageSendDialog({ open, onOpenChange, kind, documentId, title,
         kind === "invoice" ? await api.invoiceSendEmail(documentId) : await api.estimateSendEmail(documentId);
       setSendNotice(
         result.log.status === "sent"
-          ? `Email sent to ${result.draft.to}.`
+          ? `Email sent to ${result.draft.to}. PDF attached: ${result.attachment.filename} (${Math.max(1, Math.round(result.attachment.sizeBytes / 1024))} KB).`
           : `Delivery failed: ${result.log.error ?? "SMTP rejected the message"}. You can retry from history.`,
       );
       setLogs(await api.messageLogs({ kind, documentId }));

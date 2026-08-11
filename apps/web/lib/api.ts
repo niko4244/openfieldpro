@@ -10,6 +10,23 @@ class ApiError extends Error {
   }
 }
 
+export interface DownloadedDocument {
+  blob: Blob;
+  filename: string;
+}
+
+/** Fetches a PDF as a blob and keeps the server-provided download filename. */
+async function downloadDocument(path: string): Promise<DownloadedDocument> {
+  const res = await fetch(`${BASE}${path}`, { credentials: "include" });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new ApiError(res.status, body);
+  }
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="?([^";]+)"?/);
+  return { blob: await res.blob(), filename: match?.[1] ?? "document.pdf" };
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     ...(init?.headers as Record<string, string>),
@@ -352,6 +369,11 @@ export interface EmailPreviewDTO {
   body: string;
 }
 
+export interface EmailAttachmentInfo {
+  filename: string;
+  sizeBytes: number;
+}
+
 export interface PortalSessionDTO {
   org: {
     id: string;
@@ -461,10 +483,14 @@ export const api = {
   // ── Email send workflow ──
   invoiceEmailPreview: (id: string) => request<EmailPreviewDTO>(`/api/invoices/${id}/email-preview`),
   invoiceSendEmail: (id: string) =>
-    request<{ log: MessageLogDTO; draft: EmailPreviewDTO }>(`/api/invoices/${id}/email`, { method: "POST" }),
+    request<{ log: MessageLogDTO; draft: EmailPreviewDTO; attachment: EmailAttachmentInfo }>(`/api/invoices/${id}/email`, { method: "POST" }),
   estimateEmailPreview: (id: string) => request<EmailPreviewDTO>(`/api/estimates/${id}/email-preview`),
   estimateSendEmail: (id: string) =>
-    request<{ log: MessageLogDTO; draft: EmailPreviewDTO }>(`/api/estimates/${id}/email`, { method: "POST" }),
+    request<{ log: MessageLogDTO; draft: EmailPreviewDTO; attachment: EmailAttachmentInfo }>(`/api/estimates/${id}/email`, { method: "POST" }),
+
+  // ── Durable documents (PDF) ──
+  invoicePdf: (id: string) => downloadDocument(`/api/invoices/${id}/document`),
+  estimatePdf: (id: string) => downloadDocument(`/api/estimates/${id}/document`),
   messageLogs: (query: { kind?: "invoice" | "estimate"; documentId?: string }) => {
     const params = new URLSearchParams();
     if (query.kind) params.set("kind", query.kind);
