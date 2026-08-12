@@ -655,79 +655,168 @@ function PortalSection({ settings, updateSettings }: SettingsProps) {
   );
 }
 
+const ROLE_SUMMARY: { role: string; label: string; description: string }[] = [
+  { role: "owner", label: "Owner", description: "Full access: settings, team, finances, and every workflow." },
+  { role: "dispatcher", label: "Dispatcher", description: "Runs the schedule, dispatch board, jobs, and customer records." },
+  { role: "technician", label: "Technician", description: "Sees and closes out the jobs assigned to them." },
+];
+
+/** Pulls { error, hint } out of an ApiError body for inline display. */
+function teamErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  const colon = message.indexOf(": ");
+  const body = colon >= 0 ? message.slice(colon + 2) : message;
+  try {
+    const parsed = JSON.parse(body) as { error?: string; hint?: string };
+    return parsed.error ? (parsed.hint ? `${parsed.error} ${parsed.hint}` : parsed.error) : message;
+  } catch {
+    return body || message;
+  }
+}
+
 function TeamTab() {
   const [users, setUsers] = useState<User[]>([]);
+  const [me, setMe] = useState<{ id: string; role: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    api.users()
-      .then((rows) => { if (!cancelled) setUsers(rows); })
-      .catch(() => { if (!cancelled) setError("Failed to load users"); })
+    Promise.all([api.users(), api.me()])
+      .then(([rows, self]) => {
+        if (cancelled) return;
+        setUsers(rows);
+        setMe(self);
+      })
+      .catch(() => { if (!cancelled) setError("Failed to load the team."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
+  const isOwner = me?.role === "owner";
+  const activeOwners = users.filter((u) => u.role === "owner");
+  const isLastOwner = (u: User) => u.role === "owner" && activeOwners.length === 1;
+
+  const roleDisabledReason = (u: User) => {
+    if (u.id === me?.id) return "You cannot change your own role. Ask another owner.";
+    if (isLastOwner(u)) return "The final owner cannot be demoted. Promote another team member first.";
+    return undefined;
+  };
+  const deleteDisabledReason = (u: User) => {
+    if (u.id === me?.id) return "You cannot remove your own account. Another owner must do it.";
+    if (isLastOwner(u)) return "The final owner cannot be removed. Promote another team member first.";
+    return undefined;
+  };
+
   const handleRoleChange = async (id: string, role: string) => {
     setSavingId(id);
+    setNotice(null);
+    setError(null);
     try {
       await api.patchUser(id, { role });
       setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role } : u)));
+    } catch (err) {
+      setError(teamErrorMessage(err));
     } finally {
       setSavingId(null);
     }
   };
 
   const handleDelete = async (id: string) => {
-    await api.deleteUser(id);
-    setUsers((prev) => prev.filter((u) => u.id !== id));
     setConfirmDelete(null);
+    setNotice(null);
+    setError(null);
+    try {
+      await api.deleteUser(id);
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+    } catch (err) {
+      setError(teamErrorMessage(err));
+    }
   };
 
   if (loading) return <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>;
-  if (error) return <Card className="border-red/30 bg-red/5"><CardContent className="p-4"><p className="text-sm text-red">{error}</p></CardContent></Card>;
+  if (error && users.length === 0) return <Card className="border-red/30 bg-red/5"><CardContent className="p-4"><p className="text-sm text-red">{error}</p></CardContent></Card>;
 
   return (
-    <Card className="overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead className="w-24">Actions</TableHead></TableRow>
-        </TableHeader>
-        <TableBody>
-          {users.map((u) => (
-            <TableRow key={u.id}>
-              <TableCell className="font-medium text-fg">{u.name}</TableCell>
-              <TableCell className="text-fg-muted">{u.email}</TableCell>
-              <TableCell>
-                <select
-                  value={u.role}
-                  onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                  disabled={savingId === u.id}
-                  className="h-8 rounded-md border border-border bg-surface-300 px-2 text-xs text-fg"
-                >
-                  <option value="owner">Owner</option>
-                  <option value="dispatcher">Dispatcher</option>
-                  <option value="technician">Technician</option>
-                </select>
-              </TableCell>
-              <TableCell>
-                {confirmDelete === u.id ? (
-                  <div className="flex gap-2">
-                    <button onClick={() => handleDelete(u.id)} className="border-none bg-transparent text-xs text-red">Confirm</button>
-                    <button onClick={() => setConfirmDelete(null)} className="border-none bg-transparent text-xs text-fg-muted">Cancel</button>
-                  </div>
-                ) : (
-                  <button onClick={() => setConfirmDelete(u.id)} className="border-none bg-transparent text-xs text-fg-muted hover:text-red">Delete</button>
-                )}
-              </TableCell>
-            </TableRow>
+    <div className="grid gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Roles & permissions</CardTitle>
+          <p className="text-sm text-fg-muted">Only owners can change roles or remove team members. The final owner can never be demoted or removed, and you cannot change your own role.</p>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          {ROLE_SUMMARY.map((role) => (
+            <div key={role.role} className="rounded-lg border border-border bg-surface-200 p-3">
+              <p className="text-sm font-semibold text-fg">{role.label}</p>
+              <p className="mt-1 text-xs text-fg-muted">{role.description}</p>
+            </div>
           ))}
-        </TableBody>
-      </Table>
-    </Card>
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead className="w-24">Actions</TableHead></TableRow>
+          </TableHeader>
+          <TableBody>
+            {users.map((u) => {
+              const roleReason = roleDisabledReason(u);
+              const deleteReason = deleteDisabledReason(u);
+              const isSelf = u.id === me?.id;
+              return (
+                <TableRow key={u.id}>
+                  <TableCell className="font-medium text-fg">
+                    {u.name}
+                    {isSelf ? <span className="ml-2 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">You</span> : null}
+                  </TableCell>
+                  <TableCell className="text-fg-muted">{u.email}</TableCell>
+                  <TableCell>
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                      disabled={savingId === u.id || Boolean(roleReason)}
+                      title={roleReason}
+                      aria-label={`Role for ${u.name}`}
+                      className="h-8 rounded-md border border-border bg-surface-300 px-2 text-xs text-fg disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="owner">Owner</option>
+                      <option value="dispatcher">Dispatcher</option>
+                      <option value="technician">Technician</option>
+                    </select>
+                    {roleReason ? <p className="mt-1 max-w-56 text-xs text-fg-dim">{roleReason}</p> : null}
+                  </TableCell>
+                  <TableCell>
+                    {confirmDelete === u.id ? (
+                      <div className="flex gap-2">
+                        <button onClick={() => handleDelete(u.id)} className="border-none bg-transparent text-xs text-red">Confirm</button>
+                        <button onClick={() => setConfirmDelete(null)} className="border-none bg-transparent text-xs text-fg-muted">Cancel</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(u.id)}
+                        disabled={Boolean(deleteReason)}
+                        title={deleteReason}
+                        className="border-none bg-transparent text-xs text-fg-muted hover:text-red disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </Card>
+
+      {(notice || error) && (
+        <p aria-live="polite" role={error ? "alert" : "status"} className={`text-sm ${error ? "text-red" : "text-green"}`}>{error ?? notice}</p>
+      )}
+    </div>
   );
 }
 

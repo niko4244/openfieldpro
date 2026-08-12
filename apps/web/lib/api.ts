@@ -551,7 +551,8 @@ export const api = {
   users: () => request<UserDTO[]>("/api/users"),
   recurring: () => request<RecurringJobDTO[]>("/api/recurring"),
 
-  patchUser: (id: string, body: { role?: string }) => request<UserDTO>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  me: () => request<{ id: string; name: string; email: string; role: string }>("/api/auth/me"),
+  patchUser: (id: string, body: { role?: string; active?: boolean }) => request<UserDTO>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteUser: (id: string) => request<void>(`/api/users/${id}`, { method: "DELETE" }),
 
   notifications: () => request<NotificationDTO[]>("/api/notifications"),
