@@ -143,6 +143,66 @@ export interface ReportSummaryDTO {
   pipelineMarginCents: Money;
 }
 
+/** One AR aging bucket label, ordered youngest to oldest. */
+export type ArAgingBucketLabel = "current" | "1-30" | "31-60" | "61-90" | "90+";
+
+export interface ArAgingBucket {
+  label: ArAgingBucketLabel;
+  count: number;
+  totalCents: Money;
+}
+
+/** Outstanding invoice balances bucketed by days past due. */
+export interface ArAgingReport {
+  buckets: ArAgingBucket[];
+  totalOutstandingCents: Money;
+  invoiceCount: number;
+}
+
+/** Estimate funnel over a window: sent → approved/declined/expired. */
+export interface EstimateConversionReport {
+  sent: number;
+  approved: number;
+  declined: number;
+  expired: number;
+  /** approved / (sent + approved + declined + expired); 0 when nothing sent. */
+  conversionRate: number;
+  /** Mean days from sent to approval among approved estimates; null when none. */
+  avgDaysToApprove: number | null;
+  windowDays: number;
+}
+
+export interface RevenueTrendPoint {
+  /** "YYYY-MM" label in the report timezone. */
+  month: string;
+  revenueCents: Money;
+}
+
+/** Monthly collected revenue, zero-filled for months without payments. */
+export interface RevenueTrendReport {
+  months: RevenueTrendPoint[];
+  totalRevenueCents: Money;
+  monthsCount: number;
+}
+
+export interface TechnicianScorecard {
+  technicianId: string | null;
+  technicianName: string;
+  jobsCompleted: number;
+  revenueCents: Money;
+  /** Mean review rating over the technician's jobs; null when none. */
+  avgRating: number | null;
+  /** Fraction of scheduled jobs with an on-time appointment; null when none. */
+  onTimeRate: number | null;
+}
+
+export interface TechnicianScorecardsReport {
+  scorecards: TechnicianScorecard[];
+  windowDays: number;
+}
+
+export type ReportKind = "ar-aging" | "estimate-conversion" | "revenue-trend" | "technician-scorecards";
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Phase 5a — offline mobile sync. PR 1 wireformat shared by server + mobile.
 // Ponytail: flat payload keeps DTO light; per-table validation happens in the

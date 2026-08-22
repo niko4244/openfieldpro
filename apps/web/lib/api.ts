@@ -93,6 +93,10 @@ type JobDTO = import("@ofp/shared").JobDTO;
 type CustomerDTO = import("@ofp/shared").CustomerDTO;
 type ActivityDTO = import("@ofp/shared").ActivityDTO;
 type ReportSummaryDTO = import("@ofp/shared").ReportSummaryDTO;
+type ArAgingReport = import("@ofp/shared").ArAgingReport;
+type EstimateConversionReport = import("@ofp/shared").EstimateConversionReport;
+type RevenueTrendReport = import("@ofp/shared").RevenueTrendReport;
+type TechnicianScorecardsReport = import("@ofp/shared").TechnicianScorecardsReport;
 type UserDTO = import("@ofp/shared").UserDTO;
 type RecurringJobDTO = import("@ofp/shared").RecurringJobDTO;
 export type BusinessSettingsDTO = import("@ofp/shared").BusinessSettings;
@@ -505,6 +509,17 @@ export const api = {
     request<MessageLogDTO>(`/api/messages/${id}/retry`, { method: "POST" }),
 
   reports: () => request<ReportSummaryDTO>("/api/reports/summary"),
+  arAging: () => request<ArAgingReport>("/api/reports/ar-aging"),
+  estimateConversion: (days = 90) =>
+    request<EstimateConversionReport>(`/api/reports/estimate-conversion?days=${days}`),
+  revenueTrend: (months = 12) =>
+    request<RevenueTrendReport>(`/api/reports/revenue-trend?months=${months}`),
+  technicianScorecards: (days = 90) =>
+    request<TechnicianScorecardsReport>(`/api/reports/technician-scorecards?days=${days}`),
+  reportCsv: (report: string, params: { days?: number; months?: number } = {}) => {
+    const qs = new URLSearchParams({ report, ...(params.days ? { days: String(params.days) } : {}), ...(params.months ? { months: String(params.months) } : {}) }).toString();
+    return downloadDocument(`/api/reports/export?${qs}`);
+  },
 
   estimates: () => request<Estimate[]>("/api/estimates"),
   estimate: (id: string) => request<EstimateDetail>(`/api/estimates/${id}`),
