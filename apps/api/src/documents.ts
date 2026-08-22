@@ -134,14 +134,19 @@ function drawLineItemsTable(ctx: PdfContext, items: { description: string; quant
   ctx.y += 8;
 }
 
-function drawTotals(ctx: PdfContext, totals: { subtotalCents: number; paidCents: number; balanceCents: number }, show: { payments: boolean; balance: boolean }) {
+function drawTotals(ctx: PdfContext, totals: { subtotalCents: number; paidCents: number; balanceCents: number }, show: { payments: boolean; balance: boolean }, pricing?: import("@ofp/shared").DocumentPricing) {
   const { doc } = ctx;
   const x = 400;
   const width = 164;
   const rows: Array<[string, string, boolean]> = [
     ["Subtotal", formatDocumentCents(totals.subtotalCents), false],
   ];
-  if (show.payments) rows.push(["Paid", formatDocumentCents(totals.paidCents), false]);
+  if (pricing) {
+    if (pricing.discountCents > 0) rows.push([pricing.discountLabel || "Discount", `-${formatDocumentCents(pricing.discountCents)}`, false]);
+    if (pricing.taxCents > 0 || pricing.taxLabel) rows.push([pricing.taxLabel || "Tax", formatDocumentCents(pricing.taxCents), false]);
+    rows.push(["Total", formatDocumentCents(pricing.totalCents), true]);
+  }
+  if (show.payments && !pricing) rows.push(["Paid", formatDocumentCents(totals.paidCents), false]);
   if (show.balance) rows.push(["Balance", formatDocumentCents(totals.balanceCents), true]);
   ensureSpace(ctx, rows.length * 22 + 8);
 
@@ -204,7 +209,7 @@ export function renderFieldDocumentPdf(data: import("@ofp/shared").FieldDocument
 
     if (data.options?.length) {
       for (const option of data.options) {
-        const optionTotal = option.lineItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0);
+        const optionTotal = option.pricing?.totalCents ?? option.lineItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0);
         ensureSpace(ctx, 40);
         doc.font("Helvetica-Bold").fontSize(12).fillColor("#17201b").text(option.label, MARGIN, ctx.y, { width: 300 });
         if (option.selected) {
@@ -224,8 +229,8 @@ export function renderFieldDocumentPdf(data: import("@ofp/shared").FieldDocument
         (acc, item) => ({ ...acc, subtotalCents: acc.subtotalCents + item.quantity * item.unitPriceCents }),
         { subtotalCents: 0, paidCents: data.paymentsCents ?? 0, balanceCents: 0 },
       );
-      totals.balanceCents = Math.max(0, totals.subtotalCents - totals.paidCents);
-      drawTotals(ctx, totals, { payments: presentation.showPayments ?? true, balance: presentation.showBalance ?? true });
+      totals.balanceCents = Math.max(0, (data.pricing?.totalCents ?? totals.subtotalCents) - totals.paidCents);
+      drawTotals(ctx, totals, { payments: presentation.showPayments ?? true, balance: presentation.showBalance ?? true }, data.pricing);
     }
 
     if (data.notes) drawNotes(ctx, data.notes);

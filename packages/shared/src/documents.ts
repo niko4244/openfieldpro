@@ -25,6 +25,17 @@ export interface FieldDocumentOption {
   label: string;
   selected?: boolean;
   lineItems: FieldDocumentLineItem[];
+  pricing?: DocumentPricing;
+}
+
+/** Durable pricing breakdown captured when the document total was computed. */
+export interface DocumentPricing {
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  totalCents: number;
+  taxLabel?: string;
+  discountLabel?: string;
 }
 
 export interface FieldDocumentData {
@@ -41,6 +52,7 @@ export interface FieldDocumentData {
   lineItems: FieldDocumentLineItem[];
   options?: FieldDocumentOption[];
   paymentsCents?: DocumentMoney;
+  pricing?: DocumentPricing;
   branding: FieldDocumentBranding;
   presentation?: {
     format?: "email" | "envelope";
@@ -67,17 +79,29 @@ export function fieldDocumentTitle(kind: FieldDocumentKind): string {
 }
 
 export function fieldDocumentTotals(data: FieldDocumentData) {
-  const subtotalCents = data.lineItems.reduce(
+  const computedSubtotal = data.lineItems.reduce(
     (sum, item) => sum + item.quantity * item.unitPriceCents,
     0,
   );
+  const subtotalCents = data.pricing?.subtotalCents ?? computedSubtotal;
+  const totalCents = data.pricing?.totalCents ?? subtotalCents;
   const paidCents = data.paymentsCents ?? 0;
   return {
     subtotalCents,
-    totalCents: subtotalCents,
+    totalCents,
     paidCents,
-    balanceCents: Math.max(0, subtotalCents - paidCents),
+    balanceCents: Math.max(0, totalCents - paidCents),
   };
+}
+
+/** Adjustment rows (discount/tax) for a document with a stored pricing snapshot. */
+export function documentPricingRows(pricing: DocumentPricing | undefined): Array<{ label: string; value: number; strong?: boolean }> {
+  if (!pricing) return [];
+  const rows: Array<{ label: string; value: number; strong?: boolean }> = [];
+  if (pricing.discountCents > 0) rows.push({ label: pricing.discountLabel || "Discount", value: -pricing.discountCents });
+  if (pricing.taxCents > 0 || pricing.taxLabel) rows.push({ label: pricing.taxLabel || "Tax", value: pricing.taxCents });
+  rows.push({ label: "Total", value: pricing.totalCents, strong: true });
+  return rows;
 }
 
 export function renderFieldDocumentHtml(data: FieldDocumentData): string {
@@ -108,7 +132,7 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
     .join("");
   const optionSections = data.options?.length
     ? data.options.map((option) => {
-      const optionTotal = option.lineItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0);
+      const optionTotal = option.pricing?.totalCents ?? option.lineItems.reduce((sum, item) => sum + item.quantity * item.unitPriceCents, 0);
       const optionRows = option.lineItems.map((item) => `
         <tr><td>${escapeHtml(item.description)}</td><td class="num">${item.quantity}</td><td class="num">${showLineItemPrices ? formatCents(item.unitPriceCents) : "Hidden"}</td><td class="num">${showLineItemPrices ? formatCents(item.quantity * item.unitPriceCents) : "Hidden"}</td></tr>`).join("");
       const selectedLabel = data.status === "approved" ? "Approved" : "Selected";
@@ -154,7 +178,8 @@ export function renderFieldDocumentHtml(data: FieldDocumentData): string {
     </table>`}
     ${optionSections ? "" : `<section class="totals">
       <div class="total-row"><span>Subtotal</span><strong>${formatCents(totals.subtotalCents)}</strong></div>
-      ${showPayments ? `<div class="total-row"><span>Paid</span><strong>${formatCents(totals.paidCents)}</strong></div>` : ""}
+      ${documentPricingRows(data.pricing).map((row) => `<div class="total-row${row.strong ? " strong" : ""}"><span>${escapeHtml(row.label)}</span><strong>${formatCents(row.value)}</strong></div>`).join("\n      ")}
+      ${showPayments && !data.pricing ? `<div class="total-row"><span>Paid</span><strong>${formatCents(totals.paidCents)}</strong></div>` : ""}
       ${showBalance ? `<div class="total-row strong"><span>Balance</span><strong>${formatCents(totals.balanceCents)}</strong></div>` : ""}
     </section>`}
     ${data.notes ? `<section class="notes">${escapeHtml(data.notes)}</section>` : ""}
@@ -208,6 +233,7 @@ export interface DocumentInvoiceLike {
   dueAt?: string | Date | null;
   createdAt?: string | Date | null;
   payments?: { amount: number }[];
+  pricing?: DocumentPricingInput | null;
 }
 
 export interface DocumentEstimateLike {
@@ -221,7 +247,8 @@ export interface DocumentEstimateLike {
   status?: string;
   selectedOptionId?: string | null;
   signatureName?: string | null;
-  options?: Array<{ id: string; label: string; lineItems: DocumentLineItemLike[] }>;
+  pricing?: DocumentPricingInput | null;
+  options?: Array<{ id: string; label: string; lineItems: DocumentLineItemLike[]; pricing?: DocumentPricingInput | null }>;
 }
 
 export interface DocumentOrgLike {
@@ -309,6 +336,7 @@ export function invoiceDocumentData({
       showLineItems: visibility?.showLineItems ?? true,
     }),
     paymentsCents: paid,
+    pricing: documentPricing(invoice.pricing),
     branding: documentBranding(org),
     presentation: {
       format: settings?.invoice.format,
@@ -317,6 +345,31 @@ export function invoiceDocumentData({
       showPayments: visibility?.showPayments ?? true,
       showBalance: visibility?.showBalance ?? true,
     },
+  };
+}
+
+/** Raw stored snapshot shape accepted by documentPricing (PricingSnapshot-compatible). */
+export type DocumentPricingInput = {
+  subtotal?: number;
+  discount?: number;
+  tax?: number;
+  total?: number;
+  taxLabel?: string;
+  discountLabel?: string;
+};
+
+/** Maps a stored PricingSnapshot onto the document-facing pricing shape. */
+export function documentPricing(
+  pricing: DocumentPricingInput | null | undefined,
+): DocumentPricing | undefined {
+  if (!pricing || typeof pricing.total !== "number") return undefined;
+  return {
+    subtotalCents: pricing.subtotal ?? 0,
+    discountCents: pricing.discount ?? 0,
+    taxCents: pricing.tax ?? 0,
+    totalCents: pricing.total,
+    taxLabel: pricing.taxLabel,
+    discountLabel: pricing.discountLabel,
   };
 }
 
@@ -361,7 +414,9 @@ export function estimateDocumentData({
       label: option.label,
       selected: option.id === estimate.selectedOptionId,
       lineItems: visibleDocumentLineItems(option.lineItems, 0, { showLineItems: visibility?.showLineItems ?? true }),
+      pricing: documentPricing(option.pricing),
     })),
+    pricing: documentPricing(estimate.pricing),
     paymentsCents: 0,
     branding: documentBranding(org, "Estimate generated from OpenFieldPro"),
     presentation: {

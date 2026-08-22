@@ -13,9 +13,10 @@ import {
   lineItems,
   orgs,
 } from "@ofp/db";
-import { mergeBusinessSettings } from "@ofp/shared";
+import { mergeBusinessSettings, type PricingSnapshot } from "@ofp/shared";
 import { defaultEstimateExpiresAt, depositAmountFor, depositSummary, estimateNumber } from "../estimates.js";
 import { defaultInvoiceDueAt, invoiceNumber } from "../invoicing.js";
+import { buildPricingSnapshot } from "../pricing.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 
@@ -76,7 +77,10 @@ async function createDepositInvoiceTx(
 type EstimateLifecycle = "draft" | "sent" | "approved" | "declined" | "expired";
 
 const createBody = z.object({ jobId: z.string().uuid() });
-const optionBody = z.object({ label: z.string().trim().min(1).max(80) });
+const optionBody = z.object({
+  label: z.string().trim().min(1).max(80).optional(),
+  discountId: z.string().trim().min(1).max(80).nullable().optional(),
+}).refine((value) => value.label !== undefined || value.discountId !== undefined, "at least one field is required");
 const lineBody = z.object({
   description: z.string().trim().min(1).max(500),
   quantity: z.number().int().positive(),
@@ -179,17 +183,31 @@ async function editableOption(orgId: string, estimateId: string, optionId: strin
   return row;
 }
 
-async function recomputeOption(orgId: string, estimateId: string, optionId: string) {
+async function recomputeOption(orgId: string, estimateId: string, optionId: string, discountIdOverride?: string | null | undefined) {
+  const [org] = await db.select({ businessSettings: orgs.businessSettings }).from(orgs).where(eq(orgs.id, orgId)).limit(1);
+  const settings = mergeBusinessSettings(org?.businessSettings);
+  const [option] = await db.select({ pricing: estimateOptions.pricing }).from(estimateOptions)
+    .where(and(eq(estimateOptions.orgId, orgId), eq(estimateOptions.id, optionId)));
   const lines = await db.select().from(estimateOptionLineItems)
     .where(and(eq(estimateOptionLineItems.orgId, orgId), eq(estimateOptionLineItems.optionId, optionId)));
-  const total = estimateOptionTotal(lines);
-  await db.update(estimateOptions).set({ total, updatedAt: new Date() })
+  const current = option?.pricing;
+  const discountId = discountIdOverride !== undefined ? discountIdOverride : (current?.discountId ?? null);
+  const pricing = buildPricingSnapshot(settings, estimateOptionTotal(lines), {
+    taxProfileId: current?.taxProfileId ?? null,
+    discountId,
+  });
+  const total = pricing.total;
+  await db.update(estimateOptions).set({ total, pricing, updatedAt: new Date() })
     .where(and(eq(estimateOptions.orgId, orgId), eq(estimateOptions.id, optionId), eq(estimateOptions.estimateId, estimateId)));
-  const [first] = await db.select({ id: estimateOptions.id, total: estimateOptions.total }).from(estimateOptions)
+  // The estimate mirrors the first option so a one-option estimate reads correctly.
+  const [first] = await db.select({ id: estimateOptions.id, total: estimateOptions.total, pricing: estimateOptions.pricing }).from(estimateOptions)
     .where(and(eq(estimateOptions.orgId, orgId), eq(estimateOptions.estimateId, estimateId)))
     .orderBy(asc(estimateOptions.position)).limit(1);
-  if (first) await db.update(estimates).set({ total: first.id === optionId ? total : first.total, updatedAt: new Date() })
-    .where(and(eq(estimates.orgId, orgId), eq(estimates.id, estimateId)));
+  if (first) await db.update(estimates).set({
+    total: first.id === optionId ? total : first.total,
+    pricing: first.id === optionId ? pricing : first.pricing,
+    updatedAt: new Date(),
+  }).where(and(eq(estimates.orgId, orgId), eq(estimates.id, estimateId)));
   return total;
 }
 
@@ -224,16 +242,19 @@ export async function estimateRoutes(app: FastifyInstance) {
       const [org] = await tx.select({ businessSettings: orgs.businessSettings }).from(orgs).where(eq(orgs.id, orgId)).limit(1);
       const settings = mergeBusinessSettings(org?.businessSettings);
       const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(estimates).where(eq(estimates.orgId, orgId));
+      const subtotal = estimateOptionTotal(sourceLines.length ? sourceLines : [{ quantity: 1, unitPrice: job.total }]);
+      const pricing = buildPricingSnapshot(settings, subtotal);
       const [estimate] = await tx.insert(estimates).values({
         orgId,
         jobId: job.id,
         number: estimateNumber(count, settings.numbering.estimatePrefix, settings.numbering.estimateNextNumber),
-        total: job.total,
+        total: pricing.total,
+        pricing,
         expiresAt: defaultEstimateExpiresAt(settings.estimate.expirationDays),
         status: "draft",
       }).returning();
       const options = await tx.insert(estimateOptions).values(settings.estimate.optionLabels.map((label, position) => ({
-        orgId, estimateId: estimate.id, label, position, total: job.total,
+        orgId, estimateId: estimate.id, label, position, total: pricing.total, pricing,
       }))).returning();
       if (sourceLines.length) {
         await tx.insert(estimateOptionLineItems).values(options.flatMap((option) => sourceLines.map((line) => ({
@@ -257,8 +278,17 @@ export async function estimateRoutes(app: FastifyInstance) {
     const parsed = optionBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     if (!(await editableOption(orgId, id, optionId))) return reply.code(409).send({ error: "option is not editable" });
-    const [option] = await db.update(estimateOptions).set({ label: parsed.data.label, updatedAt: new Date() })
+    const [option] = await db.update(estimateOptions).set({
+      ...(parsed.data.label !== undefined ? { label: parsed.data.label } : {}),
+      updatedAt: new Date(),
+    })
       .where(and(eq(estimateOptions.orgId, orgId), eq(estimateOptions.estimateId, id), eq(estimateOptions.id, optionId))).returning();
+    if (parsed.data.discountId !== undefined) {
+      await recomputeOption(orgId, id, optionId, parsed.data.discountId);
+      const [updated] = await db.select().from(estimateOptions)
+        .where(and(eq(estimateOptions.orgId, orgId), eq(estimateOptions.estimateId, id), eq(estimateOptions.id, optionId)));
+      return updated;
+    }
     return option;
   });
 

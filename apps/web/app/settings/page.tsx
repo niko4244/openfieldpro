@@ -609,19 +609,116 @@ function PaymentsSection({ settings, updateSettings }: SettingsProps) {
 }
 
 function TaxesSection({ settings, updateSettings }: SettingsProps) {
+  const taxes = settings.taxes;
+  const profiles = taxes.taxProfiles ?? [];
+  const discounts = taxes.discounts ?? [];
+  const setTaxes = (next: typeof taxes) => updateSettings({ ...settings, taxes: next });
+
+  const addProfile = () => {
+    const id = `tp-${Math.random().toString(36).slice(2, 10)}`;
+    setTaxes({
+      ...taxes,
+      taxProfiles: [
+        ...profiles,
+        { id, name: "New tax profile", rateBps: 0, isDefault: profiles.length === 0 },
+      ],
+    });
+  };
+  const patchProfile = (id: string, patch: Partial<BusinessSettingsDTO["taxes"]["taxProfiles"][number]>) =>
+    setTaxes({ ...taxes, taxProfiles: profiles.map((profile) => (profile.id === id ? { ...profile, ...patch } : profile)) });
+  const removeProfile = (id: string) => {
+    const remaining = profiles.filter((profile) => profile.id !== id);
+    if (remaining.length > 0 && remaining.every((profile) => !profile.isDefault)) remaining[0] = { ...remaining[0], isDefault: true };
+    setTaxes({ ...taxes, taxProfiles: remaining });
+  };
+
+  const addDiscount = () => {
+    const id = `dc-${Math.random().toString(36).slice(2, 10)}`;
+    setTaxes({ ...taxes, discounts: [...discounts, { id, name: "New discount", type: "fixed", value: 0 }] });
+  };
+  const patchDiscount = (id: string, patch: Partial<BusinessSettingsDTO["taxes"]["discounts"][number]>) =>
+    setTaxes({ ...taxes, discounts: discounts.map((discount) => (discount.id === id ? { ...discount, ...patch } : discount)) });
+  const removeDiscount = (id: string) => setTaxes({ ...taxes, discounts: discounts.filter((discount) => discount.id !== id) });
+
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      <label className="flex items-center gap-2 text-sm text-fg-muted">
-        <input checked={settings.taxes.taxEnabled} onChange={(event) => updateSettings({ ...settings, taxes: { ...settings.taxes, taxEnabled: event.target.checked } })} type="checkbox" />
-        Enable taxes
-      </label>
-      <label className="flex items-center gap-2 text-sm text-fg-muted">
-        <input checked={settings.taxes.discountsEnabled} onChange={(event) => updateSettings({ ...settings, taxes: { ...settings.taxes, discountsEnabled: event.target.checked } })} type="checkbox" />
-        Enable discounts
-      </label>
-      <TextField label="Tax label" value={settings.taxes.taxLabel} onChange={(value) => updateSettings({ ...settings, taxes: { ...settings.taxes, taxLabel: value } })} />
-      <NumberField label="Default tax basis points" value={settings.taxes.defaultTaxRateBps} onChange={(value) => updateSettings({ ...settings, taxes: { ...settings.taxes, defaultTaxRateBps: value } })} />
-      <TextField label="Default discount label" value={settings.taxes.defaultDiscountLabel} onChange={(value) => updateSettings({ ...settings, taxes: { ...settings.taxes, defaultDiscountLabel: value } })} />
+    <div className="grid grid-cols-1 gap-6">
+      <div className="flex flex-wrap items-center gap-4">
+        <label className="flex items-center gap-2 text-sm text-fg-muted">
+          <input checked={taxes.taxEnabled} onChange={(event) => setTaxes({ ...taxes, taxEnabled: event.target.checked })} type="checkbox" />
+          Enable taxes
+        </label>
+        <label className="flex items-center gap-2 text-sm text-fg-muted">
+          <input checked={taxes.discountsEnabled} onChange={(event) => setTaxes({ ...taxes, discountsEnabled: event.target.checked })} type="checkbox" />
+          Enable discounts
+        </label>
+      </div>
+
+      <section className="rounded-xl border border-border bg-surface-100 p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-fg">Tax profiles</h3>
+            <p className="text-xs text-fg-muted">Named rates applied to estimates and invoices. The default profile is used when none is selected.</p>
+          </div>
+          <Button type="button" size="sm" variant="secondary" onClick={addProfile}>Add profile</Button>
+        </div>
+        {profiles.length === 0 ? (
+          <p className="text-xs text-fg-muted">No profiles yet — add one to charge tax. The legacy single-rate field below still applies when no profile exists.</p>
+        ) : (
+          <div className="grid gap-2">
+            {profiles.map((profile) => (
+              <div key={profile.id} className="grid grid-cols-[auto_1fr_auto_auto] items-end gap-3 rounded-lg bg-surface-200 p-3">
+                <label className="flex items-center gap-1.5 pb-2 text-xs text-fg-muted" title="Use as the default profile">
+                  <input
+                    type="radio"
+                    name="default-tax-profile"
+                    checked={profile.isDefault}
+                    onChange={() => setTaxes({ ...taxes, taxProfiles: profiles.map((p) => ({ ...p, isDefault: p.id === profile.id })) })}
+                  />
+                  Default
+                </label>
+                <TextField label="Name" value={profile.name} onChange={(value) => patchProfile(profile.id, { name: value })} />
+                <NumberField label="Rate %" value={Math.round((profile.rateBps / 100) * 100) / 100} onChange={(value) => patchProfile(profile.id, { rateBps: Math.max(0, Math.min(10_000, Math.round(value * 100))) })} />
+                <Button type="button" size="sm" variant="danger" onClick={() => removeProfile(profile.id)}>Remove</Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <TextField label="Fallback tax label" value={taxes.taxLabel} onChange={(value) => setTaxes({ ...taxes, taxLabel: value })} />
+          <NumberField label="Fallback rate (basis points)" value={taxes.defaultTaxRateBps} onChange={(value) => setTaxes({ ...taxes, defaultTaxRateBps: Math.max(0, Math.min(10_000, Math.round(value))) })} />
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-surface-100 p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-fg">Saved discounts</h3>
+            <p className="text-xs text-fg-muted">Reusable fixed or percentage discounts selectable on estimates and invoices.</p>
+          </div>
+          <Button type="button" size="sm" variant="secondary" onClick={addDiscount}>Add discount</Button>
+        </div>
+        {discounts.length === 0 ? (
+          <p className="text-xs text-fg-muted">No saved discounts yet — add one to offer it from the estimate and invoice editors.</p>
+        ) : (
+          <div className="grid gap-2">
+            {discounts.map((discount) => (
+              <div key={discount.id} className="grid grid-cols-[1fr_auto_auto_auto] items-end gap-3 rounded-lg bg-surface-200 p-3">
+                <TextField label="Name" value={discount.name} onChange={(value) => patchDiscount(discount.id, { name: value })} />
+                <SelectField label="Type" value={discount.type} onChange={(value) => patchDiscount(discount.id, { type: value as "fixed" | "percent", value: 0 })}>
+                  <option value="fixed">Fixed amount</option>
+                  <option value="percent">Percent off</option>
+                </SelectField>
+                {discount.type === "fixed" ? (
+                  <NumberField label="Amount $" value={Math.round(discount.value) / 100} onChange={(value) => patchDiscount(discount.id, { value: Math.max(0, Math.round(value * 100)) })} />
+                ) : (
+                  <NumberField label="Percent %" value={Math.round(discount.value) / 100} onChange={(value) => patchDiscount(discount.id, { value: Math.max(0, Math.min(10_000, Math.round(value * 100))) })} />
+                )}
+                <Button type="button" size="sm" variant="danger" onClick={() => removeDiscount(discount.id)}>Remove</Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

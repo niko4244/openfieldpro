@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, type BusinessSettingsDTO } from "@/lib/api";
 import { formatMoney } from "@ofp/shared";
 import type { JobDTO, CustomerDTO } from "@ofp/shared";
 import { Card } from "@/components/ui/card";
@@ -57,8 +57,11 @@ export default function InvoicesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [createJobId, setCreateJobId] = useState("");
   const [createDueAt, setCreateDueAt] = useState("");
+  const [createDiscountId, setCreateDiscountId] = useState("");
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [discounts, setDiscounts] = useState<BusinessSettingsDTO["taxes"]["discounts"]>([]);
+  const [discountsEnabled, setDiscountsEnabled] = useState(true);
 
   // Jobs that don't already have an invoice
   const invoicedJobIds = useMemo(() => new Set(invoices.map((i) => i.jobId)), [invoices]);
@@ -75,11 +78,13 @@ export default function InvoicesPage() {
       const inv = await api.createInvoice({
         jobId: createJobId,
         ...(createDueAt ? { dueAt: new Date(createDueAt).toISOString() } : {}),
+        ...(createDiscountId ? { discountId: createDiscountId } : {}),
       });
       setInvoices((prev) => [inv, ...prev]);
       setShowCreate(false);
       setCreateJobId("");
       setCreateDueAt("");
+      setCreateDiscountId("");
     } catch (e) {
       setCreateError(String(e));
     } finally {
@@ -90,6 +95,7 @@ export default function InvoicesPage() {
   const openCreate = () => {
     setCreateJobId("");
     setCreateDueAt("");
+    setCreateDiscountId("");
     setCreateError(null);
     setShowCreate(true);
   };
@@ -103,10 +109,13 @@ export default function InvoicesPage() {
           api.jobs().catch(() => [] as JobDTO[]),
           api.customers().catch(() => [] as CustomerDTO[]),
         ]);
+        const orgSettings = await api.org().catch(() => null);
         if (!cancelled) {
           setInvoices(iv);
           setJobs(jb);
           setCustomers(cu);
+          setDiscounts(orgSettings?.businessSettings?.taxes?.discounts ?? []);
+          setDiscountsEnabled(orgSettings?.businessSettings?.taxes?.discountsEnabled ?? true);
         }
       } catch (e) {
         if (!cancelled) setError(String(e));
@@ -313,6 +322,26 @@ export default function InvoicesPage() {
                       <p className="text-xs text-fg-dim mt-1">All jobs already have invoices.</p>
                     )}
                   </div>
+
+                  {discountsEnabled && discounts.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-semibold text-fg-muted mb-1.5">
+                        Discount
+                      </label>
+                      <select
+                        value={createDiscountId}
+                        onChange={(e) => setCreateDiscountId(e.target.value)}
+                        className="h-10 w-full rounded-lg border border-border bg-surface-200 px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 cursor-pointer"
+                      >
+                        <option value="">No discount</option>
+                        {discounts.map((discount) => (
+                          <option key={discount.id} value={discount.id}>
+                            {discount.name} · {discount.type === "fixed" ? formatMoney(discount.value) : `${discount.value / 100}%`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-semibold text-fg-muted mb-1.5">

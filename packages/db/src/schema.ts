@@ -30,7 +30,7 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   toDriver: (value: Buffer) => value,
   fromDriver: (value: Buffer) => value,
 });
-import type { PortalLinkScope } from "@ofp/shared";
+import type { PortalLinkScope, PricingSnapshot } from "@ofp/shared";
 
 export const jobStatus = pgEnum("job_status", [
   "lead",
@@ -178,9 +178,9 @@ export const estimates = pgTable("estimates", {
   accepted: boolean("accepted").default(false).notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   acceptedAt: timestamp("accepted_at", { withTimezone: true }),
-  acceptedByName: text("accepted_by_name"),
-  status: estimateStatus("status").default("draft").notNull(),
-  selectedOptionId: uuid("selected_option_id"),
+  acceptedByName: text("accepted_by_name"),    status: estimateStatus("status").default("draft").notNull(),
+    pricing: jsonb("pricing").$type<PricingSnapshot | null>(),
+    selectedOptionId: uuid("selected_option_id"),
   signatureName: text("signature_name"),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   declinedAt: timestamp("declined_at", { withTimezone: true }),
@@ -203,6 +203,7 @@ export const estimateOptions = pgTable(
     label: text("label").notNull(),
     position: integer("position").default(0).notNull(),
     total: integer("total").default(0).notNull(),
+    pricing: jsonb("pricing").$type<PricingSnapshot | null>(),
     createdAt: ts(),
     updatedAt: updatedAt(),
   },
@@ -241,6 +242,7 @@ export const invoices = pgTable(
     number: text("number").notNull(),
     status: invoiceStatus("status").default("draft").notNull(),
     total: integer("total").default(0).notNull(),
+    pricing: jsonb("pricing").$type<PricingSnapshot | null>(),
     dueAt: timestamp("due_at", { withTimezone: true }),
     version: version(),
     updatedAt: updatedAt(),

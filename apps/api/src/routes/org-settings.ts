@@ -17,6 +17,20 @@ const documentFormat = z.enum(["email", "envelope"]);
 const dueTerm = z.enum(["on_receipt", "work_start", "work_completion", "net_days"]);
 const approvalMode = z.enum(["single_option", "multiple_options"]);
 const depositMode = z.enum(["none", "fixed", "percent"]);
+const discountType = z.enum(["fixed", "percent"]);
+const settingId = z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
+const taxProfile = z.object({
+  id: settingId,
+  name: z.string().trim().min(1).max(80),
+  rateBps: z.number().int().min(0).max(10_000),
+  isDefault: z.boolean(),
+});
+const savedDiscount = z.object({
+  id: settingId,
+  name: z.string().trim().min(1).max(80),
+  type: discountType,
+  value: z.number().int().min(0),
+});
 
 export const businessSettingsSchema = z.object({
   businessHours: z.object({
@@ -81,9 +95,23 @@ export const businessSettingsSchema = z.object({
   taxes: z.object({
     taxEnabled: z.boolean(),
     taxLabel: z.string().trim().min(1).max(80),
-    defaultTaxRateBps: z.number().int().min(0).max(100_000),
+    defaultTaxRateBps: z.number().int().min(0).max(10_000),
+    taxProfiles: z.array(taxProfile).max(50).default([]).refine(
+      (profiles) => new Set(profiles.map((profile) => profile.id)).size === profiles.length,
+      "tax profile ids must be unique",
+    ).refine(
+      (profiles) => profiles.filter((profile) => profile.isDefault).length <= 1,
+      "at most one tax profile can be the default",
+    ),
     discountsEnabled: z.boolean(),
     defaultDiscountLabel: z.string().trim().min(1).max(80),
+    discounts: z.array(savedDiscount).max(100).default([]).refine(
+      (discounts) => new Set(discounts.map((discount) => discount.id)).size === discounts.length,
+      "discount ids must be unique",
+    ).refine(
+      (discounts) => discounts.every((discount) => discount.type !== "percent" || discount.value <= 10_000),
+      "percent discounts cannot exceed 100%",
+    ),
   }).default(DEFAULT_BUSINESS_SETTINGS.taxes),
   messages: z.object({
     invoiceEmailSubject: z.string().trim().min(1).max(160),

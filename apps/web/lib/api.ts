@@ -140,6 +140,7 @@ interface Invoice {
   number: string;
   status: import("@ofp/shared").InvoiceStatus;
   total: number;
+  pricing?: import("@ofp/shared").PricingSnapshot | null;
   dueAt?: string | null;
   createdAt?: string;
 }
@@ -160,6 +161,7 @@ export interface EstimateOption {
   label: string;
   position: number;
   total: number;
+  pricing?: import("@ofp/shared").PricingSnapshot | null;
   lineItems: EstimateOptionLineItem[];
 }
 
@@ -169,6 +171,7 @@ export interface Estimate {
   jobId: string;
   number: string;
   total: number;
+  pricing?: import("@ofp/shared").PricingSnapshot | null;
   accepted: boolean;
   expiresAt?: string | null;
   acceptedAt?: string | null;
@@ -455,7 +458,7 @@ export const api = {
 
   invoices: () => request<Invoice[]>("/api/invoices"),
   invoice: (id: string) => request<InvoiceDetail>(`/api/invoices/${id}`),
-  createInvoice: (body: { jobId: string; dueAt?: string }) =>
+  createInvoice: (body: { jobId: string; dueAt?: string; discountId?: string }) =>
     request<Invoice>("/api/invoices", { method: "POST", body: JSON.stringify(body) }),
   updateInvoiceStatus: (id: string, status: "sent" | "void") =>
     request<{ ok: boolean; status: string }>(`/api/invoices/${id}`, {
@@ -509,6 +512,8 @@ export const api = {
     request<EstimateDetail>("/api/estimates", { method: "POST", body: JSON.stringify(body) }),
   renameEstimateOption: (estimateId: string, optionId: string, label: string) =>
     request<EstimateOption>(`/api/estimates/${estimateId}/options/${optionId}`, { method: "PATCH", body: JSON.stringify({ label }) }),
+  setEstimateOptionDiscount: (estimateId: string, optionId: string, discountId: string | null) =>
+    request<EstimateOption>(`/api/estimates/${estimateId}/options/${optionId}`, { method: "PATCH", body: JSON.stringify({ discountId }) }),
   addEstimateOptionLine: (estimateId: string, optionId: string, body: { description: string; quantity: number; unitPrice: number; unitCost?: number }) =>
     request<{ lineItem: EstimateOptionLineItem; total: number }>(`/api/estimates/${estimateId}/options/${optionId}/lines`, { method: "POST", body: JSON.stringify(body) }),
   patchEstimateOptionLine: (estimateId: string, optionId: string, lineId: string, body: Partial<{ description: string; quantity: number; unitPrice: number; unitCost: number }>) =>

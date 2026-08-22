@@ -655,6 +655,24 @@ export default function InvoiceDetailPage() {
                       <InvoiceStatusBadge status={invoice.status} />
                     </div>
                     <div className="flex justify-between items-center">
+                      <span className="text-xs text-fg-muted">Subtotal</span>
+                      <span className="text-sm text-fg tabular-nums">
+                        {formatMoney(invoice.pricing?.subtotal ?? invoice.total)}
+                      </span>
+                    </div>
+                    {invoice.pricing && invoice.pricing.discount > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-fg-muted">{invoice.pricing.discountLabel || "Discount"}</span>
+                        <span className="text-sm text-fg tabular-nums">-{formatMoney(invoice.pricing.discount)}</span>
+                      </div>
+                    )}
+                    {invoice.pricing && invoice.pricing.tax > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-fg-muted">{invoice.pricing.taxLabel || "Tax"}</span>
+                        <span className="text-sm text-fg tabular-nums">{formatMoney(invoice.pricing.tax)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center">
                       <span className="text-xs text-fg-muted">Total</span>
                       <span className="text-sm font-bold text-fg tabular-nums">
                         {formatMoney(invoice.total)}

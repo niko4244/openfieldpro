@@ -127,6 +127,13 @@
       "when": 1785007000000,
       "tag": "0017_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787419000000,
+      "tag": "0018_document_pricing",
+      "breakpoints": true
     }
   ]
 }

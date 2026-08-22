@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { formatMoney } from "@ofp/shared";
-import { api, type EstimateOption } from "@/lib/api";
+import { api, type BusinessSettingsDTO, type EstimateOption } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,8 @@ export default function EstimateDetailPage() {
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [price, setPrice] = useState("");
+  const [discounts, setDiscounts] = useState<BusinessSettingsDTO["taxes"]["discounts"]>([]);
+  const [discountsEnabled, setDiscountsEnabled] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,7 +43,13 @@ export default function EstimateDetailPage() {
     }
   }, [id]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    void api.org().then((org) => {
+      setDiscounts(org?.businessSettings?.taxes?.discounts ?? []);
+      setDiscountsEnabled(org?.businessSettings?.taxes?.discountsEnabled ?? true);
+    }).catch(() => {});
+  }, [load]);
 
   const active = estimate?.options.find((option) => option.id === activeId) ?? estimate?.options[0];
   const editable = estimate?.status === "draft" || estimate?.status === "sent";
@@ -123,7 +131,7 @@ export default function EstimateDetailPage() {
           </button>
         ))}
       </div>
-      {active ? <OptionEditor estimateId={id} option={active} editable={editable} busy={busy} onChange={refreshAfter} /> : <Card><p className="py-10 text-center text-sm text-fg-muted">This estimate has no options.</p></Card>}
+      {active ? <OptionEditor estimateId={id} option={active} editable={editable} busy={busy} onChange={refreshAfter} discounts={discounts} discountsEnabled={discountsEnabled} /> : <Card><p className="py-10 text-center text-sm text-fg-muted">This estimate has no options.</p></Card>}
       {active && editable ? (
         <Card className="mt-4">
           <form className="grid gap-3 sm:grid-cols-[1fr_90px_130px_auto] sm:items-end" onSubmit={(event) => {
@@ -150,7 +158,16 @@ export default function EstimateDetailPage() {
   );
 }
 
-function OptionEditor({ estimateId, option, editable, busy, onChange }: { estimateId: string; option: EstimateOption; editable: boolean; busy: boolean; onChange: (action: () => Promise<unknown>) => Promise<void> }) {
+function OptionEditor({ estimateId, option, editable, busy, onChange, discounts, discountsEnabled }: {
+  estimateId: string;
+  option: EstimateOption;
+  editable: boolean;
+  busy: boolean;
+  onChange: (action: () => Promise<unknown>) => Promise<void>;
+  discounts: BusinessSettingsDTO["taxes"]["discounts"];
+  discountsEnabled: boolean;
+}) {
+  const pricing = option.pricing;
   return <Card>
     <div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold text-fg">{option.label}</h2><strong>{formatMoney(option.total)}</strong></div>
     {option.lineItems.length === 0 ? <p className="py-8 text-center text-sm text-fg-muted">No services or materials in this option.</p> : <div className="grid gap-2">{option.lineItems.map((line) => (
@@ -169,5 +186,34 @@ function OptionEditor({ estimateId, option, editable, busy, onChange }: { estima
         </div> : null}
       </div>
     ))}</div>}
+    {(pricing || (editable && discountsEnabled && discounts.length > 0)) && (
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {editable && discountsEnabled && discounts.length > 0 ? (
+          <label className="grid gap-1.5 text-sm text-fg-muted">
+            Discount
+            <select
+              value={pricing?.discountId ?? ""}
+              onChange={(event) => onChange(() => api.setEstimateOptionDiscount(estimateId, option.id, event.target.value || null))}
+              className="h-10 rounded-lg border border-border bg-surface-200 px-3 text-sm text-fg"
+            >
+              <option value="">No discount</option>
+              {discounts.map((discount) => (
+                <option key={discount.id} value={discount.id}>
+                  {discount.name} · {discount.type === "fixed" ? formatMoney(discount.value) : `${discount.value / 100}%`}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {pricing ? (
+          <div className="space-y-1 rounded-lg bg-surface-200 p-3 text-xs text-fg-muted sm:col-start-2">
+            <div className="flex justify-between"><span>Subtotal</span><span className="tabular-nums">{formatMoney(pricing.subtotal)}</span></div>
+            {pricing.discount > 0 && <div className="flex justify-between"><span>{pricing.discountLabel || "Discount"}</span><span className="tabular-nums">-{formatMoney(pricing.discount)}</span></div>}
+            {pricing.tax > 0 && <div className="flex justify-between"><span>{pricing.taxLabel || "Tax"}</span><span className="tabular-nums">{formatMoney(pricing.tax)}</span></div>}
+            <div className="flex justify-between font-semibold text-fg"><span>Total</span><span className="tabular-nums">{formatMoney(pricing.total)}</span></div>
+          </div>
+        ) : null}
+      </div>
+    )}
   </Card>;
 }

@@ -60,12 +60,55 @@ export interface PaymentSettings {
   tipsEnabled: boolean;
 }
 
+export interface TaxProfile {
+  id: string;
+  name: string;
+  /** Tax rate in basis points (0–10000, i.e. 0%–100%). */
+  rateBps: number;
+  isDefault: boolean;
+}
+
+export type DiscountType = "fixed" | "percent";
+
+export interface SavedDiscount {
+  id: string;
+  name: string;
+  type: DiscountType;
+  /** Fixed discounts: cents. Percent discounts: basis points (0–10000). */
+  value: number;
+}
+
+/**
+ * Immutable pricing breakdown captured when a document total is computed.
+ * Stored on invoices, estimates, and estimate options so later settings
+ * changes never rewrite issued numbers.
+ */
+export interface PricingSnapshot {
+  /** Sum of line totals before adjustments (cents). */
+  subtotal: number;
+  /** Discount amount applied (cents). */
+  discount: number;
+  /** Tax amount applied to the discounted subtotal (cents). */
+  tax: number;
+  /** subtotal - discount + tax (cents). */
+  total: number;
+  /** Rate that produced the tax (basis points). */
+  taxRateBps: number;
+  taxProfileId: string | null;
+  taxLabel: string;
+  discountId: string | null;
+  discountLabel: string;
+  discountType: DiscountType | null;
+}
+
 export interface TaxSettings {
   taxEnabled: boolean;
   taxLabel: string;
   defaultTaxRateBps: number;
+  taxProfiles: TaxProfile[];
   discountsEnabled: boolean;
   defaultDiscountLabel: string;
+  discounts: SavedDiscount[];
 }
 
 export interface MessageSettings {
@@ -160,8 +203,10 @@ export const DEFAULT_BUSINESS_SETTINGS: BusinessSettings = {
     taxEnabled: false,
     taxLabel: "Sales tax",
     defaultTaxRateBps: 0,
+    taxProfiles: [],
     discountsEnabled: true,
     defaultDiscountLabel: "Discount",
+    discounts: [],
   },
   messages: {
     invoiceEmailSubject: "Invoice {{invoiceNumber}} from {{companyName}}",
@@ -224,6 +269,8 @@ export function mergeBusinessSettings(input: unknown): BusinessSettings {
     taxes: {
       ...DEFAULT_BUSINESS_SETTINGS.taxes,
       ...(isRecord(value.taxes) ? value.taxes : {}),
+      taxProfiles: normalizeTaxProfiles((isRecord(value.taxes) ? value.taxes : {}).taxProfiles),
+      discounts: normalizeDiscounts((isRecord(value.taxes) ? value.taxes : {}).discounts),
     },
     messages: {
       ...DEFAULT_BUSINESS_SETTINGS.messages,
@@ -251,4 +298,32 @@ function normalizeOptionLabels(value: unknown): [string, string, string] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeTaxProfiles(input: unknown): TaxProfile[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  return input.filter((profile): profile is TaxProfile => {
+    if (!isRecord(profile)) return false;
+    if (typeof profile.id !== "string" || !profile.id.trim() || seen.has(profile.id)) return false;
+    if (typeof profile.name !== "string" || !profile.name.trim()) return false;
+    if (typeof profile.rateBps !== "number" || !Number.isInteger(profile.rateBps) || profile.rateBps < 0 || profile.rateBps > 10_000) return false;
+    seen.add(profile.id);
+    return true;
+  });
+}
+
+function normalizeDiscounts(input: unknown): SavedDiscount[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  return input.filter((discount): discount is SavedDiscount => {
+    if (!isRecord(discount)) return false;
+    if (typeof discount.id !== "string" || !discount.id.trim() || seen.has(discount.id)) return false;
+    if (typeof discount.name !== "string" || !discount.name.trim()) return false;
+    if (discount.type !== "fixed" && discount.type !== "percent") return false;
+    if (typeof discount.value !== "number" || !Number.isInteger(discount.value) || discount.value < 0) return false;
+    if (discount.type === "percent" && discount.value > 10_000) return false;
+    seen.add(discount.id);
+    return true;
+  });
 }

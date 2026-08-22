@@ -13,13 +13,14 @@ import {
   updateInvoiceStatus,
 } from "../invoicing.js";
 import { validateInvoiceCreation } from "../invoice-creation.js";
+import { buildPricingSnapshot } from "../pricing.js";
 import { createFixedWindowRateLimit, requestIpKey } from "../rate-limit.js";
 import { resolvePublicWebUrl } from "../runtime-security.js";
 import { resolveOrgId } from "./org.js";
 import { safeEmitActivity } from "../activities.js";
 import { safeEmitEvent } from "../plugins/bus.js";
 
-const createBody = z.object({ jobId: z.string().uuid(), dueAt: z.string().datetime().optional() });
+const createBody = z.object({ jobId: z.string().uuid(), dueAt: z.string().datetime().optional(), discountId: z.string().trim().min(1).max(80).optional() });
 const statusBody = z.object({ status: z.enum(["sent", "void"]) });
 const lineBody = z.object({
   description: z.string().trim().min(1).max(500),
@@ -57,12 +58,25 @@ async function recomputeInvoiceTotalTx(tx: Pick<typeof db, "select" | "update">,
     .select()
     .from(invoiceLineItems)
     .where(and(eq(invoiceLineItems.orgId, orgId), eq(invoiceLineItems.invoiceId, invoiceId)));
-  const total = invoiceLineTotal(lines);
+  const [invoiceRow] = await tx
+    .select({ pricing: invoices.pricing })
+    .from(invoices)
+    .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId)));
+  const [org] = await tx
+    .select({ businessSettings: orgs.businessSettings })
+    .from(orgs)
+    .where(eq(orgs.id, orgId))
+    .limit(1);
+  const settings = mergeBusinessSettings(org?.businessSettings);
+  const pricing = buildPricingSnapshot(settings, invoiceLineTotal(lines), {
+    taxProfileId: invoiceRow?.pricing?.taxProfileId ?? null,
+    discountId: invoiceRow?.pricing?.discountId ?? null,
+  });
   await tx
     .update(invoices)
-    .set({ total, updatedAt: new Date() })
+    .set({ total: pricing.total, pricing, updatedAt: new Date() })
     .where(and(eq(invoices.orgId, orgId), eq(invoices.id, invoiceId)));
-  return total;
+  return pricing.total;
 }
 
 export async function invoiceRoutes(app: FastifyInstance) {
@@ -112,11 +126,14 @@ export async function invoiceRoutes(app: FastifyInstance) {
         .select()
         .from(lineItems)
         .where(and(eq(lineItems.orgId, orgId), eq(lineItems.jobId, job.id)));
-      const total = invoiceSnapshotTotal(sourceLines, job.total);
+      const subtotal = invoiceSnapshotTotal(sourceLines, job.total);
 
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`invoice-number:${orgId}`}))`);
       const [org] = await tx.select({ businessSettings: orgs.businessSettings }).from(orgs).where(eq(orgs.id, orgId)).limit(1);
       const settings = mergeBusinessSettings(org?.businessSettings);
+      // Pricing snapshot: saved discount by id + the org's default tax profile.
+      const pricing = buildPricingSnapshot(settings, subtotal, { discountId: parsed.data.discountId });
+      const total = pricing.total;
       const [{ count }] = await tx
         .select({ count: sql<number>`count(*)::int` })
         .from(invoices)
@@ -129,6 +146,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
           number: invoiceNumber(count, settings.numbering.invoicePrefix, settings.numbering.invoiceNextNumber),
           status: "draft",
           total,
+          pricing,
           dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : defaultInvoiceDueAt(settings.invoice.netDays),
         })
         .returning();
