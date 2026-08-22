@@ -21,7 +21,7 @@
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.1.0",
     "file-type": "^22.0.1",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^9.0.5",
     "pdfkit": "^0.15.0",
     "zod": "^3.23.8"
   },
@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/nodemailer": "^6.4.17",
+    "@types/nodemailer": "^8.0.1",
     "@types/pdfkit": "^0.13.9",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"

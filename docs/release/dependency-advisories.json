@@ -1,0 +1,20 @@
+[
+  {
+    "ghsa": "GHSA-w3rx-r6r6-pgpr",
+    "package": "image-size",
+    "version": "1.2.1",
+    "rationale": "image-size's ICNS parser can loop indefinitely on a crafted buffer (CVE-2025-71330). The GitHub advisory lists no patched version (\"Patched versions: None\"); the upstream fix (image-size/image-size#439) was unreleased as of 2026-08-22. image-size@1.2.1 is a transitive dependency of metro@0.81.5 (React Native bundler) and is present only in the mobile toolchain. It is not in the API or web production dependency tree.",
+    "compensatingControl": "The vulnerable parser is only reachable through Metro's explicit image-dimension probing of developer-local source assets during mobile development and builds. The API and web production runtimes never load or execute image-size, and no product code parses untrusted image buffers with it. A remote attacker has no input path to this code in any deployed service.",
+    "owner": "Nikolas Marconcini",
+    "expiresAt": "2027-02-22"
+  },
+  {
+    "ghsa": "GHSA-5p2g-fcmc-qvqq",
+    "package": "image-size",
+    "version": "1.2.1",
+    "rationale": "image-size's JXL and HEIF parsers can loop indefinitely on crafted buffers (CVE-2025-71329). The GitHub advisory lists no patched version (\"Patched versions: None\"); the upstream fix (image-size/image-size#439) was unreleased as of 2026-08-22. image-size@1.2.1 is a transitive dependency of metro@0.81.5 (React Native bundler) and is present only in the mobile toolchain. It is not in the API or web production dependency tree.",
+    "compensatingControl": "The vulnerable parsers are only reachable through Metro's explicit image-dimension probing of developer-local source assets during mobile development and builds. The API and web production runtimes never load or execute image-size, and no product code parses untrusted image buffers with it. A remote attacker has no input path to this code in any deployed service.",
+    "owner": "Nikolas Marconcini",
+    "expiresAt": "2027-02-22"
+  }
+]
