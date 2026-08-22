@@ -1,10 +1,42 @@
 # OpenFieldPro product parity gap audit
 
-Status: release blocker.
+Status: release candidate (v0.1.0-rc.1, 2026-08-22) — P0 parity repair substantially delivered; final release still gated on the remaining items below.
 
-OpenFieldPro is not ready for public sponsor outreach or broad public release while the business-configuration, invoice, estimate, payment, and customer-facing workflows remain at foundation level.
+## Assessment record for v0.1.0-rc.1
 
-This is not a branding problem. It is a product-depth problem.
+Delivered on `ofp-monorepo` since this audit was written (see `CHANGELOG.md`):
+
+- Business configuration center (grouped settings, work days/hours, service areas, team, messages, portal, payments) — closes the Settings gap.
+- Estimate options, line items per option, approve/decline/sign lifecycle, approved-scope conversion, deposits — closes the estimate-options and estimate depth gaps.
+- Payment rules (accepted methods, partial-payment configuration, no overpayment), portal links (balance/checkout/receipts/service plans), send workflow, durable PDF documents — closes the payments, portal, and document gaps.
+- Roles & permissions editor with owner safeguards — closes the admin/trust gap's permission half.
+- Validation profile proven with Marco's Appliance Repair Company across the Wave 1–3 slices (multi-option estimate, signed approval, sent invoice, partial payment, paid invoice, portal links).
+
+Explicitly accepted for this candidate (remaining gaps, not release-blocking for an RC):
+
+- Tax profiles and saved fixed/percent discounts — planned as the next slice (Wave 3 #2).
+- AR aging, estimate conversion, revenue trend, technician scorecards, CSV export (Wave 3 #4) and the financial/permission audit log (Wave 3 #5) — planned.
+- Arrival windows, business-hours conflict rules, reassignment audit, route/map depth (P1 dispatch) — planned.
+- Mobile field execution depth (photos, signatures, offline completion) and native-device QA — planned.
+- A public deployment and independent penetration test are required before the final release, not for this candidate.
+
+This audit remains the source of truth for what must land before a non-candidate release.
+
+## Benchmark
+
+The comparison target is the operational depth expected from mature incumbent field-service software, especially:
+
+- company and business settings;
+- invoice customer-view settings;
+- estimate customer-view settings;
+- estimate options and templates;
+- payments, deposits, taxes, discounts, reminders, and messaging;
+- customer portal approval/payment flows;
+- mobile technician completion;
+- dispatch/schedule depth;
+- reporting and accounting handoff.
+
+OpenFieldPro should not copy a closed SaaS model, but it must meet the operational expectations that independent service businesses already understand.
 
 ## Benchmark
 
@@ -41,9 +73,9 @@ OpenFieldPro should not copy a closed SaaS model, but it must meet the operation
 
 ## Release decision
 
-OpenFieldPro is **no-go for public sponsor outreach** until the P0 parity repair below is implemented and validated with Marco's Appliance Repair Company as the owner-test profile.
-
-The sponsor slot may remain in local testing, but no external company should be contacted while the app lacks the configuration depth needed to make the sponsor conversation credible.
+- For **v0.1.0-rc.1 (2026-08-22)**: accepted as a release candidate. The P0 repairs below are substantially implemented and validated with Marco's Appliance Repair Company as the owner-test profile; the remaining P0 item (tax/discount configuration) and the P1 items are tracked above and do not block the candidate.
+- For **final public release**: still **no-go** until the remaining items above land, a clean deployment is exercised end to end, and an independent security review is completed.
+- **Public sponsor outreach** remains paused until the final release gate, per the sponsorship playbook.
 
 ## P0 parity repair
 
