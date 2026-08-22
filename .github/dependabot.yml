@@ -1,0 +1,25 @@
+# Dependabot version updates
+#
+# GitHub Actions are pinned to commit SHAs, enforced by the release-safety
+# gate. Dependabot uses the `# vN` comments on each pin to keep those SHAs
+# current: when the tagged commit moves upstream, Dependabot opens a PR with
+# the new SHA and the release CI validates it.
+#
+# npm packages are intentionally not listed: the deterministic-lockfile gate
+# requires the lockfile and pnpm-lock.expected.sha256 to be updated together,
+# which Dependabot cannot do, so dependency bumps remain a manual, gated
+# workflow. Security updates (vulnerability fixes) still arrive automatically
+# through the repo's security-update settings.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
