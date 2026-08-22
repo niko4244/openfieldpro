@@ -1,5 +1,24 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+
+// Windows file systems (Defender/indexer) can briefly hold a just-written temp
+// file, making an immediate unlink fail with EBUSY/EPERM. Retry cleanup so the
+// test does not flake on transient locks.
+const sleepShared = new Int32Array(new SharedArrayBuffer(4));
+function sleepSync(ms: number) {
+  Atomics.wait(sleepShared, 0, 0, ms);
+}
+function removeDirRetry(dir: string) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt >= 4 || !(error instanceof Error) || !/EBUSY|EPERM|ENOTEMPTY/.test(error.message)) throw error;
+      sleepSync(100 * 2 ** attempt);
+    }
+  }
+}
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -89,7 +108,7 @@ test("operations client rejects mounted secrets shorter than 32 bytes", () => {
     writeFileSync(secretFile, "too-short\n", { mode: 0o600 });
     assert.throws(() => readOperationsSecret(secretFile), /at least 32 bytes/);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeDirRetry(dir);
   }
 });
 
@@ -127,7 +146,7 @@ test("backup uses only its fixed controller path and mounted secret", async () =
     assert.deepEqual(JSON.parse(String(request?.init?.body)), { label: "nightly" });
     assert.equal(operation.kind, "backup");
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeDirRetry(dir);
   }
 });
 
@@ -171,7 +190,7 @@ test("operations client never forwards a mutation across a redirect", async () =
   } finally {
     await close(redirect);
     await close(target);
-    rmSync(dir, { recursive: true, force: true });
+    removeDirRetry(dir);
   }
 });
 
@@ -202,7 +221,7 @@ test("operations client cancels an oversized chunked response before reading it 
     assert.equal(cancelled, true);
     assert.ok(pulls < 10, `expected early cancellation, received ${pulls} chunks`);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeDirRetry(dir);
   }
 });
 
@@ -236,7 +255,7 @@ test("operations client sanitizes missing and failed response streams", async ()
       });
     }
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeDirRetry(dir);
   }
 });
 
@@ -391,7 +410,7 @@ test("operations client rejects an unapproved controller lifecycle state", async
       OperationsControllerUnavailableError,
     );
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeDirRetry(dir);
   }
 });
 
