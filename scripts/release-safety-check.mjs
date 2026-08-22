@@ -100,6 +100,43 @@ const competitorMentions = textFiles
 if (competitorMentions.length) fail(`direct competitor naming remains in: ${competitorMentions.join(", ")}`);
 else pass("public repository copy remains vendor-neutral");
 
+/**
+ * Returns every mutable action reference in a workflow file. Pinned means a
+ * 40-hex commit SHA, a local "./path" action, or a docker image with a
+ * sha256 digest. Anything else (tag, branch, digest-less docker image) can be
+ * retargeted by an attacker or a moved tag, so it fails the release gate.
+ */
+export function findUnpinnedActions(content) {
+  const unpinned = [];
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:-\s*)?uses:\s*(\S+)/);
+    if (!match) continue;
+    const ref = match[1];
+    if (ref.startsWith("./")) continue;
+    const at = ref.lastIndexOf("@");
+    const version = at === -1 ? "" : ref.slice(at + 1);
+    if (/^[0-9a-f]{40}$/.test(version)) continue;
+    if (/^sha256:[0-9a-f]{64}$/.test(version)) continue;
+    unpinned.push(ref);
+  }
+  return unpinned;
+}
+
+const workflowFiles = tracked.filter((file) => /^\.github\/workflows\/.+\.ya?ml$/.test(file));
+const unpinnedActionRefs = [];
+for (const file of workflowFiles) {
+  const absolute = resolve(root, file);
+  if (!existsSync(absolute)) continue;
+  for (const ref of findUnpinnedActions(readFileSync(absolute, "utf8"))) {
+    unpinnedActionRefs.push(`${file}: ${ref}`);
+  }
+}
+if (unpinnedActionRefs.length) {
+  fail(`workflow actions are not pinned to commit SHAs: ${unpinnedActionRefs.join("; ")}`);
+} else {
+  pass(`workflow actions pinned to commit SHAs (${workflowFiles.length} workflow files)`);
+}
+
 const gitignore = existsSync(resolve(root, ".gitignore")) ? readFileSync(resolve(root, ".gitignore"), "utf8") : "";
 for (const entry of [".env", ".secrets/", "*.private.pem", "*.ofp-license"]) {
   if (!gitignore.split(/\r?\n/).includes(entry)) fail(`.gitignore missing ${entry}`);
@@ -144,12 +181,14 @@ try {
   fail(`unable to validate package scripts: ${error instanceof Error ? error.message : String(error)}`);
 }
 
-console.log("OpenFieldPro release safety checks");
-for (const message of passes) console.log(`PASS  ${message}`);
-for (const message of failures) console.error(`FAIL  ${message}`);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  console.log("OpenFieldPro release safety checks");
+  for (const message of passes) console.log(`PASS  ${message}`);
+  for (const message of failures) console.error(`FAIL  ${message}`);
 
-if (failures.length) {
-  console.error(`\nRelease safety failed with ${failures.length} finding(s).`);
-  process.exit(1);
+  if (failures.length) {
+    console.error(`\nRelease safety failed with ${failures.length} finding(s).`);
+    process.exit(1);
+  }
+  console.log(`\nRelease safety passed (${passes.length} checks).`);
 }
-console.log(`\nRelease safety passed (${passes.length} checks).`);
