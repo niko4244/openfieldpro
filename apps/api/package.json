@@ -19,7 +19,7 @@
     "@ofp/plugin-sdk": "workspace:*",
     "@ofp/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "fastify": "^5.1.0",
+    "fastify": "^5.12.1",
     "file-type": "^22.0.1",
     "nodemailer": "^9.0.5",
     "pdfkit": "^0.15.0",
