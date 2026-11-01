@@ -23,7 +23,7 @@
     "file-type": "^22.0.1",
     "nodemailer": "^9.0.5",
     "pdfkit": "^0.15.0",
-    "zod": "^3.23.8"
+    "zod": "^4.6.6"
   },
   "optionalDependencies": {
     "stripe": "^17.4.0"
